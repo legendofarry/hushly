@@ -13,6 +13,8 @@ export interface UserProfile {
   id: string;
   realName: string; // Private
   nickname: string; // Public
+  email: string;
+  emailVerified: boolean;
   ageRange: string; // e.g. "20-25"
   bio: string;
   area: string; // Area/City only

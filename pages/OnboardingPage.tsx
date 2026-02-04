@@ -1,7 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
+import type { User } from "firebase/auth";
 import { IntentType, KENYAN_AREAS, AGE_RANGES, UserProfile } from "../types";
 import { uploadToCloudinary } from "../services/cloudinaryService";
-import { createUserProfile } from "../services/userService";
+import {
+  registerWithEmail,
+  refreshUser,
+  sendVerificationEmail,
+} from "../services/authService";
+import {
+  createUserProfile,
+  updateUserEmailVerification,
+} from "../services/userService";
+import { getFriendlyAuthError } from "../firebaseErrors";
 
 interface Props {
   onComplete: (user: UserProfile) => void;
@@ -10,6 +20,8 @@ interface Props {
 const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [step, setStep] = useState(1);
   const [realName, setRealName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
   const [ageRange, setAgeRange] = useState(AGE_RANGES[1]);
   const [area, setArea] = useState(KENYAN_AREAS[0]);
@@ -20,7 +32,15 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [verificationUser, setVerificationUser] = useState<User | null>(null);
+  const [isResending, setIsResending] = useState(false);
+  const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const selfieInputRef = useRef<HTMLInputElement | null>(null);
+
+  const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
   useEffect(() => {
     return () => {
@@ -29,6 +49,26 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       }
     };
   }, [photoPreview]);
+
+  const validatePassword = (value: string) => {
+    if (!value) return "Please create a password.";
+    if (value.length < 6) return "Password must be at least 6 characters.";
+    return null;
+  };
+
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timeout = setTimeout(() => setToastMessage(null), 3000);
+    return () => clearTimeout(timeout);
+  }, [toastMessage]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
 
   const toggleIntent = (intent: IntentType) => {
     setSelectedIntents((prev) =>
@@ -73,36 +113,144 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   };
 
   const finish = async () => {
+    const trimmedEmail = normalizeEmail(email);
+    if (!trimmedEmail || !password) {
+      setErrorMessage("Email and password are required to register.");
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMessage("Password must be at least 6 characters.");
+      return;
+    }
     if (!capturedPhoto) {
       setErrorMessage("Please take a live selfie before finishing.");
       return;
     }
 
-    const newUser: UserProfile = {
-      id: Math.random().toString(36).substr(2, 9),
-      realName,
-      nickname: nickname || "Ghost",
-      ageRange,
-      area,
-      intents: selectedIntents,
-      photoUrl: capturedPhoto,
-      bio: bio || "Ready for the plot.",
-      isAnonymous: true,
-      isOnline: true,
-      // Fix: Removed 'onboardingStep' property as it is not part of the UserProfile interface
-    };
     setIsSaving(true);
     setErrorMessage(null);
     try {
+      const authUser = await registerWithEmail(trimmedEmail, password);
+      const newUser = buildUserProfile(authUser.uid);
       await createUserProfile(newUser);
-      onComplete(newUser);
-    } catch (error) {
+      await sendVerificationEmail(authUser);
+      setPendingProfile(newUser);
+      setVerificationUser(authUser);
+      setResendCooldown(30);
+      setToastMessage("Verification email sent.");
+    } catch (error: any) {
       console.error(error);
-      setErrorMessage("We couldn't save your profile. Please try again.");
+      setErrorMessage(getFriendlyAuthError(error));
     } finally {
       setIsSaving(false);
     }
   };
+
+  const buildUserProfile = (userId: string): UserProfile => ({
+    id: userId,
+    realName,
+    nickname: nickname || "Ghost",
+    email: normalizeEmail(email),
+    emailVerified: false,
+    ageRange,
+    area,
+    intents: selectedIntents,
+    photoUrl: capturedPhoto ?? "",
+    bio: bio || "Ready for the plot.",
+    isAnonymous: true,
+    isOnline: true,
+  });
+
+  const handleVerificationCheck = async () => {
+    if (!verificationUser) return;
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      await refreshUser(verificationUser);
+      if (!verificationUser.emailVerified) {
+        setErrorMessage("Email not verified yet. Please check your inbox.");
+        return;
+      }
+      const baseProfile =
+        pendingProfile ?? buildUserProfile(verificationUser.uid);
+      const readyProfile: UserProfile = {
+        ...baseProfile,
+        email: normalizeEmail(verificationUser.email ?? baseProfile.email),
+        emailVerified: true,
+      };
+      await updateUserEmailVerification(
+        verificationUser.uid,
+        true,
+        normalizeEmail(verificationUser.email ?? baseProfile.email),
+      );
+      onComplete(readyProfile);
+    } catch (error: any) {
+      console.error(error);
+      setErrorMessage("We couldn't verify your email. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!verificationUser) return;
+    if (resendCooldown > 0) return;
+    setIsResending(true);
+    setErrorMessage(null);
+    try {
+      await sendVerificationEmail(verificationUser);
+      setResendCooldown(30);
+      setToastMessage("Verification email sent.");
+    } catch (error) {
+      console.error(error);
+      setErrorMessage("Failed to resend verification email.");
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  if (verificationUser && !verificationUser.emailVerified) {
+    return (
+      <div className="min-h-screen bg-kipepeo-dark text-white p-6 flex flex-col items-center justify-center font-sans">
+        <div className="max-w-md w-full text-center space-y-6 glass rounded-3xl p-8">
+          <h2 className="text-3xl font-black">Verify Your Email</h2>
+          <p className="text-gray-400 text-sm">
+            We sent a verification link to{" "}
+            <span className="text-white font-bold">
+              {verificationUser.email ?? "your email"}
+            </span>
+            . Please verify to continue.
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={handleVerificationCheck}
+              disabled={isSaving}
+              className="w-full py-3 bg-white text-black font-black rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+            >
+              {isSaving ? "Checking..." : "I Have Verified"}
+            </button>
+            <button
+              onClick={handleResendVerification}
+              disabled={isResending || resendCooldown > 0}
+              className="w-full py-3 glass text-white font-bold rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+            >
+              {isResending
+                ? "Resending..."
+                : resendCooldown > 0
+                  ? `Resend in ${resendCooldown}s`
+                  : "Resend Email"}
+            </button>
+          </div>
+          {toastMessage && (
+            <p className="text-[10px] text-kipepeo-pink">{toastMessage}</p>
+          )}
+          {errorMessage && (
+            <p className="text-[10px] text-red-400">{errorMessage}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-kipepeo-dark text-white p-6 flex flex-col font-sans">
@@ -120,7 +268,11 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
 
       <div className="flex-1 max-w-lg mx-auto w-full flex flex-col justify-center">
         {step === 1 && (
-          <div className="animate-in fade-in slide-in-from-bottom-4">
+          <form
+            className="animate-in fade-in slide-in-from-bottom-4"
+            onSubmit={(event) => event.preventDefault()}
+            noValidate
+          >
             <h2 className="text-4xl font-black mb-2 neon-text">
               Privacy First.
             </h2>
@@ -138,13 +290,56 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                   onChange={(e) => setRealName(e.target.value)}
                   className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mt-1 focus:border-kipepeo-pink outline-none"
                   placeholder="Required for verification"
+                  autoComplete="name"
                 />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mt-1 focus:border-kipepeo-pink outline-none"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    setPassword(nextValue);
+                    if (passwordError) {
+                      const nextError = validatePassword(nextValue);
+                      setPasswordError(nextError);
+                    }
+                  }}
+                  onBlur={() => {
+                    const nextError = validatePassword(password);
+                    setPasswordError(nextError);
+                  }}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mt-1 focus:border-kipepeo-pink outline-none"
+                  placeholder="Minimum 6 characters"
+                  autoComplete="new-password"
+                />
+                {passwordError && (
+                  <p className="text-[10px] text-red-400 mt-2">
+                    {passwordError}
+                  </p>
+                )}
               </div>
               <p className="text-[10px] text-gray-600">
                 By continuing, you confirm you are 18+.
               </p>
             </div>
-          </div>
+          </form>
         )}
 
         {step === 2 && (
@@ -296,6 +491,36 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       <div className="mt-auto">
         <button
           onClick={() => {
+            if (step === 1) {
+              if (!realName.trim()) {
+                setErrorMessage("Please enter your real name.");
+                return;
+              }
+              if (!email.trim()) {
+                setErrorMessage("Please enter your email.");
+                return;
+              }
+              if (!email.includes("@")) {
+                setErrorMessage("Please enter a valid email address.");
+                return;
+              }
+              if (!password) {
+                const nextError = validatePassword(password);
+                setPasswordError(nextError);
+                setErrorMessage(nextError ?? "Please create a password.");
+                return;
+              }
+              if (password.length < 6) {
+                const nextError = validatePassword(password);
+                setPasswordError(nextError);
+                setErrorMessage(nextError ?? "Password must be at least 6 characters.");
+                return;
+              }
+              if (passwordError) {
+                setErrorMessage(passwordError);
+                return;
+              }
+            }
             if (step === 4) {
               if (isUploading) {
                 return alert("Uploading selfie. Please wait a moment.");
@@ -304,6 +529,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                 return alert("Live photo is mandatory for trust!");
               }
             }
+            setErrorMessage(null);
             step < 5 ? setStep(step + 1) : void finish();
           }}
           disabled={isUploading || isSaving}

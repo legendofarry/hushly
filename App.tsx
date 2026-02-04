@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   HashRouter,
   Routes,
@@ -6,22 +6,39 @@ import {
   Navigate,
   useNavigate,
 } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
 import { UserProfile } from "./types";
+import { auth } from "./firebase";
 import LandingPage from "./pages/LandingPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import DiscoverPage from "./pages/DiscoverPage";
 import ChatListPage from "./pages/ChatListPage";
 import ChatDetailPage from "./pages/ChatDetailPage";
 import ProfilePage from "./pages/ProfilePage";
+import { clearSession, setSession } from "./services/authService";
+import {
+  getUserProfile,
+  updateUserEmailVerification,
+} from "./services/userService";
 
 const AppRoutes: React.FC<{
   user: UserProfile | null;
+  isVerified: boolean;
   setUser: (u: UserProfile | null) => void;
-}> = ({ user, setUser }) => {
+  setIsVerified: (v: boolean) => void;
+}> = ({ user, isVerified, setUser, setIsVerified }) => {
   const navigate = useNavigate();
 
   const handleOnboardingComplete = (u: UserProfile) => {
     setUser(u);
+    setIsVerified(true);
+    localStorage.setItem("kipepeo_user", JSON.stringify(u));
+    navigate("/discover");
+  };
+
+  const handleLoginComplete = (u: UserProfile) => {
+    setUser(u);
+    setIsVerified(true);
     localStorage.setItem("kipepeo_user", JSON.stringify(u));
     navigate("/discover");
   };
@@ -29,6 +46,7 @@ const AppRoutes: React.FC<{
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem("kipepeo_user");
+    clearSession().catch((error) => console.error(error));
     navigate("/");
   };
 
@@ -36,11 +54,23 @@ const AppRoutes: React.FC<{
     <Routes>
       <Route
         path="/"
-        element={user ? <Navigate to="/discover" /> : <LandingPage />}
+        element={
+          user && isVerified ? (
+            <Navigate to="/discover" />
+          ) : (
+            <LandingPage onLogin={handleLoginComplete} />
+          )
+        }
       />
       <Route
         path="/home"
-        element={user ? <Navigate to="/discover" replace /> : <Navigate to="/" replace />}
+        element={
+          user && isVerified ? (
+            <Navigate to="/discover" replace />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
       />
       <Route
         path="/onboarding"
@@ -48,20 +78,30 @@ const AppRoutes: React.FC<{
       />
       <Route
         path="/discover"
-        element={user ? <DiscoverPage user={user} /> : <Navigate to="/" />}
+        element={
+          user && isVerified ? <DiscoverPage user={user} /> : <Navigate to="/" />
+        }
       />
       <Route
         path="/chats"
-        element={user ? <ChatListPage user={user} /> : <Navigate to="/" />}
+        element={
+          user && isVerified ? <ChatListPage user={user} /> : <Navigate to="/" />
+        }
       />
       <Route
         path="/chats/:id"
-        element={user ? <ChatDetailPage user={user} /> : <Navigate to="/" />}
+        element={
+          user && isVerified ? (
+            <ChatDetailPage user={user} />
+          ) : (
+            <Navigate to="/" />
+          )
+        }
       />
       <Route
         path="/profile"
         element={
-          user ? (
+          user && isVerified ? (
             <ProfilePage user={user} onLogout={handleLogout} />
           ) : (
             <Navigate to="/" />
@@ -75,14 +115,85 @@ const AppRoutes: React.FC<{
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isVerified, setIsVerified] = useState(false);
+
+  const normalizeEmail = (value?: string | null) =>
+    (value ?? "").trim().toLowerCase();
 
   useEffect(() => {
-    // Simulate checking local storage for a "logged in" session
-    const savedUser = localStorage.getItem("kipepeo_user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setLoading(false);
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
+      if (!active) return;
+
+      if (!authUser) {
+        setUser(null);
+        setIsVerified(false);
+        localStorage.removeItem("kipepeo_user");
+        sessionStorage.removeItem("kipepeo_session");
+        setLoading(false);
+        return;
+      }
+
+      if (!authUser.emailVerified) {
+        setUser(null);
+        setIsVerified(false);
+        localStorage.removeItem("kipepeo_user");
+        sessionStorage.removeItem("kipepeo_session");
+        setLoading(false);
+        return;
+      }
+
+      setIsVerified(true);
+      try {
+        const token = await authUser.getIdToken();
+        setSession(authUser.uid, token);
+        const savedUser = localStorage.getItem("kipepeo_user");
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser) as UserProfile;
+          if (
+            parsed?.id === authUser.uid &&
+            parsed.email &&
+            parsed.emailVerified
+          ) {
+            setUser(parsed);
+            setLoading(false);
+            return;
+          }
+        }
+        const profile = await getUserProfile(authUser.uid);
+        if (profile) {
+          if (!profile.emailVerified || !profile.email) {
+            await updateUserEmailVerification(
+              authUser.uid,
+              true,
+              normalizeEmail(authUser.email ?? profile.email),
+            );
+            profile.emailVerified = true;
+            const normalized = normalizeEmail(authUser.email ?? profile.email);
+            if (normalized) {
+              profile.email = normalized;
+            }
+          }
+          setUser(profile);
+          localStorage.setItem("kipepeo_user", JSON.stringify(profile));
+        } else {
+          await clearSession();
+          setUser(null);
+          setIsVerified(false);
+        }
+      } catch (error) {
+        console.error(error);
+        setUser(null);
+        setIsVerified(false);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   if (loading) {
@@ -96,7 +207,12 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       <div className="min-h-screen font-sans selection:bg-kipepeo-pink selection:text-white bg-kipepeo-dark">
-        <AppRoutes user={user} setUser={setUser} />
+        <AppRoutes
+          user={user}
+          isVerified={isVerified}
+          setUser={setUser}
+          setIsVerified={setIsVerified}
+        />
       </div>
     </HashRouter>
   );
