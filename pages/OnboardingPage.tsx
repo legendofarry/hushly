@@ -192,6 +192,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     nicknameLower: nickname.trim().toLowerCase(),
     email: normalizeEmail(email),
     emailVerified: false,
+    isPremium: false,
+    premiumExpiresAt: null,
     ageRange,
     area,
     intents: selectedIntents,

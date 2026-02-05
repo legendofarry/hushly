@@ -19,9 +19,11 @@ import SecurityPrivacyPage from "./pages/SecurityPrivacyPage";
 import PersonalInfoPage from "./pages/PersonalInfoPage";
 import LikesAnalyticsPage from "./pages/LikesAnalyticsPage";
 import UserProfileViewPage from "./pages/UserProfileViewPage";
+import ManagePaymentsPage from "./pages/ManagePaymentsPage";
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
+  listenToUserProfile,
   updateUserEmailVerification,
 } from "./services/userService";
 
@@ -138,6 +140,16 @@ const AppRoutes: React.FC<{
         }
       />
       <Route
+        path="/admin/payments"
+        element={
+          user && isVerified ? (
+            <ManagePaymentsPage user={user} />
+          ) : (
+            <Navigate to="/" />
+          )
+        }
+      />
+      <Route
         path="/settings/security"
         element={
           user && isVerified ? (
@@ -244,6 +256,16 @@ const App: React.FC = () => {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const unsubscribe = listenToUserProfile(user.id, (profile) => {
+      if (!profile) return;
+      setUser(profile);
+      localStorage.setItem("kipepeo_user", JSON.stringify(profile));
+    });
+    return () => unsubscribe();
+  }, [user?.id]);
 
   if (loading) {
     return (

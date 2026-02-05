@@ -15,6 +15,8 @@ export interface UserProfile {
   nicknameLower?: string;
   email: string;
   emailVerified: boolean;
+  isPremium?: boolean;
+  premiumExpiresAt?: number | null;
   ageRange: string; // e.g. "20-25"
   bio: string;
   area: string; // Area/City only
@@ -55,6 +57,7 @@ export interface WeekendPlan {
   description: string;
   category: string;
   timestamp: number;
+  rsvpCount?: number;
 }
 
 export interface ChatMessage {
@@ -85,6 +88,20 @@ export interface LikeRecord {
   fromNickname?: string;
   toNickname?: string;
   createdAt: number;
+}
+
+export type PaymentStatus = "pending" | "approved" | "rejected";
+
+export interface PaymentRequest {
+  id: string;
+  userId: string;
+  email: string;
+  nickname?: string;
+  mpesaMessageProof: string;
+  status: PaymentStatus;
+  createdAt: number;
+  decisionAt?: number | null;
+  decisionBy?: string;
 }
 
 export const KENYAN_AREAS = [

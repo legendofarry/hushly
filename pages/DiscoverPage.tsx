@@ -1,7 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti"; // Import the confetti library
-import { AppNotification, UserProfile, IntentType } from "../types";
+import {
+  AppNotification,
+  IntentType,
+  PaymentRequest,
+  UserProfile,
+  WeekendPlan,
+} from "../types";
 import { getAllUsers, getAllUserSettings } from "../services/userService";
 import AppImage from "../components/AppImage";
 import { ensureConversation } from "../services/chatService";
@@ -10,6 +16,18 @@ import {
   listenToNotifications,
   markNotificationsRead,
 } from "../services/notificationService";
+import {
+  createPaymentRequest,
+  listenToUserPaymentRequests,
+  MPESA_TILL_NUMBER,
+  PREMIUM_PRICE_KES,
+  WHATSAPP_OWNER,
+} from "../services/paymentService";
+import {
+  createWeekendPlan,
+  listenToWeekendPlans,
+  rsvpToPlan,
+} from "../services/planService";
 import { createLike } from "../services/likeService";
 
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
@@ -22,6 +40,19 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [view, setView] = useState<"discover" | "plans" | "portal">("discover");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [plans, setPlans] = useState<WeekendPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [plansError, setPlansError] = useState<string | null>(null);
+  const [planTitle, setPlanTitle] = useState("");
+  const [planDescription, setPlanDescription] = useState("");
+  const [planCategory, setPlanCategory] = useState("Hangout");
+  const [planSubmitting, setPlanSubmitting] = useState(false);
+  const [planActionError, setPlanActionError] = useState<string | null>(null);
+  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
+  const [paymentProof, setPaymentProof] = useState("");
+  const [showPaymentProof, setShowPaymentProof] = useState(false);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -54,6 +85,39 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     const unsubscribe = listenToNotifications(user.id, (items) => {
       setNotifications(items);
     });
+    return () => unsubscribe();
+  }, [user.id]);
+
+  useEffect(() => {
+    const unsubscribe = listenToWeekendPlans(
+      (items) => {
+        setPlans(items);
+        setPlansLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        setPlansError(
+          error.message.includes("index")
+            ? "Firestore needs an index for weekend plans."
+            : "Unable to load weekend plans.",
+        );
+        setPlansLoading(false);
+      },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = listenToUserPaymentRequests(
+      user.id,
+      (items) => {
+        setPaymentRequests(items);
+      },
+      (error) => {
+        console.error(error);
+        setPaymentError(error.message);
+      },
+    );
     return () => unsubscribe();
   }, [user.id]);
 
@@ -100,6 +164,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       ).length,
     [notifications],
   );
+  const latestPaymentRequest = paymentRequests[0] ?? null;
+  const paymentStatus = latestPaymentRequest?.status ?? null;
+  const premiumActive =
+    Boolean(user.isPremium) &&
+    (!user.premiumExpiresAt || user.premiumExpiresAt > Date.now());
+  const premiumUnlocked =
+    premiumActive || latestPaymentRequest?.status === "approved";
+  const paymentPending = paymentStatus === "pending";
+  const paymentRejected = paymentStatus === "rejected";
 
   const handleStartChat = async (target: UserProfile) => {
     try {
@@ -125,6 +198,67 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       navigate(`/chats/${notification.conversationId}`);
     }
     setShowNotifications(false);
+  };
+
+  const handlePlanSubmit = async () => {
+    if (!premiumUnlocked) return;
+    if (!planTitle.trim() || !planDescription.trim()) {
+      setPlanActionError("Please add a title and description.");
+      return;
+    }
+    setPlanSubmitting(true);
+    setPlanActionError(null);
+    try {
+      await createWeekendPlan({
+        creator: user,
+        title: planTitle.trim(),
+        description: planDescription.trim(),
+        category: planCategory,
+      });
+      setPlanTitle("");
+      setPlanDescription("");
+    } catch (error) {
+      console.error(error);
+      setPlanActionError("Unable to create plan. Please try again.");
+    } finally {
+      setPlanSubmitting(false);
+    }
+  };
+
+  const handleRsvp = async (planId: string) => {
+    try {
+      await rsvpToPlan({ planId, user });
+    } catch (error) {
+      console.error(error);
+      setPlanActionError("Unable to RSVP right now.");
+    }
+  };
+
+  const handlePaymentSubmit = async () => {
+    if (!paymentProof.trim()) {
+      setPaymentError("Paste the full M-Pesa confirmation message.");
+      return;
+    }
+    setPaymentSubmitting(true);
+    setPaymentError(null);
+    try {
+      await createPaymentRequest({
+        userId: user.id,
+        email: user.email,
+        nickname: user.nickname,
+        mpesaMessageProof: paymentProof.trim(),
+      });
+      const message = `Hello Hushly Admin,\\n\\nI have made a payment for Premium membership.\\n\\nUsername: ${user.nickname}\\nEmail: ${user.email}\\n\\nM-Pesa Confirmation:\\n${paymentProof.trim()}`;
+      const encoded = encodeURIComponent(message);
+      window.open(`https://wa.me/${WHATSAPP_OWNER}?text=${encoded}`, "_blank");
+      setPaymentProof("");
+      setShowPaymentProof(false);
+    } catch (error) {
+      console.error(error);
+      setPaymentError("Unable to submit payment proof. Please try again.");
+    } finally {
+      setPaymentSubmitting(false);
+    }
   };
 
   const getNotificationTitle = (notification: AppNotification) => {
@@ -641,14 +775,212 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border border-white/5 animate-in fade-in slide-in-from-bottom-4">
-            <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-4 rotate-3">
-              <span className="text-3xl">🥂</span>
+          <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">
+            <div className="glass rounded-3xl border border-white/5 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-black uppercase tracking-widest">
+                    Weekend Plans
+                  </h2>
+                  <p className="text-xs text-gray-500 uppercase tracking-[0.3em]">
+                    Premium only creation
+                  </p>
+                </div>
+                <div
+                  className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                    premiumUnlocked
+                      ? "text-emerald-300 border-emerald-500/30 bg-emerald-500/10"
+                      : "text-pink-300 border-pink-500/30 bg-pink-500/10"
+                  }`}
+                >
+                  {premiumUnlocked ? "Premium" : "Locked"}
+                </div>
+              </div>
+
+              {!premiumUnlocked && (
+                <div className="space-y-4">
+                  {paymentPending ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+                      <p className="font-bold uppercase tracking-widest text-xs text-kipepeo-pink mb-2">
+                        Pending verification
+                      </p>
+                      <p>
+                        Your payment is under review. Approval usually takes
+                        5-15 minutes.
+                      </p>
+                    </div>
+                  ) : paymentRejected ? (
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-200">
+                      <p className="font-bold uppercase tracking-widest text-xs mb-2">
+                        Payment rejected
+                      </p>
+                      <p>
+                        Please re-submit your M-Pesa confirmation or contact
+                        support.
+                      </p>
+                      <button
+                        onClick={() => setShowPaymentProof(true)}
+                        className="mt-3 px-4 py-2 rounded-full bg-red-500/20 text-red-200 text-xs font-black uppercase tracking-widest border border-red-500/30 active:scale-95 transition-transform"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  ) : showPaymentProof ? (
+                    <div className="space-y-3">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-400">
+                        Paste M-Pesa Confirmation Message
+                      </label>
+                      <textarea
+                        value={paymentProof}
+                        onChange={(e) => setPaymentProof(e.target.value)}
+                        rows={4}
+                        className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
+                        placeholder="Paste full M-Pesa message here..."
+                      />
+                      {paymentError && (
+                        <p className="text-xs text-red-400">{paymentError}</p>
+                      )}
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={handlePaymentSubmit}
+                          disabled={paymentSubmitting}
+                          className="flex-1 py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                        >
+                          {paymentSubmitting ? "Submitting..." : "Send Proof"}
+                        </button>
+                        <button
+                          onClick={() => setShowPaymentProof(false)}
+                          className="px-4 py-3 rounded-full bg-white/5 text-gray-400 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                      <p className="text-sm text-gray-300">
+                        Creating a Weekend Plan is a premium feature.
+                      </p>
+                      <div className="flex items-center justify-between text-xs uppercase tracking-widest text-gray-400">
+                        <span>Price</span>
+                        <span className="text-white font-black">
+                          KES {PREMIUM_PRICE_KES} per month
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs uppercase tracking-widest text-gray-400">
+                        <span>M-Pesa Till</span>
+                        <span className="text-white font-black">
+                          {MPESA_TILL_NUMBER}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setShowPaymentProof(true)}
+                        className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+                      >
+                        I Have Paid
+                      </button>
+                      {paymentError && (
+                        <p className="text-xs text-red-400">{paymentError}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {premiumUnlocked && (
+                <div className="space-y-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <input
+                      value={planTitle}
+                      onChange={(e) => setPlanTitle(e.target.value)}
+                      placeholder="Plan title"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <select
+                      value={planCategory}
+                      onChange={(e) => setPlanCategory(e.target.value)}
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    >
+                      <option value="Hangout">Hangout</option>
+                      <option value="Dinner">Dinner</option>
+                      <option value="Adventure">Adventure</option>
+                      <option value="Party">Party</option>
+                    </select>
+                  </div>
+                  <textarea
+                    value={planDescription}
+                    onChange={(e) => setPlanDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Describe the plan..."
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
+                  />
+                  {planActionError && (
+                    <p className="text-xs text-red-400">{planActionError}</p>
+                  )}
+                  <button
+                    onClick={handlePlanSubmit}
+                    disabled={planSubmitting}
+                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                  >
+                    {planSubmitting ? "Creating..." : "Create Weekend Plan"}
+                  </button>
+                </div>
+              )}
             </div>
-            <p className="text-gray-400 font-medium">No plans scheduled yet.</p>
-            <p className="text-gray-600 text-xs mt-2 uppercase tracking-wide">
-              Check back Friday
-            </p>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">
+                  Plans Feed
+                </h3>
+                <span className="text-[10px] text-gray-600 uppercase tracking-[0.3em]">
+                  {plans.length} plans
+                </span>
+              </div>
+              {plansLoading ? (
+                <div className="text-center py-10 text-gray-500 text-sm">
+                  Loading plans...
+                </div>
+              ) : plansError ? (
+                <div className="text-center py-10 text-red-400 text-sm">
+                  {plansError}
+                </div>
+              ) : plans.length === 0 ? (
+                <div className="text-center py-10 text-gray-500 text-sm">
+                  No plans yet. Be the first to create one.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {plans.map((plan) => (
+                    <div
+                      key={plan.id}
+                      className="glass rounded-2xl border border-white/5 p-4 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-black text-lg">{plan.title}</h4>
+                          <p className="text-xs text-gray-500 uppercase tracking-widest">
+                            {plan.category} - by {plan.creatorNickname}
+                          </p>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {plan.rsvpCount ?? 0} RSVP
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-300">
+                        {plan.description}
+                      </p>
+                      <button
+                        onClick={() => handleRsvp(plan.id)}
+                        className="w-full py-2 rounded-full bg-white/5 text-gray-200 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                      >
+                        RSVP
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

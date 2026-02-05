@@ -4,6 +4,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -40,6 +41,28 @@ export const getUserProfile = async (userId: string) => {
     return null;
   }
   return snapshot.data() as UserProfile;
+};
+
+export const listenToUserProfile = (
+  userId: string,
+  onChange: (profile: UserProfile | null) => void,
+  onError?: (error: Error) => void,
+) => {
+  const userRef = doc(db, USERS_COLLECTION, userId);
+  return onSnapshot(
+    userRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onChange(null);
+        return;
+      }
+      onChange(snapshot.data() as UserProfile);
+    },
+    (error) => {
+      console.error(error);
+      onError?.(error as Error);
+    },
+  );
 };
 
 export const updateUserEmailVerification = async (

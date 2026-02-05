@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { UserProfile } from "../types";
 import AppImage from "../components/AppImage";
+import { OWNER_EMAIL } from "../services/paymentService";
 
 interface Props {
   user: UserProfile;
@@ -121,8 +122,22 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                   Likes Analytics
                 </span>
               </div>
-              <span className="text-gray-500">????????</span>
+              <span className="text-gray-500"></span>
             </Link>
+
+            {user.email === OWNER_EMAIL && (
+              <Link
+                to="/admin/payments"
+                className="flex items-center justify-between p-5 glass rounded-2xl border border-white/5 active:scale-98 transition-transform"
+              >
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-black uppercase tracking-widest">
+                    Manage Payments
+                  </span>
+                </div>
+                <span className="text-gray-500"></span>
+              </Link>
+            )}
 
             <button
               onClick={onLogout}
@@ -147,4 +162,3 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 };
 
 export default ProfilePage;
-
