@@ -56,7 +56,9 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
   };
 
   const handleNotificationClick = (notification: AppNotification) => {
-    if (notification.conversationId) {
+    if (notification.type === "like" && notification.fromUserId) {
+      navigate(`/users/${notification.fromUserId}`);
+    } else if (notification.conversationId) {
       navigate(`/chats/${notification.conversationId}`);
     }
     setShowNotifications(false);
@@ -86,6 +88,16 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
     return `${Math.floor(diff / 86400000)}d`;
+  };
+
+  const isConversationUnread = (conversation: any) => {
+    const lastMessageAt = conversation?.lastMessageAt?.toMillis?.() ?? 0;
+    if (!lastMessageAt) return false;
+    const lastSenderId = conversation?.lastSenderId;
+    if (!lastSenderId || lastSenderId === user.id) return false;
+    const lastReadAt =
+      conversation?.lastReadAt?.[user.id]?.toMillis?.() ?? 0;
+    return lastMessageAt > lastReadAt;
   };
 
   return (
@@ -209,11 +221,16 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
               const otherId = members.find((id) => id !== user.id);
               const profile =
                 conversation.memberProfiles?.[otherId ?? ""] ?? {};
+              const isUnread = isConversationUnread(conversation);
               return (
                 <Link
                   to={`/chats/${conversation.id}`}
                   key={conversation.id}
-                  className="flex items-center p-4 glass rounded-2xl transition-all active:scale-95 border border-white/5 hover:bg-white/5"
+                  className={`flex items-center p-4 glass rounded-2xl transition-all active:scale-95 border hover:bg-white/5 ${
+                    isUnread
+                      ? "border-kipepeo-pink/40 bg-kipepeo-pink/5"
+                      : "border-white/5"
+                  }`}
                 >
                   <AppImage
                     src={profile.photoUrl ?? user.photoUrl}
@@ -225,11 +242,22 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                       <h3 className="font-black text-lg">
                         {profile.nickname ?? "Unknown"}
                       </h3>
-                      <span className="text-xs text-gray-500 font-bold uppercase">
-                        {formatTime(conversation.lastMessageAt)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {isUnread && (
+                          <span className="text-[10px] font-black uppercase tracking-widest text-kipepeo-pink">
+                            New
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-500 font-bold uppercase">
+                          {formatTime(conversation.lastMessageAt)}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-base text-gray-500 truncate font-medium">
+                    <p
+                      className={`text-base truncate font-medium ${
+                        isUnread ? "text-white" : "text-gray-500"
+                      }`}
+                    >
                       {conversation.lastMessage ?? "Start the conversation"}
                     </p>
                   </div>

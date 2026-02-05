@@ -18,6 +18,7 @@ import ProfilePage from "./pages/ProfilePage";
 import SecurityPrivacyPage from "./pages/SecurityPrivacyPage";
 import PersonalInfoPage from "./pages/PersonalInfoPage";
 import LikesAnalyticsPage from "./pages/LikesAnalyticsPage";
+import UserProfileViewPage from "./pages/UserProfileViewPage";
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
@@ -121,6 +122,16 @@ const AppRoutes: React.FC<{
         element={
           user && isVerified ? (
             <LikesAnalyticsPage user={user} />
+          ) : (
+            <Navigate to="/" />
+          )
+        }
+      />
+      <Route
+        path="/users/:id"
+        element={
+          user && isVerified ? (
+            <UserProfileViewPage viewer={user} />
           ) : (
             <Navigate to="/" />
           )

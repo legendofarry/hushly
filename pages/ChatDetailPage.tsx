@@ -5,6 +5,7 @@ import AppImage from "../components/AppImage";
 import {
   listenToConversation,
   listenToMessages,
+  markConversationRead,
   sendMessage as sendChatMessage,
 } from "../services/chatService";
 import { markNotificationsReadByConversation } from "../services/notificationService";
@@ -42,6 +43,11 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     });
     return () => unsubscribe();
   }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    void markConversationRead(conversationId, user.id);
+  }, [conversationId, user.id, messages.length]);
 
   useEffect(() => {
     if (!conversationId) return;

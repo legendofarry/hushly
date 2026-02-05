@@ -93,6 +93,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   const current = filteredProfiles[currentIndex];
   const unreadNotifications = notifications.filter((n) => !n.read);
+  const unreadMessageCount = useMemo(
+    () =>
+      notifications.filter(
+        (notification) => !notification.read && notification.type === "message",
+      ).length,
+    [notifications],
+  );
 
   const handleStartChat = async (target: UserProfile) => {
     try {
@@ -112,7 +119,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handleNotificationClick = (notification: AppNotification) => {
-    if (notification.conversationId) {
+    if (notification.type === "like" && notification.fromUserId) {
+      navigate(`/users/${notification.fromUserId}`);
+    } else if (notification.conversationId) {
       navigate(`/chats/${notification.conversationId}`);
     }
     setShowNotifications(false);
@@ -258,8 +267,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           <div className="flex items-center gap-3">
             <Link
               to="/chats"
-              className="w-10 h-10 flex items-center justify-center text-lg active:scale-90 transition-transform"
+              className="w-10 h-10 flex items-center justify-center text-lg active:scale-90 transition-transform relative"
             >
+              {unreadMessageCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-5 px-1.5 rounded-full bg-kipepeo-pink text-[10px] font-black flex items-center justify-center shadow-[0_0_10px_rgba(236,72,153,0.6)]">
+                  {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                </span>
+              )}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="24"

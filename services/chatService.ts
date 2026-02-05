@@ -44,6 +44,10 @@ export const ensureConversation = async (
     await setDoc(conversationRef, {
       members: [currentUser.id, targetUser.id],
       memberProfiles,
+      lastReadAt: {
+        [currentUser.id]: serverTimestamp(),
+        [targetUser.id]: serverTimestamp(),
+      },
       createdAt: serverTimestamp(),
       lastMessageAt: serverTimestamp(),
     });
@@ -58,6 +62,16 @@ export const ensureConversation = async (
     );
   }
   return conversationId;
+};
+
+export const markConversationRead = async (
+  conversationId: string,
+  userId: string,
+) => {
+  const conversationRef = doc(conversationsRef, conversationId);
+  await updateDoc(conversationRef, {
+    [`lastReadAt.${userId}`]: serverTimestamp(),
+  });
 };
 
 export const listenToConversation = (
