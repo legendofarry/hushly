@@ -255,7 +255,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-pink-900/20 rounded-full blur-[120px] pointer-events-none"></div>
 
       {/* Header */}
-      <header className="px-5 pt-5 pb-2 z-20 shrink-0">
+      <header className="px-5 pt-5 pb-2 z-20 shrink-0 max-w-2xl mx-auto w-full">
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-1">
             <div className="w-2 h-8 bg-gradient-to-b from-pink-500 to-purple-600 rounded-full"></div>
@@ -408,7 +408,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 px-4 pb-4 overflow-hidden relative flex flex-col z-10">
+      <div className="flex-1 px-4 pb-4 overflow-hidden relative flex flex-col z-10 max-w-2xl mx-auto w-full">
         {showNotifications && (
           <div className="absolute top-0 right-2 z-30 w-72 glass rounded-2xl border border-white/10 p-4 shadow-xl">
             <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">
@@ -549,7 +549,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                       </div>
 
                       {/* Action Bar (Updated) */}
-                      <div className="grid grid-cols-4 gap-4 mt-auto pt-2 items-center">
+                      <div className="grid grid-cols-4 gap-4 mt-auto pt-2 items-center max-w-[400px] mx-auto">
                         {/* Skip Button */}
                         <button
                           onClick={handleSkip}

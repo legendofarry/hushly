@@ -95,8 +95,7 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     if (!lastMessageAt) return false;
     const lastSenderId = conversation?.lastSenderId;
     if (!lastSenderId || lastSenderId === user.id) return false;
-    const lastReadAt =
-      conversation?.lastReadAt?.[user.id]?.toMillis?.() ?? 0;
+    const lastReadAt = conversation?.lastReadAt?.[user.id]?.toMillis?.() ?? 0;
     return lastMessageAt > lastReadAt;
   };
 
@@ -184,29 +183,6 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
       )}
 
       <div className="p-6 flex-1 overflow-y-auto no-scrollbar">
-        <div className="mb-10">
-          <h2 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em] mb-4">
-            New Plots
-          </h2>
-          <div className="flex space-x-4 overflow-x-auto pb-4 no-scrollbar">
-            <div className="flex-shrink-0 w-16 h-16 rounded-full border-2 border-dashed border-kipepeo-pink flex items-center justify-center bg-kipepeo-pink/5">
-              <span className="text-kipepeo-pink text-xl font-black">3</span>
-            </div>
-            {[3, 4, 5].map((i) => (
-              <div
-                key={i}
-                className="flex-shrink-0 w-16 h-16 rounded-full overflow-hidden border-2 border-kipepeo-orange shadow-lg shadow-kipepeo-orange/20"
-              >
-                <AppImage
-                  src={`https://picsum.photos/100/100?random=${i}`}
-                  className="w-full h-full object-cover bg-white/5"
-                  alt="Match"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div className="space-y-4">
           <h2 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em] mb-4">
             Conversations
