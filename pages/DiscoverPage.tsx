@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import confetti from "canvas-confetti"; // Import the confetti library
 import { UserProfile, IntentType } from "../types";
 import { getAllUsers, getAllUserSettings } from "../services/userService";
 import AppImage from "../components/AppImage";
 
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
+  const navigate = useNavigate();
   const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,11 +77,54 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   const current = filteredProfiles[currentIndex];
 
-  // --- PORTAL VIEW (Redesigned) ---
+  // --- ACTIONS ---
+  const handleNextProfile = () => {
+    setCurrentIndex((prev) => (prev + 1) % filteredProfiles.length);
+  };
+
+  const handleSkip = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Logic to record skip would go here
+    handleNextProfile();
+  };
+
+  const handleLike = (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    // --- CONFETTI ANIMATION ---
+    // We use the app's brand colors for the confetti
+    const brandColors = ["#ec4899", "#a855f7", "#ffffff"]; // Pink-500, Purple-600, White
+
+    // Fire confetti from the bottom center (where the button is)
+    confetti({
+      particleCount: 150,
+      spread: 100,
+      origin: { y: 0.8 }, // Start from bottom 80% of screen
+      colors: brandColors,
+      disableForReducedMotion: true,
+      zIndex: 9999, // Ensure it sits on top of everything
+      gravity: 1.2,
+      scalar: 1.2,
+      ticks: 300, // Lasts a bit longer
+    });
+
+    // Short delay before switching to next profile to let user see the pop
+    setTimeout(() => {
+      handleNextProfile();
+    }, 200);
+  };
+
+  const handleChat = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (current) {
+      navigate(`/chats/${current.id}`);
+    }
+  };
+
+  // --- PORTAL VIEW ---
   if (view === "portal") {
     return (
       <div className="relative h-screen w-full bg-black flex flex-col items-center justify-center overflow-hidden font-sans">
-        {/* Background Effects */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-red-900/40 via-black to-black animate-pulse"></div>
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
 
@@ -184,7 +229,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           </div>
         </div>
 
-        {/* Custom Segmented Control */}
         <div className="relative p-1 bg-white/5 rounded-xl flex items-center mb-4">
           <div
             className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white/10 rounded-lg shadow-sm transition-all duration-300 ease-out ${view === "plans" ? "translate-x-[calc(100%+4px)]" : "translate-x-0"}`}
@@ -203,9 +247,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           </button>
         </div>
 
-        {/* Intent Filters */}
         {view === "discover" && (
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide mask-fade-right">
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar mask-fade-right">
             {Object.values(IntentType).map((intent) => {
               const isActive = selectedIntents.includes(intent);
               return (
@@ -275,7 +318,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                       alt={current.nickname}
                       fetchPriority="high"
                     />
-                    {/* Elaborate Gradient Overlays for Readability */}
                     <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/90"></div>
                     <div className="absolute bottom-0 inset-x-0 h-2/3 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent"></div>
                   </div>
@@ -302,9 +344,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         <h2 className="text-4xl font-black text-white leading-none tracking-tighter drop-shadow-lg">
                           {current.nickname}
                         </h2>
-                        <div className="text-2xl font-bold text-white/80 italic">
-                          {current.ageRange}
-                        </div>
                       </div>
 
                       <div className="flex items-center gap-2 mb-4 text-gray-300 text-sm font-medium">
@@ -343,15 +382,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         </p>
                       </div>
 
-                      {/* Action Bar */}
-                      <div className="flex items-center gap-3 mt-auto pt-2">
+                      {/* Action Bar (Updated) */}
+                      <div className="grid grid-cols-4 gap-4 mt-auto pt-2 items-center">
+                        {/* Skip Button */}
                         <button
-                          onClick={() =>
-                            setCurrentIndex(
-                              (currentIndex + 1) % filteredProfiles.length,
-                            )
-                          }
-                          className="w-14 h-14 flex items-center justify-center rounded-full bg-gray-800/80 backdrop-blur-md border border-white/10 text-gray-400 hover:text-white hover:bg-gray-700 transition-all active:scale-90"
+                          onClick={handleSkip}
+                          className="col-span-1 aspect-square rounded-full bg-gray-800/60 backdrop-blur-md border border-white/10 text-gray-400 hover:text-white hover:bg-red-500/20 hover:border-red-500/30 transition-all active:scale-90 flex items-center justify-center group"
                           aria-label="Skip"
                         >
                           <svg
@@ -361,24 +397,22 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
-                            strokeWidth="2"
+                            strokeWidth="2.5"
                             strokeLinecap="round"
                             strokeLinejoin="round"
+                            className="group-hover:text-red-500 transition-colors"
                           >
                             <line x1="18" y1="6" x2="6" y2="18" />
                             <line x1="6" y1="6" x2="18" y2="18" />
                           </svg>
                         </button>
 
+                        {/* Chat Button (Prominent) */}
                         <button
-                          onClick={() =>
-                            setCurrentIndex(
-                              (currentIndex + 1) % filteredProfiles.length,
-                            )
-                          }
-                          className="flex-1 h-14 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 text-white font-black text-sm uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-pink-900/40 flex items-center justify-center gap-2"
+                          onClick={handleChat}
+                          className="col-span-2 h-14 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 text-white font-black text-xs uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-pink-900/40 flex items-center justify-center gap-2"
                         >
-                          <span>Start Chat</span>
+                          <span>Say Hi</span>
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             width="16"
@@ -390,8 +424,29 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                           >
-                            <line x1="22" y1="2" x2="11" y2="13" />
-                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                          </svg>
+                        </button>
+
+                        {/* Like Button */}
+                        <button
+                          onClick={handleLike}
+                          className="col-span-1 aspect-square rounded-full bg-gray-800/60 backdrop-blur-md border border-white/10 text-gray-400 hover:text-white hover:bg-pink-500/20 hover:border-pink-500/30 transition-all active:scale-90 flex items-center justify-center group"
+                          aria-label="Like"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="group-hover:text-pink-500 transition-colors"
+                          >
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
                           </svg>
                         </button>
                       </div>
