@@ -64,7 +64,7 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-export type NotificationType = "message" | "system";
+export type NotificationType = "message" | "system" | "like";
 
 export interface AppNotification {
   id: string;

@@ -6,6 +6,7 @@ import { getAllUsers, getAllUserSettings } from "../services/userService";
 import AppImage from "../components/AppImage";
 import { ensureConversation } from "../services/chatService";
 import {
+  createLikeNotification,
   listenToNotifications,
   markNotificationsRead,
 } from "../services/notificationService";
@@ -116,6 +117,22 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     setShowNotifications(false);
   };
 
+  const getNotificationTitle = (notification: AppNotification) => {
+    if (notification.type === "system") return "System";
+    return notification.fromNickname ?? "Notification";
+  };
+
+  const getNotificationBody = (notification: AppNotification) => {
+    switch (notification.type) {
+      case "message":
+        return `You have a new message from ${notification.fromNickname ?? "someone"}.`;
+      case "like":
+        return `${notification.fromNickname ?? "Someone"} liked your profile.`;
+      default:
+        return notification.body;
+    }
+  };
+
   // --- ACTIONS ---
   const handleNextProfile = () => {
     if (filteredProfiles.length === 0) return;
@@ -130,6 +147,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (current) {
+      void createLikeNotification({
+        toUserId: current.id,
+        fromUserId: user.id,
+        fromNickname: user.nickname,
+      });
+    }
 
     // --- CONFETTI ANIMATION ---
     // We use the app's brand colors for the confetti
@@ -384,12 +408,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                     }`}
                   >
                     <p className="text-xs font-bold uppercase tracking-widest text-kipepeo-pink">
-                      {notification.type === "system"
-                        ? "System"
-                        : (notification.fromNickname ?? "New Message")}
+                      {getNotificationTitle(notification)}
                     </p>
                     <p className="text-base text-gray-300 mt-1 line-clamp-2">
-                      {notification.body}
+                      {getNotificationBody(notification)}
                     </p>
                   </button>
                 ))}

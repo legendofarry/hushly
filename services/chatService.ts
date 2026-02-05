@@ -139,7 +139,6 @@ export const sendMessage = async (payload: {
     toUserId: recipientId,
     fromUserId: sender.id,
     fromNickname: sender.nickname,
-    body: text,
     conversationId,
   });
 };

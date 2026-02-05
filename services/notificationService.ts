@@ -97,11 +97,23 @@ export const createMessageNotification = async (payload: {
   toUserId: string;
   fromUserId: string;
   fromNickname: string;
-  body: string;
   conversationId: string;
 }) => {
   await createNotification({
     ...payload,
     type: "message",
+    body: `New message from ${payload.fromNickname ?? "someone"}.`,
+  });
+};
+
+export const createLikeNotification = async (payload: {
+  toUserId: string;
+  fromUserId: string;
+  fromNickname: string;
+}) => {
+  await createNotification({
+    ...payload,
+    type: "like",
+    body: `${payload.fromNickname ?? "Someone"} liked your profile.`,
   });
 };

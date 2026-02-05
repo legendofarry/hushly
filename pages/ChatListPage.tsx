@@ -62,6 +62,22 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     setShowNotifications(false);
   };
 
+  const getNotificationTitle = (notification: AppNotification) => {
+    if (notification.type === "system") return "System";
+    return notification.fromNickname ?? "Notification";
+  };
+
+  const getNotificationBody = (notification: AppNotification) => {
+    switch (notification.type) {
+      case "message":
+        return `You have a new message from ${notification.fromNickname ?? "someone"}.`;
+      case "like":
+        return `${notification.fromNickname ?? "Someone"} liked your profile.`;
+      default:
+        return notification.body;
+    }
+  };
+
   const formatTime = (timestamp: any) => {
     const millis = timestamp?.toMillis?.() ?? null;
     if (!millis) return "";
@@ -143,12 +159,10 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                   }`}
                 >
                   <p className="text-xs font-bold uppercase tracking-widest text-kipepeo-pink">
-                    {notification.type === "system"
-                      ? "System"
-                      : notification.fromNickname ?? "New Message"}
+                    {getNotificationTitle(notification)}
                   </p>
                   <p className="text-base text-gray-300 mt-1 line-clamp-2">
-                    {notification.body}
+                    {getNotificationBody(notification)}
                   </p>
                 </button>
               ))}
@@ -193,7 +207,8 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
             sortedConversations.map((conversation) => {
               const members: string[] = conversation.members ?? [];
               const otherId = members.find((id) => id !== user.id);
-              const profile = conversation.memberProfiles?.[otherId ?? ""] ?? {};
+              const profile =
+                conversation.memberProfiles?.[otherId ?? ""] ?? {};
               return (
                 <Link
                   to={`/chats/${conversation.id}`}
