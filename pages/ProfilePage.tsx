@@ -49,10 +49,10 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
             {user.nickname}
           </h2>
           <div className="flex items-center space-x-2">
-            <span className="text-gray-500 font-black uppercase tracking-widest text-[8px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+            <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
               Age Range: {user.ageRange}
             </span>
-            <span className="text-gray-500 font-black uppercase tracking-widest text-[8px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+            <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
               {user.area}
             </span>
           </div>
@@ -60,29 +60,29 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 
         <div className="space-y-6">
           <section>
-            <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.3em] mb-4 ml-2">
+            <h3 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em] mb-4 ml-2">
               Active Intents
             </h3>
             <div className="flex flex-wrap gap-2">
               {user.intents.map((i) => (
                 <span
                   key={i}
-                  className="px-4 py-2 bg-kipepeo-pink/10 text-kipepeo-pink text-[9px] font-black rounded-xl border border-kipepeo-pink/20 uppercase tracking-tighter"
+                  className="px-4 py-2 bg-kipepeo-pink/10 text-kipepeo-pink text-[10px] font-black rounded-xl border border-kipepeo-pink/20 uppercase tracking-tighter"
                 >
                   {i}
                 </span>
               ))}
-              <button className="px-4 py-2 bg-white/5 text-gray-500 text-[9px] font-black rounded-xl border border-white/5 uppercase tracking-tighter">
+              <button className="px-4 py-2 bg-white/5 text-gray-500 text-[10px] font-black rounded-xl border border-white/5 uppercase tracking-tighter">
                 + Edit
               </button>
             </div>
           </section>
 
           <section className="glass rounded-[2rem] p-6 border border-white/5">
-            <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.3em] mb-3">
+            <h3 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em] mb-3">
               Bio
             </h3>
-            <p className="text-gray-300 italic text-xs font-medium leading-relaxed">
+            <p className="text-gray-300 italic text-sm font-medium leading-relaxed">
               "{user.bio}"
             </p>
           </section>
@@ -93,7 +93,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
               className="flex items-center justify-between p-5 glass rounded-2xl border border-white/5 active:scale-98 transition-transform"
             >
               <div className="flex items-center space-x-3">
-                <span className="text-[10px] font-black uppercase tracking-widest">
+                <span className="text-xs font-black uppercase tracking-widest">
                   Security & Privacy
                 </span>
               </div>
@@ -105,7 +105,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
               className="flex items-center justify-between p-5 glass rounded-2xl border border-white/5 active:scale-98 transition-transform"
             >
               <div className="flex items-center space-x-3">
-                <span className="text-[10px] font-black uppercase tracking-widest">
+                <span className="text-xs font-black uppercase tracking-widest">
                   Personal Information
                 </span>
               </div>
@@ -114,7 +114,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 
             <button
               onClick={onLogout}
-              className="w-full py-5 bg-red-500/5 text-red-500 border border-red-500/10 rounded-2xl font-black text-[10px] uppercase tracking-[0.4em] mt-8 active:scale-95 transition-transform"
+              className="w-full py-5 bg-red-500/5 text-red-500 border border-red-500/10 rounded-2xl font-black text-xs uppercase tracking-[0.4em] mt-8 active:scale-95 transition-transform"
             >
               LOGOUT
             </button>
@@ -122,10 +122,10 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
         </div>
 
         <div className="mt-16 text-center space-y-1">
-          <p className="text-[9px] text-gray-700 font-black uppercase tracking-[0.4em]">
+          <p className="text-[10px] text-gray-700 font-black uppercase tracking-[0.4em]">
             Kipepeo Private Network
           </p>
-          <p className="text-[8px] text-gray-800 font-bold uppercase">
+          <p className="text-[9px] text-gray-800 font-bold uppercase">
             Encrypted • Anonymous • Nairobi HQ
           </p>
         </div>
@@ -135,3 +135,4 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 };
 
 export default ProfilePage;
+

@@ -247,11 +247,11 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
   }) => (
     <div className="flex items-center justify-between p-4 glass rounded-2xl border border-white/5">
       <div>
-        <p className="text-[10px] font-black uppercase tracking-widest">
+        <p className="text-xs font-black uppercase tracking-widest">
           {label}
         </p>
         {description && (
-          <p className="text-[10px] text-gray-500 mt-1">{description}</p>
+          <p className="text-xs text-gray-500 mt-1">{description}</p>
         )}
       </div>
       <button
@@ -285,18 +285,18 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
 
       <div className="p-6 flex-1 overflow-y-auto no-scrollbar space-y-6">
         {loading ? (
-          <div className="text-center text-gray-500 text-sm">Loading...</div>
+          <div className="text-center text-gray-500 text-base">Loading...</div>
         ) : (
           <>
             <section className="glass rounded-[2rem] p-6 border border-white/5 space-y-4">
-              <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-500">
+              <h2 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500">
                 Account Security
               </h2>
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center justify-between text-base">
                 <span className="text-gray-400">Email</span>
                 <span className="font-bold">{user.email}</span>
               </div>
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-400">Verification</span>
                 <span
                   className={`font-bold ${
@@ -312,14 +312,14 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
                   <button
                     onClick={handleCheckVerification}
                     disabled={isVerifying}
-                    className="w-full py-3 bg-white text-black font-black rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+                    className="w-full py-3 bg-white text-black font-black rounded-xl text-sm uppercase tracking-widest disabled:opacity-60"
                   >
                     {isVerifying ? "Checking..." : "I Have Verified"}
                   </button>
                   <button
                     onClick={handleResendVerification}
                     disabled={isResending || resendCooldown > 0}
-                    className="w-full py-3 glass text-white font-bold rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+                    className="w-full py-3 glass text-white font-bold rounded-xl text-sm uppercase tracking-widest disabled:opacity-60"
                   >
                     {isResending
                       ? "Resending..."
@@ -332,100 +332,100 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
 
               <div className="space-y-3">
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  <label className="text-xs font-bold text-gray-400 uppercase">
                     Current Password
                   </label>
                   <input
                     type="password"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
                     placeholder="Enter current password"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  <label className="text-xs font-bold text-gray-400 uppercase">
                     New Password
                   </label>
                   <input
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
                     placeholder="New password"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  <label className="text-xs font-bold text-gray-400 uppercase">
                     Confirm Password
                   </label>
                   <input
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
                     placeholder="Confirm new password"
                   />
                 </div>
                 <button
                   onClick={handlePasswordUpdate}
                   disabled={isUpdatingPassword}
-                  className="w-full py-3 bg-white text-black font-black rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+                  className="w-full py-3 bg-white text-black font-black rounded-xl text-sm uppercase tracking-widest disabled:opacity-60"
                 >
                   {isUpdatingPassword ? "Updating..." : "Update Password"}
                 </button>
                 <button
                   onClick={handlePasswordReset}
                   disabled={isResetting}
-                  className="w-full py-3 glass text-white font-bold rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+                  className="w-full py-3 glass text-white font-bold rounded-xl text-sm uppercase tracking-widest disabled:opacity-60"
                 >
                   {isResetting ? "Sending..." : "Send Password Reset Email"}
                 </button>
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-500">
+                <h3 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500">
                   Change Email
                 </h3>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  <label className="text-xs font-bold text-gray-400 uppercase">
                     New Email
                   </label>
                   <input
                     type="email"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
                     placeholder="name@example.com"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  <label className="text-xs font-bold text-gray-400 uppercase">
                     Current Password
                   </label>
                   <input
                     type="password"
                     value={emailPassword}
                     onChange={(e) => setEmailPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
                     placeholder="Confirm password"
                   />
                 </div>
                 <button
                   onClick={handleEmailUpdate}
                   disabled={isUpdatingEmail}
-                  className="w-full py-3 bg-white text-black font-black rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+                  className="w-full py-3 bg-white text-black font-black rounded-xl text-sm uppercase tracking-widest disabled:opacity-60"
                 >
                   {isUpdatingEmail ? "Updating..." : "Update Email"}
                 </button>
-                <p className="text-[10px] text-gray-500">
+                <p className="text-xs text-gray-500">
                   You will be logged out and asked to verify the new email.
                 </p>
               </div>
             </section>
 
             <section className="space-y-3">
-              <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-500">
+              <h2 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500">
                 Privacy Controls
               </h2>
               <ToggleRow
@@ -476,10 +476,10 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
               />
               <div className="flex items-center justify-between p-4 glass rounded-2xl border border-white/5">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest">
+                  <p className="text-xs font-black uppercase tracking-widest">
                     Location Precision
                   </p>
-                  <p className="text-[10px] text-gray-500 mt-1">
+                  <p className="text-xs text-gray-500 mt-1">
                     Control how precise your location appears.
                   </p>
                 </div>
@@ -491,7 +491,7 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
                       event.target.value as UserSettings["locationPrecision"],
                     )
                   }
-                  className="bg-white/5 border border-white/10 rounded-lg p-2 text-[10px]"
+                  className="bg-white/5 border border-white/10 rounded-lg p-2 text-xs"
                 >
                   <option value="city">City</option>
                   <option value="neighborhood">Neighborhood</option>
@@ -519,7 +519,7 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
 
             {(message || errorMessage) && (
               <div
-                className={`text-[10px] ${
+                className={`text-xs ${
                   errorMessage ? "text-red-400" : "text-kipepeo-pink"
                 }`}
               >
@@ -534,3 +534,4 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
 };
 
 export default SecurityPrivacyPage;
+

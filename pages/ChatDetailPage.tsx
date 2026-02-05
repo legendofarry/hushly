@@ -55,7 +55,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           />
           <div>
             <h3 className="font-bold">Wanjiru</h3>
-            <span className="text-[10px] text-green-500 font-bold uppercase tracking-widest">
+            <span className="text-xs text-green-500 font-bold uppercase tracking-widest">
               • Online
             </span>
           </div>
@@ -69,7 +69,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             className={`flex ${m.senderId === user.id ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm ${m.senderId === user.id ? "bg-kipepeo-orange text-white rounded-tr-none" : "glass rounded-tl-none"}`}
+              className={`max-w-[80%] px-4 py-3 rounded-2xl text-base ${m.senderId === user.id ? "bg-kipepeo-orange text-white rounded-tr-none" : "glass rounded-tl-none"}`}
             >
               {m.text}
             </div>
@@ -100,3 +100,4 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
 };
 
 export default ChatDetailPage;
+

@@ -34,7 +34,7 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
       
       <div className="p-6 flex-1 overflow-y-auto no-scrollbar">
         <div className="mb-10">
-          <h2 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.3em] mb-4">New Plots</h2>
+          <h2 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em] mb-4">New Plots</h2>
           <div className="flex space-x-4 overflow-x-auto pb-4 no-scrollbar">
             <div className="flex-shrink-0 w-16 h-16 rounded-full border-2 border-dashed border-kipepeo-pink flex items-center justify-center bg-kipepeo-pink/5">
               <span className="text-kipepeo-pink text-xl font-black">3</span>
@@ -52,7 +52,7 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.3em] mb-4">Conversations</h2>
+          <h2 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em] mb-4">Conversations</h2>
           {MOCK_CHATS.length > 0 ? MOCK_CHATS.map((chat) => (
             <Link to={`/chats/${chat.id}`} key={chat.id} className="flex items-center p-4 glass rounded-2xl transition-all active:scale-95 border border-white/5 hover:bg-white/5">
               <AppImage
@@ -63,14 +63,14 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
               <div className="flex-1">
                 <div className="flex justify-between items-center mb-1">
                   <h3 className="font-black text-lg">{chat.name}</h3>
-                  <span className="text-[10px] text-gray-500 font-bold uppercase">{chat.time}</span>
+                  <span className="text-xs text-gray-500 font-bold uppercase">{chat.time}</span>
                 </div>
-                <p className="text-sm text-gray-500 truncate font-medium">{chat.lastMsg}</p>
+                <p className="text-base text-gray-500 truncate font-medium">{chat.lastMsg}</p>
               </div>
             </Link>
           )) : (
             <div className="text-center py-20 opacity-20 grayscale">
-              <p className="font-black uppercase tracking-widest text-xs">No chats yet</p>
+              <p className="font-black uppercase tracking-widest text-sm">No chats yet</p>
             </div>
           )}
         </div>
@@ -80,3 +80,4 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
 };
 
 export default ChatListPage;
+

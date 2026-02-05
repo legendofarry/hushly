@@ -183,29 +183,29 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
           <button
             onClick={handleSelectPhoto}
             disabled={isUploading}
-            className="px-6 py-2 bg-white text-black font-black rounded-full text-[10px] uppercase tracking-widest disabled:opacity-60"
+            className="px-6 py-2 bg-white text-black font-black rounded-full text-xs uppercase tracking-widest disabled:opacity-60"
           >
             {isUploading ? "Uploading..." : "Update Selfie"}
           </button>
         </section>
 
         <section className="glass rounded-[2rem] p-6 border border-white/5 space-y-4">
-          <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-500">
+          <h2 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500">
             Identity
           </h2>
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase">
+            <label className="text-xs font-bold text-gray-400 uppercase">
               Real Name
             </label>
             <input
               type="text"
               value={realName}
               onChange={(e) => setRealName(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
             />
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase">
+            <label className="text-xs font-bold text-gray-400 uppercase">
               Nickname
             </label>
             <input
@@ -221,40 +221,40 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
               onBlur={() => {
                 void checkNicknameAvailability(nickname);
               }}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
             />
             {nicknameError && (
-              <p className="text-[10px] text-red-400 mt-2">{nicknameError}</p>
+              <p className="text-xs text-red-400 mt-2">{nicknameError}</p>
             )}
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase">
+            <label className="text-xs font-bold text-gray-400 uppercase">
               Email
             </label>
             <input
               type="email"
               value={user.email}
               disabled
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 text-sm opacity-70"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 text-base opacity-70"
             />
-            <p className="text-[10px] text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               Status: {user.emailVerified ? "Verified" : "Not verified"}
             </p>
           </div>
         </section>
 
         <section className="glass rounded-[2rem] p-6 border border-white/5 space-y-4">
-          <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-500">
+          <h2 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500">
             Profile Details
           </h2>
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase">
+            <label className="text-xs font-bold text-gray-400 uppercase">
               Age Range
             </label>
             <select
               value={ageRange}
               onChange={(e) => setAgeRange(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
             >
               {AGE_RANGES.map((r) => (
                 <option key={r} value={r} className="bg-kipepeo-dark">
@@ -264,13 +264,13 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
             </select>
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase">
+            <label className="text-xs font-bold text-gray-400 uppercase">
               Area / Base
             </label>
             <select
               value={area}
               onChange={(e) => setArea(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
             >
               {KENYAN_AREAS.map((a) => (
                 <option key={a} value={a} className="bg-kipepeo-dark">
@@ -280,19 +280,19 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
             </select>
           </div>
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase">
+            <label className="text-xs font-bold text-gray-400 uppercase">
               Bio
             </label>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              className="w-full h-28 bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
+              className="w-full h-28 bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
             />
           </div>
         </section>
 
         <section className="glass rounded-[2rem] p-6 border border-white/5 space-y-4">
-          <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-500">
+          <h2 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500">
             Intents
           </h2>
           <div className="grid grid-cols-1 gap-2">
@@ -306,7 +306,7 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
                     : "bg-white/5 border-white/10 opacity-60"
                 }`}
               >
-                <span className="font-bold text-xs uppercase tracking-tighter">
+                <span className="font-bold text-sm uppercase tracking-tighter">
                   {intent}
                 </span>
                 {intents.includes(intent) && (
@@ -320,14 +320,14 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
         <button
           onClick={handleSave}
           disabled={isSaving || isUploading || isCheckingNickname}
-          className="w-full py-4 bg-white text-black font-black rounded-[2rem] text-xs uppercase tracking-widest disabled:opacity-60"
+          className="w-full py-4 bg-white text-black font-black rounded-[2rem] text-sm uppercase tracking-widest disabled:opacity-60"
         >
           {isSaving ? "Saving..." : "Save Changes"}
         </button>
 
         {(message || errorMessage) && (
           <div
-            className={`text-[10px] ${
+            className={`text-xs ${
               errorMessage ? "text-red-400" : "text-kipepeo-pink"
             }`}
           >
@@ -340,3 +340,4 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
 };
 
 export default PersonalInfoPage;
+

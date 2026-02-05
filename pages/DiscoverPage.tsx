@@ -82,17 +82,17 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         <h1 className="text-4xl font-black text-red-500 uppercase tracking-tighter mb-2">
           Escort Portal
         </h1>
-        <p className="text-gray-400 text-sm max-w-xs mb-10 leading-relaxed italic">
+        <p className="text-gray-400 text-base max-w-xs mb-10 leading-relaxed italic">
           You are entering a high-security, paid-introductions only zone. Strict
           anonymity is enforced here.
         </p>
         <div className="grid grid-cols-1 gap-4 w-full max-w-xs">
-          <button className="py-4 bg-red-600 text-white font-black rounded-xl shadow-lg uppercase tracking-widest text-xs">
+          <button className="py-4 bg-red-600 text-white font-black rounded-xl shadow-lg uppercase tracking-widest text-sm">
             Verify & Enter Portal
           </button>
           <button
             onClick={() => setView("discover")}
-            className="py-4 glass text-white/50 font-bold rounded-xl uppercase tracking-widest text-xs"
+            className="py-4 glass text-white/50 font-bold rounded-xl uppercase tracking-widest text-sm"
           >
             Exit to Kipepeo
           </button>
@@ -153,13 +153,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         <div className="flex space-x-4 border-b border-white/5 pb-3 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setView("discover")}
-            className={`text-[10px] font-black uppercase tracking-widest ${view === "discover" ? "text-kipepeo-pink border-b-2 border-kipepeo-pink pb-2" : "text-gray-600"}`}
+            className={`text-xs font-black uppercase tracking-widest ${view === "discover" ? "text-kipepeo-pink border-b-2 border-kipepeo-pink pb-2" : "text-gray-600"}`}
           >
             Discovery
           </button>
           <button
             onClick={() => setView("plans")}
-            className={`text-[10px] font-black uppercase tracking-widest ${view === "plans" ? "text-kipepeo-pink border-b-2 border-kipepeo-pink pb-2" : "text-gray-600"}`}
+            className={`text-xs font-black uppercase tracking-widest ${view === "plans" ? "text-kipepeo-pink border-b-2 border-kipepeo-pink pb-2" : "text-gray-600"}`}
           >
             Weekend Plans
           </button>
@@ -173,7 +173,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 <button
                   key={intent}
                   onClick={() => toggleIntentFilter(intent)}
-                  className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-tighter transition-all flex-shrink-0 border ${
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter transition-all flex-shrink-0 border ${
                     isActive
                       ? "bg-kipepeo-pink border-kipepeo-pink text-white shadow-lg shadow-kipepeo-pink/40"
                       : "bg-white/5 border-white/5 text-gray-500"
@@ -191,11 +191,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         {view === "discover" ? (
           <div className="flex-1 flex flex-col">
             {loading ? (
-              <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+              <div className="flex-1 flex items-center justify-center text-gray-500 text-base">
                 Loading profiles...
               </div>
             ) : loadError ? (
-              <div className="flex-1 flex items-center justify-center text-red-400 text-sm">
+              <div className="flex-1 flex items-center justify-center text-red-400 text-base">
                 {loadError}
               </div>
             ) : current ? (
@@ -210,11 +210,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent"></div>
 
                 <div className="absolute top-6 left-6 flex space-x-2">
-                  <div className="bg-green-500/80 backdrop-blur-md text-[8px] font-black px-2 py-1 rounded text-white uppercase tracking-widest">
+                  <div className="bg-green-500/80 backdrop-blur-md text-[9px] font-black px-2 py-1 rounded text-white uppercase tracking-widest">
                     Live Selfie Verified
                   </div>
                   {current.isOnline && (
-                    <div className="bg-white/10 backdrop-blur-md text-[8px] font-black px-2 py-1 rounded text-white uppercase tracking-widest">
+                    <div className="bg-white/10 backdrop-blur-md text-[9px] font-black px-2 py-1 rounded text-white uppercase tracking-widest">
                       Active Now
                     </div>
                   )}
@@ -226,7 +226,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                       <h2 className="text-3xl font-black mb-1 leading-none tracking-tighter uppercase">
                         {current.nickname}
                       </h2>
-                      <div className="flex items-center space-x-2 text-xs font-bold text-gray-400">
+                      <div className="flex items-center space-x-2 text-sm font-bold text-gray-400">
                         <span>{current.ageRange} Yrs</span>
                         <span className="w-1 h-1 bg-gray-600 rounded-full"></span>
                         <span>{current.area}</span>
@@ -238,14 +238,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                     {(current.intents ?? []).map((i) => (
                       <span
                         key={i}
-                        className="text-[8px] font-black uppercase bg-kipepeo-purple/30 text-kipepeo-purple px-2 py-1 rounded border border-kipepeo-purple/20"
+                        className="text-[9px] font-black uppercase bg-kipepeo-purple/30 text-kipepeo-purple px-2 py-1 rounded border border-kipepeo-purple/20"
                       >
                         {i}
                       </span>
                     ))}
                   </div>
 
-                  <p className="text-sm text-gray-300 mb-8 line-clamp-3 italic font-medium leading-relaxed max-w-xs">
+                  <p className="text-base text-gray-300 mb-8 line-clamp-3 italic font-medium leading-relaxed max-w-xs">
                     "{current.bio}"
                   </p>
 
@@ -256,7 +256,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                           (currentIndex + 1) % filteredProfiles.length,
                         )
                       }
-                      className="flex-1 py-4 glass rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform"
+                      className="flex-1 py-4 glass rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-transform"
                     >
                       Skip
                     </button>
@@ -266,7 +266,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                           (currentIndex + 1) % filteredProfiles.length,
                         )
                       }
-                      className="flex-[2] py-4 bg-white text-black rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-transform shadow-xl"
+                      className="flex-[2] py-4 bg-white text-black rounded-2xl font-black text-xs uppercase tracking-widest active:scale-95 transition-transform shadow-xl"
                     >
                       Private Chat
                     </button>
@@ -276,10 +276,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center opacity-40">
                 <span className="text-6xl mb-4">🌙</span>
-                <p className="font-black uppercase tracking-widest text-xs">
+                <p className="font-black uppercase tracking-widest text-sm">
                   No matches yet.
                 </p>
-                <p className="text-[10px] text-gray-500 mt-2">
+                <p className="text-xs text-gray-500 mt-2">
                   Try removing filters or check back later.
                 </p>
               </div>
@@ -287,7 +287,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar pb-10">
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-sm">
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-base">
               No plans yet.
             </div>
           </div>
@@ -298,5 +298,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 };
 
 export default DiscoverPage;
+
 
 
