@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { UserProfile, IntentType } from "../types";
 import { getAllUsers, getAllUserSettings } from "../services/userService";
+import AppImage from "../components/AppImage";
 
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
@@ -140,9 +141,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               to="/profile"
               className="w-10 h-10 glass rounded-full flex items-center justify-center overflow-hidden border border-white/10 active:scale-90 transition-transform"
             >
-              <img
+              <AppImage
                 src={user.photoUrl}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover bg-white/5"
                 alt="Profile"
               />
             </Link>
@@ -199,10 +200,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               </div>
             ) : current ? (
               <div className="flex-1 rounded-[2.5rem] overflow-hidden relative glass border-white/5 shadow-2xl animate-in zoom-in-95 group mb-4">
-                <img
+                <AppImage
                   src={current.photoUrl}
                   className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-700"
                   alt="Selfie"
+                  loading="eager"
+                  fetchPriority="high"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent"></div>
 

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { uploadToCloudinary } from "../services/cloudinaryService";
 import { nicknameExists, updateUserProfile } from "../services/userService";
 import { AGE_RANGES, IntentType, KENYAN_AREAS, UserProfile } from "../types";
+import AppImage from "../components/AppImage";
 
 interface Props {
   user: UserProfile;
@@ -158,10 +159,12 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
       <div className="p-6 flex-1 overflow-y-auto no-scrollbar space-y-6">
         <section className="flex flex-col items-center text-center space-y-4">
           <div className="relative w-32 h-32 rounded-full overflow-hidden border-4 border-kipepeo-pink shadow-[0_0_30px_rgba(255,0,128,0.2)]">
-            <img
+            <AppImage
               src={photoPreview ?? photoUrl}
               className="w-full h-full object-cover"
               alt="Selfie"
+              loading="eager"
+              fetchPriority="high"
             />
             {isUploading && (
               <div className="absolute inset-0 bg-black/70 flex items-center justify-center">

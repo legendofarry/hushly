@@ -13,6 +13,7 @@ import {
   nicknameExists,
 } from "../services/userService";
 import { getFriendlyAuthError } from "../firebaseErrors";
+import AppImage from "../components/AppImage";
 
 interface Props {
   onComplete: (user: UserProfile) => void;
@@ -485,10 +486,12 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
 
             <div className="w-64 h-64 mx-auto bg-white/5 border-2 border-dashed border-white/20 rounded-full flex items-center justify-center overflow-hidden relative group">
               {photoPreview || capturedPhoto ? (
-                <img
+                <AppImage
                   src={photoPreview ?? capturedPhoto ?? ""}
                   className="w-full h-full object-cover"
                   alt="Selfie"
+                  loading="eager"
+                  fetchPriority="high"
                 />
               ) : (
                 <div className="flex flex-col items-center">

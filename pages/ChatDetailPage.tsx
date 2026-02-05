@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { UserProfile, ChatMessage } from "../types";
+import AppImage from "../components/AppImage";
 
 interface Props {
   user: UserProfile;
@@ -45,9 +46,12 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           ←
         </button>
         <div className="flex items-center">
-          <img
+          <AppImage
             src="https://picsum.photos/100/100?random=1"
-            className="w-10 h-10 rounded-full mr-3"
+            className="w-10 h-10 rounded-full mr-3 object-cover bg-white/5"
+            alt="Chat profile"
+            loading="eager"
+            fetchPriority="high"
           />
           <div>
             <h3 className="font-bold">Wanjiru</h3>

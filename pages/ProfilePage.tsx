@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { UserProfile } from "../types";
+import AppImage from "../components/AppImage";
 
 interface Props {
   user: UserProfile;
@@ -34,10 +35,12 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
         <div className="flex flex-col items-center mb-10">
           <div className="relative mb-6">
             <div className="w-36 h-36 rounded-full overflow-hidden border-4 border-kipepeo-pink p-1 shadow-[0_0_30px_rgba(255,0,128,0.2)]">
-              <img
+              <AppImage
                 src={user.photoUrl}
                 className="w-full h-full object-cover rounded-full"
                 alt="Me"
+                loading="eager"
+                fetchPriority="high"
               />
             </div>
             <div className="absolute bottom-2 right-2 w-5 h-5 bg-green-500 border-4 border-kipepeo-dark rounded-full"></div>
