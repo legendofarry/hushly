@@ -10,6 +10,7 @@ import {
   listenToNotifications,
   markNotificationsRead,
 } from "../services/notificationService";
+import { createLike } from "../services/likeService";
 
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
@@ -148,6 +149,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (current) {
+      void createLike({
+        fromUserId: user.id,
+        toUserId: current.id,
+        fromNickname: user.nickname,
+        toNickname: current.nickname,
+      });
       void createLikeNotification({
         toUserId: current.id,
         fromUserId: user.id,

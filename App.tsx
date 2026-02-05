@@ -17,6 +17,7 @@ import ChatDetailPage from "./pages/ChatDetailPage";
 import ProfilePage from "./pages/ProfilePage";
 import SecurityPrivacyPage from "./pages/SecurityPrivacyPage";
 import PersonalInfoPage from "./pages/PersonalInfoPage";
+import LikesAnalyticsPage from "./pages/LikesAnalyticsPage";
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
@@ -110,6 +111,16 @@ const AppRoutes: React.FC<{
         element={
           user && isVerified ? (
             <ProfilePage user={user} onLogout={handleLogout} />
+          ) : (
+            <Navigate to="/" />
+          )
+        }
+      />
+      <Route
+        path="/likes"
+        element={
+          user && isVerified ? (
+            <LikesAnalyticsPage user={user} />
           ) : (
             <Navigate to="/" />
           )

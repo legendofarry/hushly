@@ -78,6 +78,15 @@ export interface AppNotification {
   createdAt: number;
 }
 
+export interface LikeRecord {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  fromNickname?: string;
+  toNickname?: string;
+  createdAt: number;
+}
+
 export const KENYAN_AREAS = [
   // Nairobi County
   "Nairobi - CBD",

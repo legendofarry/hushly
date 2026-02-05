@@ -112,6 +112,18 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
               <span className="text-gray-500">â†’</span>
             </Link>
 
+            <Link
+              to="/likes"
+              className="flex items-center justify-between p-5 glass rounded-2xl border border-white/5 active:scale-98 transition-transform"
+            >
+              <div className="flex items-center space-x-3">
+                <span className="text-xs font-black uppercase tracking-widest">
+                  Likes Analytics
+                </span>
+              </div>
+              <span className="text-gray-500">????????</span>
+            </Link>
+
             <button
               onClick={onLogout}
               className="w-full py-5 bg-red-500/5 text-red-500 border border-red-500/10 rounded-2xl font-black text-xs uppercase tracking-[0.4em] mt-8 active:scale-95 transition-transform"
