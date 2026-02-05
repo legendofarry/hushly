@@ -41,7 +41,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   const toggleIntentFilter = (intent: IntentType) => {
     setSelectedIntents((prev) =>
-      prev.includes(intent) ? prev.filter((i) => i !== intent) : [...prev, intent],
+      prev.includes(intent)
+        ? prev.filter((i) => i !== intent)
+        : [...prev, intent],
     );
   };
 
@@ -210,11 +212,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent"></div>
 
                 <div className="absolute top-6 left-6 flex space-x-2">
-                  <div className="bg-green-500/80 backdrop-blur-md text-[9px] font-black px-2 py-1 rounded text-white uppercase tracking-widest">
-                    Live Selfie Verified
-                  </div>
                   {current.isOnline && (
-                    <div className="bg-white/10 backdrop-blur-md text-[9px] font-black px-2 py-1 rounded text-white uppercase tracking-widest">
+                    <div className="bg-green-500/80 backdrop-blur-md text-[9px] font-black px-2 py-1 rounded-lg text-white uppercase tracking-widest">
                       Active Now
                     </div>
                   )}
@@ -298,6 +297,3 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 };
 
 export default DiscoverPage;
-
-
-
