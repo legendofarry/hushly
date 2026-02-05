@@ -64,6 +64,20 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export type NotificationType = "message" | "system";
+
+export interface AppNotification {
+  id: string;
+  toUserId: string;
+  fromUserId?: string;
+  fromNickname?: string;
+  type: NotificationType;
+  body: string;
+  conversationId?: string;
+  read: boolean;
+  createdAt: number;
+}
+
 export const KENYAN_AREAS = [
   // Nairobi County
   "Nairobi - CBD",

@@ -1,9 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti"; // Import the confetti library
-import { UserProfile, IntentType } from "../types";
+import { AppNotification, UserProfile, IntentType } from "../types";
 import { getAllUsers, getAllUserSettings } from "../services/userService";
 import AppImage from "../components/AppImage";
+import { ensureConversation } from "../services/chatService";
+import {
+  listenToNotifications,
+  markNotificationsRead,
+} from "../services/notificationService";
 
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
@@ -13,6 +18,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [view, setView] = useState<"discover" | "plans" | "portal">("discover");
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -39,6 +46,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     return () => {
       active = false;
     };
+  }, [user.id]);
+
+  useEffect(() => {
+    const unsubscribe = listenToNotifications(user.id, (items) => {
+      setNotifications(items);
+    });
+    return () => unsubscribe();
   }, [user.id]);
 
   const toggleIntentFilter = (intent: IntentType) => {
@@ -76,9 +90,35 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, [selectedIntents]);
 
   const current = filteredProfiles[currentIndex];
+  const unreadNotifications = notifications.filter((n) => !n.read);
+
+  const handleStartChat = async (target: UserProfile) => {
+    try {
+      const conversationId = await ensureConversation(user, target);
+      navigate(`/chats/${conversationId}`);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleToggleNotifications = () => {
+    const nextState = !showNotifications;
+    setShowNotifications(nextState);
+    if (nextState && unreadNotifications.length > 0) {
+      void markNotificationsRead(unreadNotifications.map((n) => n.id));
+    }
+  };
+
+  const handleNotificationClick = (notification: AppNotification) => {
+    if (notification.conversationId) {
+      navigate(`/chats/${notification.conversationId}`);
+    }
+    setShowNotifications(false);
+  };
 
   // --- ACTIONS ---
   const handleNextProfile = () => {
+    if (filteredProfiles.length === 0) return;
     setCurrentIndex((prev) => (prev + 1) % filteredProfiles.length);
   };
 
@@ -117,7 +157,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const handleChat = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (current) {
-      navigate(`/chats/${current.id}`);
+      void handleStartChat(current);
     }
   };
 
@@ -180,7 +220,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           <div className="flex items-center gap-1">
             <div className="w-2 h-8 bg-gradient-to-b from-pink-500 to-purple-600 rounded-full"></div>
             <h1 className="text-2xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-              Hushly
+              <a href="#">Hushly</a>
             </h1>
           </div>
 
@@ -194,11 +234,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               </span>
             </button>
 
-            <Link
-              to="/chats"
+            <button
+              onClick={handleToggleNotifications}
               className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors active:scale-95 relative"
             >
-              <div className="absolute top-2 right-2.5 w-2 h-2 bg-pink-500 rounded-full shadow-[0_0_5px_#ec4899]"></div>
+              {unreadNotifications.length > 0 && (
+                <div className="absolute top-2 right-2.5 w-2 h-2 bg-pink-500 rounded-full shadow-[0_0_5px_#ec4899]"></div>
+              )}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="18"
@@ -214,7 +256,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                 <path d="M13.73 21a2 2 0 0 1-3.46 0" />
               </svg>
-            </Link>
+            </button>
 
             <Link
               to="/profile"
@@ -274,6 +316,39 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
       {/* Main Content Area */}
       <div className="flex-1 px-4 pb-4 overflow-hidden relative flex flex-col z-10">
+        {showNotifications && (
+          <div className="absolute top-0 right-2 z-30 w-72 glass rounded-2xl border border-white/10 p-4 shadow-xl">
+            <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">
+              Notifications
+            </h3>
+            {notifications.length === 0 ? (
+              <p className="text-base text-gray-500">No notifications yet.</p>
+            ) : (
+              <div className="space-y-3 max-h-72 overflow-y-auto no-scrollbar">
+                {notifications.map((notification) => (
+                  <button
+                    key={notification.id}
+                    onClick={() => handleNotificationClick(notification)}
+                    className={`w-full text-left p-3 rounded-xl border ${
+                      notification.read
+                        ? "border-white/5 text-gray-400"
+                        : "border-kipepeo-pink/40 text-white"
+                    }`}
+                  >
+                    <p className="text-xs font-bold uppercase tracking-widest text-kipepeo-pink">
+                      {notification.type === "system"
+                        ? "System"
+                        : notification.fromNickname ?? "New Message"}
+                    </p>
+                    <p className="text-base text-gray-300 mt-1 line-clamp-2">
+                      {notification.body}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {view === "discover" ? (
           <>
             {loading ? (

@@ -1,23 +1,23 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { UserProfile, ChatMessage } from "../types";
+import { UserProfile } from "../types";
 import AppImage from "../components/AppImage";
+import {
+  listenToConversation,
+  listenToMessages,
+  sendMessage as sendChatMessage,
+} from "../services/chatService";
+import { markNotificationsReadByConversation } from "../services/notificationService";
 
 interface Props {
   user: UserProfile;
 }
 
 const ChatDetailPage: React.FC<Props> = ({ user }) => {
-  const { id } = useParams();
+  const { id: conversationId } = useParams();
   const navigate = useNavigate();
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      senderId: "target",
-      text: "Mambo? Uko aje?",
-      timestamp: Date.now() - 1000000,
-    },
-  ]);
+  const [conversation, setConversation] = useState<any | null>(null);
+  const [messages, setMessages] = useState<any[]>([]);
   const [inputValue, setInputValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -27,16 +27,53 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     }
   }, [messages]);
 
-  const sendMessage = () => {
-    if (!inputValue.trim()) return;
-    const msg: ChatMessage = {
-      id: Date.now().toString(),
-      senderId: user.id,
-      text: inputValue,
-      timestamp: Date.now(),
+  useEffect(() => {
+    if (!conversationId) return;
+    const unsubscribe = listenToConversation(conversationId, (data) => {
+      setConversation(data);
+    });
+    return () => unsubscribe();
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const unsubscribe = listenToMessages(conversationId, (items) => {
+      setMessages(items);
+    });
+    return () => unsubscribe();
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    void markNotificationsReadByConversation(user.id, conversationId);
+  }, [conversationId, user.id]);
+
+  const otherParticipant = useMemo(() => {
+    const members: string[] = conversation?.members ?? [];
+    const otherId = members.find((member) => member !== user.id);
+    if (!otherId) return null;
+    const profile = conversation?.memberProfiles?.[otherId];
+    return {
+      id: otherId,
+      nickname: profile?.nickname ?? "Chat",
+      photoUrl: profile?.photoUrl ?? user.photoUrl,
     };
-    setMessages([...messages, msg]);
-    setInputValue("");
+  }, [conversation, user.id, user.photoUrl]);
+
+  const sendMessage = async () => {
+    if (!inputValue.trim() || !conversationId || !otherParticipant) return;
+    try {
+      await sendChatMessage({
+        conversationId,
+        sender: user,
+        recipientId: otherParticipant.id,
+        text: inputValue.trim(),
+        recipientNickname: otherParticipant.nickname,
+      });
+      setInputValue("");
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   return (
@@ -47,16 +84,18 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         </button>
         <div className="flex items-center">
           <AppImage
-            src="https://picsum.photos/100/100?random=1"
+            src={otherParticipant?.photoUrl ?? user.photoUrl}
             className="w-10 h-10 rounded-full mr-3 object-cover bg-white/5"
-            alt="Chat profile"
+            alt={otherParticipant?.nickname ?? "Chat profile"}
             loading="eager"
             fetchPriority="high"
           />
           <div>
-            <h3 className="font-bold">Wanjiru</h3>
-            <span className="text-xs text-green-500 font-bold uppercase tracking-widest">
-              • Online
+            <h3 className="font-bold">
+              {otherParticipant?.nickname ?? "Chat"}
+            </h3>
+            <span className="text-xs text-gray-500 font-bold uppercase tracking-widest">
+              Direct chat
             </span>
           </div>
         </div>
