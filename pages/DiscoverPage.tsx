@@ -225,6 +225,27 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              to="/chats"
+              className="w-10 h-10 flex items-center justify-center text-lg active:scale-90 transition-transform"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="#fff"
+                stroke="#ec4899"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="feather feather-send"
+              >
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </Link>
+
             <button
               onClick={() => setView("portal")}
               className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors active:scale-95"
@@ -284,27 +305,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </svg>
               </span>
             </button>
-
-            <Link
-              to="/chats"
-              className="w-10 h-10 flex items-center justify-center text-lg active:scale-90 transition-transform"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="#fff"
-                stroke="#ec4899"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="feather feather-send"
-              >
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </Link>
 
             <Link
               to="/profile"
