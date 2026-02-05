@@ -1,11 +1,15 @@
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   fetchSignInMethodsForEmail,
+  reauthenticateWithCredential,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   User,
+  updateEmail,
+  updatePassword,
 } from "firebase/auth";
 import { auth } from "../firebase";
 
@@ -60,5 +64,30 @@ export const sendVerificationEmail = async (user: User) => {
 
 export const refreshUser = async (user: User) => {
   await user.reload();
+  return user;
+};
+
+const reauthenticate = async (currentPassword: string) => {
+  const user = auth.currentUser;
+  if (!user || !user.email) {
+    throw new Error("auth/no-current-user");
+  }
+  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  await reauthenticateWithCredential(user, credential);
+  return user;
+};
+
+export const changePassword = async (
+  currentPassword: string,
+  newPassword: string,
+) => {
+  const user = await reauthenticate(currentPassword);
+  await updatePassword(user, newPassword);
+};
+
+export const changeEmail = async (currentPassword: string, newEmail: string) => {
+  const user = await reauthenticate(currentPassword);
+  await updateEmail(user, newEmail);
+  await sendEmailVerification(user);
   return user;
 };

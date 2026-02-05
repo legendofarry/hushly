@@ -28,6 +28,9 @@ export const getFriendlyAuthError = (error) => {
     case "auth/too-many-requests":
       return "Too many failed attempts. Please try again later.";
 
+    case "auth/requires-recent-login":
+      return "Please log in again to update sensitive information.";
+
     case "auth/popup-closed-by-user":
       return "Google sign-in was cancelled.";
 

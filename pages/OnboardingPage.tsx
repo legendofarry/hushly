@@ -10,6 +10,7 @@ import {
 import {
   createUserProfile,
   updateUserEmailVerification,
+  nicknameExists,
 } from "../services/userService";
 import { getFriendlyAuthError } from "../firebaseErrors";
 
@@ -33,6 +34,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+  const [isCheckingNickname, setIsCheckingNickname] = useState(false);
   const [verificationUser, setVerificationUser] = useState<User | null>(null);
   const [isResending, setIsResending] = useState(false);
   const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(null);
@@ -54,6 +57,36 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     if (!value) return "Please create a password.";
     if (value.length < 6) return "Password must be at least 6 characters.";
     return null;
+  };
+
+  const validateNickname = (value: string) => {
+    if (!value.trim()) return "Nickname is required.";
+    if (value.trim().length < 3) return "Nickname must be at least 3 characters.";
+    return null;
+  };
+
+  const checkNicknameAvailability = async (value: string) => {
+    const baseError = validateNickname(value);
+    if (baseError) {
+      setNicknameError(baseError);
+      return false;
+    }
+    setIsCheckingNickname(true);
+    setNicknameError(null);
+    try {
+      const exists = await nicknameExists(value);
+      if (exists) {
+        setNicknameError("Nickname already taken. Choose another.");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error(error);
+      setNicknameError("Unable to verify nickname. Try again.");
+      return false;
+    } finally {
+      setIsCheckingNickname(false);
+    }
   };
 
   useEffect(() => {
@@ -127,6 +160,11 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       return;
     }
 
+    const nicknameAvailable = await checkNicknameAvailability(nickname);
+    if (!nicknameAvailable) {
+      return;
+    }
+
     setIsSaving(true);
     setErrorMessage(null);
     try {
@@ -149,7 +187,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const buildUserProfile = (userId: string): UserProfile => ({
     id: userId,
     realName,
-    nickname: nickname || "Ghost",
+    nickname: nickname.trim(),
+    nicknameLower: nickname.trim().toLowerCase(),
     email: normalizeEmail(email),
     emailVerified: false,
     ageRange,
@@ -356,10 +395,25 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                 <input
                   type="text"
                   value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setNickname(value);
+                    if (nicknameError) {
+                      const nextError = validateNickname(value);
+                      setNicknameError(nextError);
+                    }
+                  }}
+                  onBlur={() => {
+                    void checkNicknameAvailability(nickname);
+                  }}
                   className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mt-1 focus:border-kipepeo-pink outline-none"
                   placeholder="e.g. Midnight_Rider"
                 />
+                {nicknameError && (
+                  <p className="text-[10px] text-red-400 mt-2">
+                    {nicknameError}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase">
@@ -490,7 +544,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
 
       <div className="mt-auto">
         <button
-          onClick={() => {
+          onClick={async () => {
             if (step === 1) {
               if (!realName.trim()) {
                 setErrorMessage("Please enter your real name.");
@@ -521,6 +575,12 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                 return;
               }
             }
+            if (step === 2) {
+              const ok = await checkNicknameAvailability(nickname);
+              if (!ok) {
+                return;
+              }
+            }
             if (step === 4) {
               if (isUploading) {
                 return alert("Uploading selfie. Please wait a moment.");
@@ -532,7 +592,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
             setErrorMessage(null);
             step < 5 ? setStep(step + 1) : void finish();
           }}
-          disabled={isUploading || isSaving}
+          disabled={isUploading || isSaving || isCheckingNickname}
           className="w-full py-5 bg-white text-black font-black rounded-[2rem] text-sm uppercase tracking-widest animate-pulse-glow disabled:opacity-60"
         >
           {step === 5 ? (isSaving ? "Saving..." : "Vibe Check (Finish)") : "Continue"}

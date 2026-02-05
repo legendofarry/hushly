@@ -15,6 +15,8 @@ import DiscoverPage from "./pages/DiscoverPage";
 import ChatListPage from "./pages/ChatListPage";
 import ChatDetailPage from "./pages/ChatDetailPage";
 import ProfilePage from "./pages/ProfilePage";
+import SecurityPrivacyPage from "./pages/SecurityPrivacyPage";
+import PersonalInfoPage from "./pages/PersonalInfoPage";
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
@@ -48,6 +50,11 @@ const AppRoutes: React.FC<{
     localStorage.removeItem("kipepeo_user");
     clearSession().catch((error) => console.error(error));
     navigate("/");
+  };
+
+  const handleUserUpdated = (u: UserProfile) => {
+    setUser(u);
+    localStorage.setItem("kipepeo_user", JSON.stringify(u));
   };
 
   return (
@@ -103,6 +110,26 @@ const AppRoutes: React.FC<{
         element={
           user && isVerified ? (
             <ProfilePage user={user} onLogout={handleLogout} />
+          ) : (
+            <Navigate to="/" />
+          )
+        }
+      />
+      <Route
+        path="/settings/security"
+        element={
+          user && isVerified ? (
+            <SecurityPrivacyPage user={user} onUserUpdated={handleUserUpdated} />
+          ) : (
+            <Navigate to="/" />
+          )
+        }
+      />
+      <Route
+        path="/settings/personal"
+        element={
+          user && isVerified ? (
+            <PersonalInfoPage user={user} onUserUpdated={handleUserUpdated} />
           ) : (
             <Navigate to="/" />
           )
