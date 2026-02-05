@@ -55,6 +55,8 @@ export interface WeekendPlan {
   creatorNickname: string;
   title: string;
   description: string;
+  location: string;
+  time: string;
   category: string;
   timestamp: number;
   rsvpCount?: number;

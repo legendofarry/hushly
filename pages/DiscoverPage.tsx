@@ -20,6 +20,7 @@ import {
   createPaymentRequest,
   listenToUserPaymentRequests,
   MPESA_TILL_NUMBER,
+  OWNER_EMAIL,
   PREMIUM_PRICE_KES,
   WHATSAPP_OWNER,
 } from "../services/paymentService";
@@ -45,6 +46,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [plansError, setPlansError] = useState<string | null>(null);
   const [planTitle, setPlanTitle] = useState("");
   const [planDescription, setPlanDescription] = useState("");
+  const [planLocation, setPlanLocation] = useState("");
+  const [planTime, setPlanTime] = useState("");
   const [planCategory, setPlanCategory] = useState("Hangout");
   const [planSubmitting, setPlanSubmitting] = useState(false);
   const [planActionError, setPlanActionError] = useState<string | null>(null);
@@ -53,6 +56,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [showPaymentProof, setShowPaymentProof] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [rsvpTarget, setRsvpTarget] = useState<WeekendPlan | null>(null);
+  const [rsvpName, setRsvpName] = useState("");
+  const [rsvpContact, setRsvpContact] = useState("");
+  const [rsvpAvailability, setRsvpAvailability] = useState("");
+  const [rsvpGroupSize, setRsvpGroupSize] = useState("1");
+  const [rsvpNote, setRsvpNote] = useState("");
+  const [rsvpSubmitting, setRsvpSubmitting] = useState(false);
+  const [rsvpSuccess, setRsvpSuccess] = useState<string | null>(null);
+  const [rsvpError, setRsvpError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -164,13 +176,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       ).length,
     [notifications],
   );
+  const isOwner = user.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
   const latestPaymentRequest = paymentRequests[0] ?? null;
   const paymentStatus = latestPaymentRequest?.status ?? null;
   const premiumActive =
     Boolean(user.isPremium) &&
     (!user.premiumExpiresAt || user.premiumExpiresAt > Date.now());
   const premiumUnlocked =
-    premiumActive || latestPaymentRequest?.status === "approved";
+    isOwner || premiumActive || latestPaymentRequest?.status === "approved";
   const paymentPending = paymentStatus === "pending";
   const paymentRejected = paymentStatus === "rejected";
 
@@ -201,9 +214,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handlePlanSubmit = async () => {
-    if (!premiumUnlocked) return;
-    if (!planTitle.trim() || !planDescription.trim()) {
-      setPlanActionError("Please add a title and description.");
+    if (!premiumUnlocked || isOwner) return;
+    if (
+      !planTitle.trim() ||
+      !planDescription.trim() ||
+      !planLocation.trim() ||
+      !planTime.trim()
+    ) {
+      setPlanActionError("Please complete all required fields.");
       return;
     }
     setPlanSubmitting(true);
@@ -213,10 +231,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         creator: user,
         title: planTitle.trim(),
         description: planDescription.trim(),
+        location: planLocation.trim(),
+        time: planTime.trim(),
         category: planCategory,
       });
       setPlanTitle("");
       setPlanDescription("");
+      setPlanLocation("");
+      setPlanTime("");
     } catch (error) {
       console.error(error);
       setPlanActionError("Unable to create plan. Please try again.");
@@ -225,12 +247,54 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     }
   };
 
-  const handleRsvp = async (planId: string) => {
+  const handleRsvpOpen = (plan: WeekendPlan) => {
+    if (isOwner) {
+      setPlanActionError("Owner accounts cannot RSVP to plans.");
+      return;
+    }
+    setPlanActionError(null);
+    setRsvpError(null);
+    setRsvpSuccess(null);
+    setRsvpName(user.nickname);
+    setRsvpContact("");
+    setRsvpNote("");
+    setRsvpGroupSize("1");
+    setRsvpAvailability(plan.time || "");
+    setRsvpTarget(plan);
+  };
+
+  const handleRsvpSubmit = async () => {
+    if (!rsvpTarget) return;
+    if (!rsvpName.trim() || !rsvpContact.trim() || !rsvpAvailability.trim()) {
+      setRsvpError("Please answer the RSVP questions.");
+      return;
+    }
+    setRsvpSubmitting(true);
+    setRsvpError(null);
     try {
-      await rsvpToPlan({ planId, user });
+      await rsvpToPlan({
+        planId: rsvpTarget.id,
+        user,
+        answers: {
+          name: rsvpName.trim(),
+          contact: rsvpContact.trim(),
+          availability: rsvpAvailability.trim(),
+          groupSize: rsvpGroupSize.trim(),
+          note: rsvpNote.trim(),
+        },
+      });
+      setRsvpTarget(null);
+      setRsvpSuccess("RSVP received. The host will reach out soon.");
+      setRsvpName("");
+      setRsvpContact("");
+      setRsvpAvailability("");
+      setRsvpGroupSize("1");
+      setRsvpNote("");
     } catch (error) {
       console.error(error);
-      setPlanActionError("Unable to RSVP right now.");
+      setRsvpError("Unable to RSVP right now.");
+    } finally {
+      setRsvpSubmitting(false);
     }
   };
 
@@ -537,6 +601,77 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </button>
               );
             })}
+          {rsvpTarget && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+              <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-black uppercase tracking-widest">
+                      RSVP
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      {rsvpTarget.title} - {rsvpTarget.location}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setRsvpTarget(null)}
+                    className="text-xs uppercase tracking-widest text-gray-400"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <input
+                    value={rsvpName}
+                    onChange={(e) => setRsvpName(e.target.value)}
+                    placeholder="Your name"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <input
+                    value={rsvpContact}
+                    onChange={(e) => setRsvpContact(e.target.value)}
+                    placeholder="Contact (WhatsApp or phone)"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <input
+                    value={rsvpAvailability}
+                    onChange={(e) => setRsvpAvailability(e.target.value)}
+                    placeholder="Availability / time"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <select
+                    value={rsvpGroupSize}
+                    onChange={(e) => setRsvpGroupSize(e.target.value)}
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  >
+                    <option value="1">1 person</option>
+                    <option value="2">2 people</option>
+                    <option value="3">3 people</option>
+                    <option value="4">4+ people</option>
+                  </select>
+                  <textarea
+                    value={rsvpNote}
+                    onChange={(e) => setRsvpNote(e.target.value)}
+                    rows={3}
+                    placeholder="Anything else the host should know?"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
+                  />
+                  {rsvpError && (
+                    <p className="text-xs text-red-400">{rsvpError}</p>
+                  )}
+                  <button
+                    onClick={handleRsvpSubmit}
+                    disabled={rsvpSubmitting}
+                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                  >
+                    {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           </div>
         )}
       </header>
@@ -572,6 +707,77 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 ))}
               </div>
             )}
+          {rsvpTarget && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+              <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-black uppercase tracking-widest">
+                      RSVP
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      {rsvpTarget.title} - {rsvpTarget.location}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setRsvpTarget(null)}
+                    className="text-xs uppercase tracking-widest text-gray-400"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <input
+                    value={rsvpName}
+                    onChange={(e) => setRsvpName(e.target.value)}
+                    placeholder="Your name"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <input
+                    value={rsvpContact}
+                    onChange={(e) => setRsvpContact(e.target.value)}
+                    placeholder="Contact (WhatsApp or phone)"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <input
+                    value={rsvpAvailability}
+                    onChange={(e) => setRsvpAvailability(e.target.value)}
+                    placeholder="Availability / time"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <select
+                    value={rsvpGroupSize}
+                    onChange={(e) => setRsvpGroupSize(e.target.value)}
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  >
+                    <option value="1">1 person</option>
+                    <option value="2">2 people</option>
+                    <option value="3">3 people</option>
+                    <option value="4">4+ people</option>
+                  </select>
+                  <textarea
+                    value={rsvpNote}
+                    onChange={(e) => setRsvpNote(e.target.value)}
+                    rows={3}
+                    placeholder="Anything else the host should know?"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
+                  />
+                  {rsvpError && (
+                    <p className="text-xs text-red-400">{rsvpError}</p>
+                  )}
+                  <button
+                    onClick={handleRsvpSubmit}
+                    disabled={rsvpSubmitting}
+                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                  >
+                    {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           </div>
         )}
         {view === "discover" ? (
@@ -889,6 +1095,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
               {premiumUnlocked && (
                 <div className="space-y-3">
+                  {isOwner && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+                      Owner accounts are premium by default but cannot create or RSVP to plans.
+                    </div>
+                  )}
                   <div className="grid gap-3 md:grid-cols-2">
                     <input
                       value={planTitle}
@@ -906,12 +1117,24 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                       <option value="Adventure">Adventure</option>
                       <option value="Party">Party</option>
                     </select>
+                    <input
+                      value={planLocation}
+                      onChange={(e) => setPlanLocation(e.target.value)}
+                      placeholder="Location / area"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <input
+                      value={planTime}
+                      onChange={(e) => setPlanTime(e.target.value)}
+                      placeholder="Time / date"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
                   </div>
                   <textarea
                     value={planDescription}
                     onChange={(e) => setPlanDescription(e.target.value)}
                     rows={3}
-                    placeholder="Describe the plan..."
+                    placeholder="Describe the plan details..."
                     className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
                   />
                   {planActionError && (
@@ -919,14 +1142,24 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                   )}
                   <button
                     onClick={handlePlanSubmit}
-                    disabled={planSubmitting}
+                    disabled={planSubmitting || isOwner}
                     className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
                   >
-                    {planSubmitting ? "Creating..." : "Create Weekend Plan"}
+                    {isOwner
+                      ? "Owner cannot create plans"
+                      : planSubmitting
+                        ? "Creating..."
+                        : "Create Weekend Plan"}
                   </button>
                 </div>
               )}
             </div>
+
+            {rsvpSuccess && (
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+                {rsvpSuccess}
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="flex items-center justify-between px-1">
@@ -962,6 +1195,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                           <p className="text-xs text-gray-500 uppercase tracking-widest">
                             {plan.category} - by {plan.creatorNickname}
                           </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {plan.location || "TBD location"} •{" "}
+                            {plan.time || "TBD time"}
+                          </p>
                         </div>
                         <span className="text-xs text-gray-500">
                           {plan.rsvpCount ?? 0} RSVP
@@ -971,16 +1208,88 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         {plan.description}
                       </p>
                       <button
-                        onClick={() => handleRsvp(plan.id)}
-                        className="w-full py-2 rounded-full bg-white/5 text-gray-200 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                        onClick={() => handleRsvpOpen(plan)}
+                        className="w-full py-2 rounded-full bg-white/5 text-gray-200 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform disabled:opacity-60"
+                        disabled={isOwner}
                       >
-                        RSVP
+                        {isOwner ? "Owner can't RSVP" : "RSVP"}
                       </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+          {rsvpTarget && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+              <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-black uppercase tracking-widest">
+                      RSVP
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      {rsvpTarget.title} - {rsvpTarget.location}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setRsvpTarget(null)}
+                    className="text-xs uppercase tracking-widest text-gray-400"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <input
+                    value={rsvpName}
+                    onChange={(e) => setRsvpName(e.target.value)}
+                    placeholder="Your name"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <input
+                    value={rsvpContact}
+                    onChange={(e) => setRsvpContact(e.target.value)}
+                    placeholder="Contact (WhatsApp or phone)"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <input
+                    value={rsvpAvailability}
+                    onChange={(e) => setRsvpAvailability(e.target.value)}
+                    placeholder="Availability / time"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  />
+                  <select
+                    value={rsvpGroupSize}
+                    onChange={(e) => setRsvpGroupSize(e.target.value)}
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                  >
+                    <option value="1">1 person</option>
+                    <option value="2">2 people</option>
+                    <option value="3">3 people</option>
+                    <option value="4">4+ people</option>
+                  </select>
+                  <textarea
+                    value={rsvpNote}
+                    onChange={(e) => setRsvpNote(e.target.value)}
+                    rows={3}
+                    placeholder="Anything else the host should know?"
+                    className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
+                  />
+                  {rsvpError && (
+                    <p className="text-xs text-red-400">{rsvpError}</p>
+                  )}
+                  <button
+                    onClick={handleRsvpSubmit}
+                    disabled={rsvpSubmitting}
+                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                  >
+                    {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           </div>
         )}
       </div>

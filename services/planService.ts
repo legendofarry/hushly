@@ -24,6 +24,8 @@ const mapPlan = (id: string, data: any): WeekendPlan => {
     creatorNickname: data.creatorNickname,
     title: data.title,
     description: data.description,
+    location: data.location ?? "",
+    time: data.time ?? "",
     category: data.category,
     timestamp,
     rsvpCount: data.rsvpCount ?? 0,
@@ -51,6 +53,8 @@ export const createWeekendPlan = async (payload: {
   creator: UserProfile;
   title: string;
   description: string;
+  location: string;
+  time: string;
   category: string;
 }) => {
   await addDoc(plansRef, {
@@ -58,6 +62,8 @@ export const createWeekendPlan = async (payload: {
     creatorNickname: payload.creator.nickname,
     title: payload.title,
     description: payload.description,
+    location: payload.location,
+    time: payload.time,
     category: payload.category,
     rsvpCount: 0,
     createdAt: serverTimestamp(),
@@ -67,6 +73,13 @@ export const createWeekendPlan = async (payload: {
 export const rsvpToPlan = async (payload: {
   planId: string;
   user: UserProfile;
+  answers: {
+    name: string;
+    contact: string;
+    availability: string;
+    groupSize: string;
+    note: string;
+  };
 }) => {
   const planRef = doc(db, PLANS_COLLECTION, payload.planId);
   const rsvpRef = doc(planRef, "rsvps", payload.user.id);
@@ -76,6 +89,7 @@ export const rsvpToPlan = async (payload: {
     transaction.set(rsvpRef, {
       userId: payload.user.id,
       nickname: payload.user.nickname,
+      ...payload.answers,
       createdAt: serverTimestamp(),
     });
     transaction.update(planRef, {

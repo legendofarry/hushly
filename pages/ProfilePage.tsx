@@ -125,7 +125,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
               <span className="text-gray-500"></span>
             </Link>
 
-            {user.email === OWNER_EMAIL && (
+            {user.email?.toLowerCase() === OWNER_EMAIL.toLowerCase() && (
               <Link
                 to="/admin/payments"
                 className="flex items-center justify-between p-5 glass rounded-2xl border border-white/5 active:scale-98 transition-transform"

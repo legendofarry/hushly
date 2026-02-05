@@ -56,7 +56,7 @@ const ManagePaymentsPage: React.FC<Props> = ({ user }) => {
     }
   };
 
-  if (user.email !== OWNER_EMAIL) {
+  if (user.email?.toLowerCase() !== OWNER_EMAIL.toLowerCase()) {
     return (
       <div className="min-h-screen bg-kipepeo-dark text-white flex items-center justify-center">
         <p className="text-gray-500 text-sm">Access denied.</p>

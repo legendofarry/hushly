@@ -25,7 +25,9 @@ import {
   getUserProfile,
   listenToUserProfile,
   updateUserEmailVerification,
+  updateUserProfile,
 } from "./services/userService";
+import { OWNER_EMAIL } from "./services/paymentService";
 
 const AppRoutes: React.FC<{
   user: UserProfile | null;
@@ -234,6 +236,19 @@ const App: React.FC = () => {
             if (normalized) {
               profile.email = normalized;
             }
+          }
+          if (
+            normalizeEmail(authUser.email) ===
+            normalizeEmail(OWNER_EMAIL)
+          ) {
+            if (!profile.isPremium || profile.premiumExpiresAt) {
+              await updateUserProfile(authUser.uid, {
+                isPremium: true,
+                premiumExpiresAt: null,
+              });
+            }
+            profile.isPremium = true;
+            profile.premiumExpiresAt = null;
           }
           setUser(profile);
           localStorage.setItem("kipepeo_user", JSON.stringify(profile));
