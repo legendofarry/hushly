@@ -11,6 +11,7 @@ import {
 import { getAllUsers, getAllUserSettings } from "../services/userService";
 import AppImage from "../components/AppImage";
 import { ensureConversation } from "../services/chatService";
+import LottiePlayer from "../components/LottiePlayer";
 import {
   createLikeNotification,
   listenToNotifications,
@@ -69,6 +70,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [installStep, setInstallStep] = useState<
     "intro" | "choose" | "android" | "ios"
   >("intro");
+  const [escortLoading, setEscortLoading] = useState(false);
+  const [escortError, setEscortError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -105,8 +108,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, [user.id]);
 
   useEffect(() => {
-    const dismissed = localStorage.getItem("hushly_install_dismissed") === "1";
-    if (dismissed) return;
+    const cooldownMs = 24 * 60 * 60 * 1000;
+    const dismissedAt = Number(
+      localStorage.getItem("hushly_install_dismissed_at") || "0",
+    );
+    if (dismissedAt && Date.now() - dismissedAt < cooldownMs) {
+      return;
+    }
     const ua = navigator.userAgent || "";
     const isAndroid = /Android/i.test(ua);
     const isIOS = /iPhone|iPad|iPod/i.test(ua);
@@ -321,7 +329,19 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const handleInstallDismiss = () => {
     setShowInstallPrompt(false);
     setInstallStep("intro");
-    localStorage.setItem("hushly_install_dismissed", "1");
+    localStorage.setItem("hushly_install_dismissed_at", Date.now().toString());
+  };
+
+  const handleEscortEnter = () => {
+    setEscortError(null);
+    if (!premiumUnlocked) {
+      setEscortError("Premium access required to enter the escort portal.");
+      return;
+    }
+    setEscortLoading(true);
+    setTimeout(() => {
+      navigate("/escort");
+    }, 1600);
   };
 
   const handlePaymentSubmit = async () => {
@@ -432,6 +452,18 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-red-900/40 via-black to-black animate-pulse"></div>
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
 
+        {escortLoading && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 px-6">
+            <LottiePlayer
+              path="/assets/lottie/loading.json"
+              className="w-40 h-40"
+            />
+            <p className="mt-4 text-xs uppercase tracking-[0.3em] text-red-200">
+              Securing access...
+            </p>
+          </div>
+        )}
+
         <div className="z-10 flex flex-col items-center max-w-md px-8 w-full animate-in fade-in zoom-in duration-500">
           <div className="mb-8 relative group">
             <div className="absolute inset-0 bg-red-600 blur-2xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"></div>
@@ -443,7 +475,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           </div>
 
           <h1 className="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-red-800 uppercase tracking-tighter mb-4 text-center">
-            Escort Portal
+            Escort
           </h1>
 
           <div className="bg-red-950/30 border border-red-500/20 rounded-xl p-4 mb-8 backdrop-blur-sm">
@@ -456,15 +488,25 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           </div>
 
           <div className="flex flex-col gap-3 w-full">
-            <button className="w-full py-4 bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.4)] uppercase tracking-widest text-xs transition-all active:scale-95">
-              Verify Identity & Enter
+            <button
+              onClick={handleEscortEnter}
+              disabled={escortLoading}
+              className="w-full py-4 bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white font-bold rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.4)] uppercase tracking-widest text-xs transition-all active:scale-95 disabled:opacity-60"
+            >
+              Enter
             </button>
             <button
-              onClick={() => setView("discover")}
+              onClick={() => {
+                setEscortLoading(false);
+                setView("discover");
+              }}
               className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/5 text-gray-400 hover:text-white font-semibold rounded-xl uppercase tracking-widest text-xs transition-all"
             >
               Exit to Safety
             </button>
+            {escortError && (
+              <p className="text-xs text-red-300 text-center">{escortError}</p>
+            )}
           </div>
         </div>
       </div>
@@ -492,7 +534,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                     Install Hushly App
                   </h2>
                   <p className="text-sm text-gray-400 mt-2">
-                    Get the full experience and faster access by installing the app.
+                    Get the full experience and faster access by installing the
+                    app.
                   </p>
                 </div>
                 <div className="space-y-3">

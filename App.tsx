@@ -20,6 +20,7 @@ import PersonalInfoPage from "./pages/PersonalInfoPage";
 import LikesAnalyticsPage from "./pages/LikesAnalyticsPage";
 import UserProfileViewPage from "./pages/UserProfileViewPage";
 import ManagePaymentsPage from "./pages/ManagePaymentsPage";
+import EscortHomePage from "./pages/EscortHomePage";
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
@@ -28,6 +29,9 @@ import {
   updateUserProfile,
 } from "./services/userService";
 import { OWNER_EMAIL } from "./services/paymentService";
+
+const normalizeEmail = (value?: string | null) =>
+  (value ?? "").trim().toLowerCase();
 
 const AppRoutes: React.FC<{
   user: UserProfile | null;
@@ -61,6 +65,16 @@ const AppRoutes: React.FC<{
   const handleUserUpdated = (u: UserProfile) => {
     setUser(u);
     localStorage.setItem("kipepeo_user", JSON.stringify(u));
+  };
+
+  const isPremiumUser = (u: UserProfile | null) => {
+    if (!u) return false;
+    const isOwner =
+      normalizeEmail(u.email) === normalizeEmail(OWNER_EMAIL);
+    const activePremium =
+      Boolean(u.isPremium) &&
+      (!u.premiumExpiresAt || u.premiumExpiresAt > Date.now());
+    return isOwner || activePremium;
   };
 
   return (
@@ -152,6 +166,16 @@ const AppRoutes: React.FC<{
         }
       />
       <Route
+        path="/escort"
+        element={
+          user && isVerified && isPremiumUser(user) ? (
+            <EscortHomePage user={user} />
+          ) : (
+            <Navigate to="/discover" />
+          )
+        }
+      />
+      <Route
         path="/settings/security"
         element={
           user && isVerified ? (
@@ -179,9 +203,6 @@ const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
-
-  const normalizeEmail = (value?: string | null) =>
-    (value ?? "").trim().toLowerCase();
 
   useEffect(() => {
     let active = true;
