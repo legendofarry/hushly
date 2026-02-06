@@ -214,6 +214,17 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
   const [pinningLocation, setPinningLocation] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [listingSubmitting, setListingSubmitting] = useState(false);
+  const hearts = useMemo(
+    () =>
+      Array.from({ length: 40 }, (_, index) => ({
+        id: index,
+        left: Math.random() * 100,
+        size: Math.random() * 18 + 10,
+        duration: Math.random() * 10 + 10,
+        delay: Math.random() * 10,
+      })),
+    [],
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -677,9 +688,33 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
 
   return (
     <div className="min-h-screen bg-[#0b0508] text-white font-sans relative overflow-hidden">
+      <style>{`
+        @keyframes floatUp {
+          0% { transform: translateY(100vh) scale(0.6); opacity: 0; }
+          10% { opacity: 1; }
+          100% { transform: translateY(-70vh) scale(1.2); opacity: 0; }
+        }
+      `}</style>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,0,120,0.25),_transparent_55%)] pointer-events-none"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,_rgba(255,90,0,0.18),_transparent_55%)] pointer-events-none"></div>
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none"></div>
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        {hearts.map((heart) => (
+          <div
+            key={heart.id}
+            className="absolute text-rose-300/70"
+            style={{
+              left: `${heart.left}%`,
+              bottom: "-50px",
+              fontSize: `${heart.size}px`,
+              animation: `floatUp ${heart.duration}s linear infinite`,
+              animationDelay: `-${heart.delay}s`,
+            }}
+          >
+            {"\u2764"}
+          </div>
+        ))}
+      </div>
 
       <header className="px-6 pt-6 pb-4 flex items-center justify-between border-b border-white/5 sticky top-0 z-20 backdrop-blur-sm bg-[#0b0508]/80">
         <div>

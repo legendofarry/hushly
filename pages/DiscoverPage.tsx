@@ -72,6 +72,17 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   >("intro");
   const [escortLoading, setEscortLoading] = useState(false);
   const [escortError, setEscortError] = useState<string | null>(null);
+  const hearts = useMemo(
+    () =>
+      Array.from({ length: 40 }, (_, index) => ({
+        id: index,
+        left: Math.random() * 100,
+        size: Math.random() * 20 + 10,
+        duration: Math.random() * 10 + 10,
+        delay: Math.random() * 10,
+      })),
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -512,9 +523,33 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   // --- MAIN APP VIEW ---
   return (
     <div className="h-screen w-full bg-slate-950 text-white font-sans flex flex-col overflow-hidden relative selection:bg-pink-500 selection:text-white">
+      <style>{`
+        @keyframes floatUp {
+          0% { transform: translateY(100vh) scale(0.6); opacity: 0; }
+          10% { opacity: 1; }
+          100% { transform: translateY(-70vh) scale(1.2); opacity: 0; }
+        }
+      `}</style>
       {/* Dynamic Background */}
       <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-pink-900/20 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        {hearts.map((heart) => (
+          <div
+            key={heart.id}
+            className="absolute text-pink-400/70"
+            style={{
+              left: `${heart.left}%`,
+              bottom: "-50px",
+              fontSize: `${heart.size}px`,
+              animation: `floatUp ${heart.duration}s linear infinite`,
+              animationDelay: `-${heart.delay}s`,
+            }}
+          >
+            {"\u2764"}
+          </div>
+        ))}
+      </div>
 
       {showInstallPrompt && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 px-6">
