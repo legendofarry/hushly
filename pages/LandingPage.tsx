@@ -3,6 +3,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import {
   clearSession,
+  checkEmailExists,
   loginWithEmail,
   refreshUser,
   sendVerificationEmail,
@@ -12,7 +13,6 @@ import { auth } from "../firebase";
 import {
   getUserProfile,
   updateUserEmailVerification,
-  userEmailExists,
 } from "../services/userService";
 import { getFriendlyAuthError } from "../firebaseErrors";
 import { UserProfile } from "../types";
@@ -30,6 +30,7 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -77,6 +78,7 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
     setLoginStep("email");
     setLoginPassword("");
     setLoginError(null);
+    setLoginNotice(null);
     setPendingUser(null);
     setResendCooldown(0);
     setToastMessage(null);
@@ -91,10 +93,14 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
 
     setIsChecking(true);
     setLoginError(null);
+    setLoginNotice(null);
     try {
-      const exists = await userEmailExists(trimmedEmail);
+      const exists = await checkEmailExists(trimmedEmail);
       if (!exists) {
-        setLoginError("No account found. Please register instead.");
+        setLoginNotice(
+          "We couldn't confirm this email yet. If you already have an account, continue with your password.",
+        );
+        setLoginStep("password");
         return;
       }
       setLoginStep("password");
@@ -150,6 +156,7 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
         }
       }
       onLogin(profile);
+      resetLogin();
     } catch (error: any) {
       console.error(error);
       setLoginError(getFriendlyAuthError(error));
@@ -187,6 +194,7 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
         }
       }
       onLogin(profile);
+      resetLogin();
     } catch (error) {
       console.error(error);
       setLoginError("We couldn't verify your email. Please try again.");
@@ -321,7 +329,11 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
                   <input
                     type="email"
                     value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
+                    onChange={(e) => {
+                      setLoginEmail(e.target.value);
+                      if (loginError) setLoginError(null);
+                      if (loginNotice) setLoginNotice(null);
+                    }}
                     className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
                     placeholder="you@example.com"
                   />
@@ -356,7 +368,11 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
                   <input
                     type="password"
                     value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
+                    onChange={(e) => {
+                      setLoginPassword(e.target.value);
+                      if (loginError) setLoginError(null);
+                      if (loginNotice) setLoginNotice(null);
+                    }}
                     className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-sm"
                     placeholder="Enter your password"
                   />
@@ -438,8 +454,14 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
               </div>
             )}
 
+            {loginNotice && (
+              <div className="text-[10px] text-gray-400">{loginNotice}</div>
+            )}
+
             {toastMessage && (
-              <div className="text-[10px] text-kipepeo-pink">{toastMessage}</div>
+              <div className="text-[10px] text-kipepeo-pink">
+                {toastMessage}
+              </div>
             )}
           </div>
         )}
