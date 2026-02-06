@@ -82,10 +82,17 @@ export const listenToConversations = (
 ) => {
   const q = query(conversationsRef, where("members", "array-contains", userId));
   return onSnapshot(q, (snapshot) => {
-    const conversations = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data(),
-    }));
+    const conversations = snapshot.docs
+      .map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }))
+      .filter((conversation) => {
+        const hasLastMessage =
+          Boolean(conversation.lastMessageAt) ||
+          Boolean(conversation.lastMessage);
+        return hasLastMessage;
+      });
     onChange(conversations);
   });
 };
