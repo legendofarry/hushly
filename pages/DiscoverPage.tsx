@@ -65,6 +65,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [rsvpSubmitting, setRsvpSubmitting] = useState(false);
   const [rsvpSuccess, setRsvpSuccess] = useState<string | null>(null);
   const [rsvpError, setRsvpError] = useState<string | null>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -99,6 +100,17 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     });
     return () => unsubscribe();
   }, [user.id]);
+
+  useEffect(() => {
+    const dismissed = localStorage.getItem("hushly_install_dismissed") === "1";
+    if (dismissed) return;
+    const ua = navigator.userAgent || "";
+    const isAndroid = /Android/i.test(ua);
+    const isHushlyApp = ua.includes("Hushly/1.0 Android");
+    if (isAndroid && !isHushlyApp) {
+      setShowInstallPrompt(true);
+    }
+  }, []);
 
   useEffect(() => {
     const unsubscribe = listenToWeekendPlans(
@@ -298,6 +310,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     }
   };
 
+  const handleInstallDismiss = () => {
+    setShowInstallPrompt(false);
+    localStorage.setItem("hushly_install_dismissed", "1");
+  };
+
   const handlePaymentSubmit = async () => {
     if (!paymentProof.trim()) {
       setPaymentError("Paste the full M-Pesa confirmation message.");
@@ -452,6 +469,40 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-pink-900/20 rounded-full blur-[120px] pointer-events-none"></div>
 
+      {showInstallPrompt && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 px-6">
+          <div className="w-full max-w-md glass rounded-3xl border border-white/10 p-6 text-center space-y-5">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-kipepeo-pink/15 border border-kipepeo-pink/30 flex items-center justify-center text-2xl">
+              ⬇
+            </div>
+            <div>
+              <h2 className="text-xl font-black uppercase tracking-widest">
+                Install Hushly App
+              </h2>
+              <p className="text-sm text-gray-400 mt-2">
+                Get the full experience and faster access by installing the
+                Android app.
+              </p>
+            </div>
+            <div className="space-y-3">
+              <a
+                href="/assets/apk/apk.apk"
+                className="block w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+                download
+              >
+                Install App
+              </a>
+              <button
+                onClick={handleInstallDismiss}
+                className="w-full py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+              >
+                Not Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="px-5 pt-5 pb-2 z-20 shrink-0 max-w-2xl mx-auto w-full">
         <div className="flex justify-between items-center mb-6">
@@ -601,77 +652,76 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </button>
               );
             })}
-          {rsvpTarget && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
-              <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-black uppercase tracking-widest">
-                      RSVP
-                    </h3>
-                    <p className="text-xs text-gray-400">
-                      {rsvpTarget.title} - {rsvpTarget.location}
-                    </p>
+            {rsvpTarget && (
+              <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+                <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-black uppercase tracking-widest">
+                        RSVP
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        {rsvpTarget.title} - {rsvpTarget.location}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setRsvpTarget(null)}
+                      className="text-xs uppercase tracking-widest text-gray-400"
+                    >
+                      Close
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setRsvpTarget(null)}
-                    className="text-xs uppercase tracking-widest text-gray-400"
-                  >
-                    Close
-                  </button>
-                </div>
 
-                <div className="space-y-3">
-                  <input
-                    value={rsvpName}
-                    onChange={(e) => setRsvpName(e.target.value)}
-                    placeholder="Your name"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <input
-                    value={rsvpContact}
-                    onChange={(e) => setRsvpContact(e.target.value)}
-                    placeholder="Contact (WhatsApp or phone)"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <input
-                    value={rsvpAvailability}
-                    onChange={(e) => setRsvpAvailability(e.target.value)}
-                    placeholder="Availability / time"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <select
-                    value={rsvpGroupSize}
-                    onChange={(e) => setRsvpGroupSize(e.target.value)}
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  >
-                    <option value="1">1 person</option>
-                    <option value="2">2 people</option>
-                    <option value="3">3 people</option>
-                    <option value="4">4+ people</option>
-                  </select>
-                  <textarea
-                    value={rsvpNote}
-                    onChange={(e) => setRsvpNote(e.target.value)}
-                    rows={3}
-                    placeholder="Anything else the host should know?"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
-                  />
-                  {rsvpError && (
-                    <p className="text-xs text-red-400">{rsvpError}</p>
-                  )}
-                  <button
-                    onClick={handleRsvpSubmit}
-                    disabled={rsvpSubmitting}
-                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
-                  >
-                    {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
-                  </button>
+                  <div className="space-y-3">
+                    <input
+                      value={rsvpName}
+                      onChange={(e) => setRsvpName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <input
+                      value={rsvpContact}
+                      onChange={(e) => setRsvpContact(e.target.value)}
+                      placeholder="Contact (WhatsApp or phone)"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <input
+                      value={rsvpAvailability}
+                      onChange={(e) => setRsvpAvailability(e.target.value)}
+                      placeholder="Availability / time"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <select
+                      value={rsvpGroupSize}
+                      onChange={(e) => setRsvpGroupSize(e.target.value)}
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    >
+                      <option value="1">1 person</option>
+                      <option value="2">2 people</option>
+                      <option value="3">3 people</option>
+                      <option value="4">4+ people</option>
+                    </select>
+                    <textarea
+                      value={rsvpNote}
+                      onChange={(e) => setRsvpNote(e.target.value)}
+                      rows={3}
+                      placeholder="Anything else the host should know?"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
+                    />
+                    {rsvpError && (
+                      <p className="text-xs text-red-400">{rsvpError}</p>
+                    )}
+                    <button
+                      onClick={handleRsvpSubmit}
+                      disabled={rsvpSubmitting}
+                      className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                    >
+                      {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-
+            )}
           </div>
         )}
       </header>
@@ -707,77 +757,76 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 ))}
               </div>
             )}
-          {rsvpTarget && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
-              <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-black uppercase tracking-widest">
-                      RSVP
-                    </h3>
-                    <p className="text-xs text-gray-400">
-                      {rsvpTarget.title} - {rsvpTarget.location}
-                    </p>
+            {rsvpTarget && (
+              <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+                <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-black uppercase tracking-widest">
+                        RSVP
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        {rsvpTarget.title} - {rsvpTarget.location}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setRsvpTarget(null)}
+                      className="text-xs uppercase tracking-widest text-gray-400"
+                    >
+                      Close
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setRsvpTarget(null)}
-                    className="text-xs uppercase tracking-widest text-gray-400"
-                  >
-                    Close
-                  </button>
-                </div>
 
-                <div className="space-y-3">
-                  <input
-                    value={rsvpName}
-                    onChange={(e) => setRsvpName(e.target.value)}
-                    placeholder="Your name"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <input
-                    value={rsvpContact}
-                    onChange={(e) => setRsvpContact(e.target.value)}
-                    placeholder="Contact (WhatsApp or phone)"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <input
-                    value={rsvpAvailability}
-                    onChange={(e) => setRsvpAvailability(e.target.value)}
-                    placeholder="Availability / time"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <select
-                    value={rsvpGroupSize}
-                    onChange={(e) => setRsvpGroupSize(e.target.value)}
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  >
-                    <option value="1">1 person</option>
-                    <option value="2">2 people</option>
-                    <option value="3">3 people</option>
-                    <option value="4">4+ people</option>
-                  </select>
-                  <textarea
-                    value={rsvpNote}
-                    onChange={(e) => setRsvpNote(e.target.value)}
-                    rows={3}
-                    placeholder="Anything else the host should know?"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
-                  />
-                  {rsvpError && (
-                    <p className="text-xs text-red-400">{rsvpError}</p>
-                  )}
-                  <button
-                    onClick={handleRsvpSubmit}
-                    disabled={rsvpSubmitting}
-                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
-                  >
-                    {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
-                  </button>
+                  <div className="space-y-3">
+                    <input
+                      value={rsvpName}
+                      onChange={(e) => setRsvpName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <input
+                      value={rsvpContact}
+                      onChange={(e) => setRsvpContact(e.target.value)}
+                      placeholder="Contact (WhatsApp or phone)"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <input
+                      value={rsvpAvailability}
+                      onChange={(e) => setRsvpAvailability(e.target.value)}
+                      placeholder="Availability / time"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <select
+                      value={rsvpGroupSize}
+                      onChange={(e) => setRsvpGroupSize(e.target.value)}
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    >
+                      <option value="1">1 person</option>
+                      <option value="2">2 people</option>
+                      <option value="3">3 people</option>
+                      <option value="4">4+ people</option>
+                    </select>
+                    <textarea
+                      value={rsvpNote}
+                      onChange={(e) => setRsvpNote(e.target.value)}
+                      rows={3}
+                      placeholder="Anything else the host should know?"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
+                    />
+                    {rsvpError && (
+                      <p className="text-xs text-red-400">{rsvpError}</p>
+                    )}
+                    <button
+                      onClick={handleRsvpSubmit}
+                      disabled={rsvpSubmitting}
+                      className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                    >
+                      {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-
+            )}
           </div>
         )}
         {view === "discover" ? (
@@ -1097,7 +1146,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 <div className="space-y-3">
                   {isOwner && (
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
-                      Owner accounts are premium by default but cannot create or RSVP to plans.
+                      Owner accounts are premium by default but cannot create or
+                      RSVP to plans.
                     </div>
                   )}
                   <div className="grid gap-3 md:grid-cols-2">
@@ -1219,77 +1269,76 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               )}
             </div>
-          {rsvpTarget && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
-              <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-black uppercase tracking-widest">
-                      RSVP
-                    </h3>
-                    <p className="text-xs text-gray-400">
-                      {rsvpTarget.title} - {rsvpTarget.location}
-                    </p>
+            {rsvpTarget && (
+              <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+                <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-black uppercase tracking-widest">
+                        RSVP
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        {rsvpTarget.title} - {rsvpTarget.location}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setRsvpTarget(null)}
+                      className="text-xs uppercase tracking-widest text-gray-400"
+                    >
+                      Close
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setRsvpTarget(null)}
-                    className="text-xs uppercase tracking-widest text-gray-400"
-                  >
-                    Close
-                  </button>
-                </div>
 
-                <div className="space-y-3">
-                  <input
-                    value={rsvpName}
-                    onChange={(e) => setRsvpName(e.target.value)}
-                    placeholder="Your name"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <input
-                    value={rsvpContact}
-                    onChange={(e) => setRsvpContact(e.target.value)}
-                    placeholder="Contact (WhatsApp or phone)"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <input
-                    value={rsvpAvailability}
-                    onChange={(e) => setRsvpAvailability(e.target.value)}
-                    placeholder="Availability / time"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  />
-                  <select
-                    value={rsvpGroupSize}
-                    onChange={(e) => setRsvpGroupSize(e.target.value)}
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                  >
-                    <option value="1">1 person</option>
-                    <option value="2">2 people</option>
-                    <option value="3">3 people</option>
-                    <option value="4">4+ people</option>
-                  </select>
-                  <textarea
-                    value={rsvpNote}
-                    onChange={(e) => setRsvpNote(e.target.value)}
-                    rows={3}
-                    placeholder="Anything else the host should know?"
-                    className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
-                  />
-                  {rsvpError && (
-                    <p className="text-xs text-red-400">{rsvpError}</p>
-                  )}
-                  <button
-                    onClick={handleRsvpSubmit}
-                    disabled={rsvpSubmitting}
-                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
-                  >
-                    {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
-                  </button>
+                  <div className="space-y-3">
+                    <input
+                      value={rsvpName}
+                      onChange={(e) => setRsvpName(e.target.value)}
+                      placeholder="Your name"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <input
+                      value={rsvpContact}
+                      onChange={(e) => setRsvpContact(e.target.value)}
+                      placeholder="Contact (WhatsApp or phone)"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <input
+                      value={rsvpAvailability}
+                      onChange={(e) => setRsvpAvailability(e.target.value)}
+                      placeholder="Availability / time"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    />
+                    <select
+                      value={rsvpGroupSize}
+                      onChange={(e) => setRsvpGroupSize(e.target.value)}
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                    >
+                      <option value="1">1 person</option>
+                      <option value="2">2 people</option>
+                      <option value="3">3 people</option>
+                      <option value="4">4+ people</option>
+                    </select>
+                    <textarea
+                      value={rsvpNote}
+                      onChange={(e) => setRsvpNote(e.target.value)}
+                      rows={3}
+                      placeholder="Anything else the host should know?"
+                      className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
+                    />
+                    {rsvpError && (
+                      <p className="text-xs text-red-400">{rsvpError}</p>
+                    )}
+                    <button
+                      onClick={handleRsvpSubmit}
+                      disabled={rsvpSubmitting}
+                      className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                    >
+                      {rsvpSubmitting ? "Submitting..." : "Send RSVP"}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-
+            )}
           </div>
         )}
       </div>
