@@ -2,7 +2,6 @@ import {
   addDoc,
   collection,
   doc,
-  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -29,7 +28,6 @@ export const ensureConversation = async (
 ) => {
   const conversationId = getConversationId(currentUser.id, targetUser.id);
   const conversationRef = doc(conversationsRef, conversationId);
-  const snapshot = await getDoc(conversationRef);
   const memberProfiles = {
     [currentUser.id]: {
       nickname: currentUser.nickname,
@@ -40,27 +38,17 @@ export const ensureConversation = async (
       photoUrl: targetUser.photoUrl,
     },
   };
-  if (!snapshot.exists()) {
-    await setDoc(conversationRef, {
+  await setDoc(
+    conversationRef,
+    {
       members: [currentUser.id, targetUser.id],
       memberProfiles,
       lastReadAt: {
         [currentUser.id]: serverTimestamp(),
-        [targetUser.id]: serverTimestamp(),
       },
-      createdAt: serverTimestamp(),
-      lastMessageAt: serverTimestamp(),
-    });
-  } else {
-    await setDoc(
-      conversationRef,
-      {
-        members: [currentUser.id, targetUser.id],
-        memberProfiles,
-      },
-      { merge: true },
-    );
-  }
+    },
+    { merge: true },
+  );
   return conversationId;
 };
 

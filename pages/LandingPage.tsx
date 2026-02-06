@@ -16,6 +16,15 @@ import {
 } from "../services/userService";
 import { getFriendlyAuthError } from "../firebaseErrors";
 import { UserProfile } from "../types";
+import {
+  biometricLogin,
+  clearBiometricData,
+  dismissBiometricPrompt,
+  enableBiometricLogin,
+  isBiometricEnabled,
+  isBiometricSupported,
+  wasBiometricPromptDismissed,
+} from "../services/biometricService";
 
 interface Props {
   onLogin: (user: UserProfile) => void;
@@ -31,6 +40,16 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [biometricBusy, setBiometricBusy] = useState(false);
+  const [biometricError, setBiometricError] = useState<string | null>(null);
+  const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
+  const [biometricPromptError, setBiometricPromptError] = useState<
+    string | null
+  >(null);
+  const [pendingBiometricProfile, setPendingBiometricProfile] =
+    useState<UserProfile | null>(null);
+  const [pendingBiometricPassword, setPendingBiometricPassword] = useState("");
   const [isChecking, setIsChecking] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -50,6 +69,24 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
     const timeout = setTimeout(() => setToastMessage(null), 3000);
     return () => clearTimeout(timeout);
   }, [toastMessage]);
+
+  useEffect(() => {
+    let active = true;
+    isBiometricSupported()
+      .then((supported) => {
+        if (!active) return;
+        setBiometricSupported(supported);
+      })
+      .catch((error) => {
+        console.error(error);
+        if (active) {
+          setBiometricSupported(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -79,9 +116,71 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
     setLoginPassword("");
     setLoginError(null);
     setLoginNotice(null);
+    setBiometricError(null);
+    setBiometricPromptError(null);
+    setShowBiometricPrompt(false);
+    setPendingBiometricProfile(null);
+    setPendingBiometricPassword("");
     setPendingUser(null);
     setResendCooldown(0);
     setToastMessage(null);
+  };
+
+  const finalizeLogin = async (
+    authUser: User,
+    options?: { password?: string; skipBiometricPrompt?: boolean },
+  ) => {
+    if (!authUser.emailVerified) {
+      setPendingUser(authUser);
+      setLoginStep("verify");
+      setLoginError("Your email is not verified. Please verify to continue.");
+      try {
+        await sendVerificationEmail(authUser);
+        setResendCooldown(30);
+        setToastMessage("Verification email sent.");
+      } catch (sendError) {
+        console.error(sendError);
+      }
+      return;
+    }
+
+    const profile = await getUserProfile(authUser.uid);
+    if (!profile) {
+      await clearSession();
+      setLoginError("Profile not found. Please register instead.");
+      return;
+    }
+    if (!profile.emailVerified || !profile.email) {
+      await updateUserEmailVerification(
+        authUser.uid,
+        true,
+        normalizeEmail(authUser.email ?? profile.email),
+      );
+      profile.emailVerified = true;
+      const normalized = normalizeEmail(authUser.email ?? profile.email);
+      if (normalized) {
+        profile.email = normalized;
+      }
+    }
+
+    const supported =
+      biometricSupported || (await isBiometricSupported());
+    const canPromptBiometric =
+      !options?.skipBiometricPrompt &&
+      supported &&
+      !isBiometricEnabled() &&
+      !wasBiometricPromptDismissed() &&
+      Boolean(options?.password);
+
+    if (canPromptBiometric) {
+      setPendingBiometricProfile(profile);
+      setPendingBiometricPassword(options?.password ?? "");
+      setShowBiometricPrompt(true);
+      return;
+    }
+
+    onLogin(profile);
+    resetLogin();
   };
 
   const handleCheckEmail = async () => {
@@ -94,6 +193,7 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
     setIsChecking(true);
     setLoginError(null);
     setLoginNotice(null);
+    setBiometricError(null);
     try {
       const exists = await checkEmailExists(trimmedEmail);
       if (!exists) {
@@ -119,44 +219,14 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
     }
     setIsLoggingIn(true);
     setLoginError(null);
+    setLoginNotice(null);
+    setBiometricError(null);
     try {
       const authUser = await loginWithEmail(
         loginEmail.trim().toLowerCase(),
         loginPassword,
       );
-      if (!authUser.emailVerified) {
-        setPendingUser(authUser);
-        setLoginStep("verify");
-        setLoginError("Your email is not verified. Please verify to continue.");
-        try {
-          await sendVerificationEmail(authUser);
-          setResendCooldown(30);
-          setToastMessage("Verification email sent.");
-        } catch (sendError) {
-          console.error(sendError);
-        }
-        return;
-      }
-      const profile = await getUserProfile(authUser.uid);
-      if (!profile) {
-        await clearSession();
-        setLoginError("Profile not found. Please register instead.");
-        return;
-      }
-      if (!profile.emailVerified || !profile.email) {
-        await updateUserEmailVerification(
-          authUser.uid,
-          true,
-          normalizeEmail(authUser.email ?? profile.email),
-        );
-        profile.emailVerified = true;
-        const normalized = normalizeEmail(authUser.email ?? profile.email);
-        if (normalized) {
-          profile.email = normalized;
-        }
-      }
-      onLogin(profile);
-      resetLogin();
+      await finalizeLogin(authUser, { password: loginPassword });
     } catch (error: any) {
       console.error(error);
       setLoginError(getFriendlyAuthError(error));
@@ -169,32 +239,11 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
     if (!pendingUser) return;
     setIsLoggingIn(true);
     setLoginError(null);
+    setLoginNotice(null);
+    setBiometricError(null);
     try {
       await refreshUser(pendingUser);
-      if (!pendingUser.emailVerified) {
-        setLoginError("Email not verified yet. Please check your inbox.");
-        return;
-      }
-      const profile = await getUserProfile(pendingUser.uid);
-      if (!profile) {
-        await clearSession();
-        setLoginError("Profile not found. Please register instead.");
-        return;
-      }
-      if (!profile.emailVerified || !profile.email) {
-        await updateUserEmailVerification(
-          pendingUser.uid,
-          true,
-          normalizeEmail(pendingUser.email ?? profile.email),
-        );
-        profile.emailVerified = true;
-        const normalized = normalizeEmail(pendingUser.email ?? profile.email);
-        if (normalized) {
-          profile.email = normalized;
-        }
-      }
-      onLogin(profile);
-      resetLogin();
+      await finalizeLogin(pendingUser, { password: loginPassword });
     } catch (error) {
       console.error(error);
       setLoginError("We couldn't verify your email. Please try again.");
@@ -228,6 +277,7 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
     }
     setIsResetting(true);
     setLoginError(null);
+    setLoginNotice(null);
     try {
       await sendPasswordReset(trimmedEmail);
       setToastMessage("Password reset email sent.");
@@ -236,6 +286,95 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
       setLoginError(getFriendlyAuthError(error));
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    setBiometricError(null);
+    setLoginError(null);
+    setLoginNotice(null);
+
+    if (!biometricSupported) {
+      setBiometricError("Biometric login is unavailable on this device.");
+      return;
+    }
+    if (!isBiometricEnabled()) {
+      setBiometricError(
+        "Biometric login is not set up on this device. Please log in using email and password.",
+      );
+      return;
+    }
+
+    setBiometricBusy(true);
+    try {
+      const { email, password } = await biometricLogin();
+      setLoginEmail(email);
+      setLoginPassword(password);
+      const authUser = await loginWithEmail(email.trim().toLowerCase(), password);
+      await finalizeLogin(authUser, { skipBiometricPrompt: true });
+    } catch (error: any) {
+      console.error(error);
+      const message = String(error?.message ?? "");
+      if (message.includes("biometric-not-enabled")) {
+        setBiometricError(
+          "Biometric login is not set up on this device. Please log in using email and password.",
+        );
+      } else if (message.includes("biometric-cancelled")) {
+        setBiometricError(
+          "Biometric authentication was cancelled. Try again or use email/password.",
+        );
+      } else if (
+        error?.code === "auth/wrong-password" ||
+        error?.code === "auth/user-not-found"
+      ) {
+        clearBiometricData();
+        setBiometricEnabled(false);
+        setBiometricError(
+          "Biometric login needs to be set up again. Please log in with email and password.",
+        );
+      } else {
+        setBiometricError(
+          "Biometric login failed. Try again or use email/password.",
+        );
+      }
+    } finally {
+      setBiometricBusy(false);
+    }
+  };
+
+  const handleEnableBiometrics = async () => {
+    if (!pendingBiometricProfile) return;
+    setBiometricPromptError(null);
+    setBiometricBusy(true);
+    try {
+      await enableBiometricLogin({
+        userId: pendingBiometricProfile.id,
+        email: pendingBiometricProfile.email,
+        displayName: pendingBiometricProfile.nickname,
+        password: pendingBiometricPassword,
+      });
+      setShowBiometricPrompt(false);
+      onLogin(pendingBiometricProfile);
+      resetLogin();
+    } catch (error) {
+      console.error(error);
+      setBiometricPromptError(
+        "Unable to enable biometrics right now. You can try again later.",
+      );
+      setShowBiometricPrompt(false);
+      onLogin(pendingBiometricProfile);
+      resetLogin();
+    } finally {
+      setBiometricBusy(false);
+    }
+  };
+
+  const handleDeclineBiometrics = () => {
+    dismissBiometricPrompt();
+    setShowBiometricPrompt(false);
+    if (pendingBiometricProfile) {
+      onLogin(pendingBiometricProfile);
+      resetLogin();
     }
   };
 
@@ -307,6 +446,43 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
           >
             Register
           </button>
+          {biometricSupported && (
+            <button
+              onClick={handleBiometricLogin}
+              disabled={biometricBusy}
+              className="w-full py-4 px-8 glass text-white font-bold rounded-2xl text-xs uppercase tracking-widest transition-all hover:bg-white/10 hover:scale-[1.02] active:scale-95 disabled:opacity-60 flex items-center justify-center gap-3"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-kipepeo-pink"
+              >
+                <path d="M12 11c0-1.1.9-2 2-2" />
+                <path d="M6 8c0-2.2 1.8-4 4-4" />
+                <path d="M4 12c0-2.8 2.2-5 5-5" />
+                <path d="M12 15c0 1.1.9 2 2 2" />
+                <path d="M6 16c0 2.2 1.8 4 4 4" />
+                <path d="M4 12c0 2.8 2.2 5 5 5" />
+                <path d="M16 8c0-2.2 1.8-4 4-4" />
+                <path d="M20 12c0-2.8-2.2-5-5-5" />
+                <path d="M16 16c0 2.2 1.8 4 4 4" />
+                <path d="M20 12c0 2.8-2.2 5-5 5" />
+              </svg>
+              <span>
+                {biometricBusy ? "Checking biometrics..." : "Login with biometrics"}
+              </span>
+            </button>
+          )}
+          {biometricError && (
+            <div className="text-[10px] text-red-400">{biometricError}</div>
+          )}
           <button
             onClick={() => {
               setShowLogin((prev) => !prev);
@@ -477,6 +653,36 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
           18+ Only • Strictly Weekend Vibes
         </p>
       </div>
+      {showBiometricPrompt && pendingBiometricProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6">
+          <div className="w-full max-w-md glass rounded-3xl border border-white/10 p-6 space-y-4 text-center">
+            <h3 className="text-xl font-black uppercase tracking-widest">
+              Enable Biometrics?
+            </h3>
+            <p className="text-sm text-gray-300">
+              Enable biometric login for faster access next time?
+            </p>
+            {biometricPromptError && (
+              <p className="text-[10px] text-red-400">{biometricPromptError}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeclineBiometrics}
+                className="flex-1 py-3 glass text-white font-bold rounded-xl text-xs uppercase tracking-widest"
+              >
+                Not now
+              </button>
+              <button
+                onClick={handleEnableBiometrics}
+                disabled={biometricBusy}
+                className="flex-1 py-3 bg-white text-black font-black rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+              >
+                {biometricBusy ? "Enabling..." : "Enable"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
