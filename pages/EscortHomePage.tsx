@@ -1004,728 +1004,986 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
         )}
 
         {showListingModal && (
-          <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/90 px-6 py-10 overflow-y-auto">
-            <div className="w-full max-w-2xl rounded-3xl border border-red-500/30 bg-[#14070c] p-6 space-y-5">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[0.5em] text-rose-200">
-                    Step {listingStep} of {listingStepTitles.length}
-                  </p>
-                  <h3 className="text-lg font-black uppercase tracking-widest text-red-100">
-                    {listingStepTitles[listingStep - 1]}
-                  </h3>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#000000]/90 backdrop-blur-md p-4 sm:p-6 overflow-y-auto">
+            {/* Ambient Glow */}
+            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-kipepeo-pink/20 rounded-full blur-[120px] pointer-events-none"></div>
+
+            <div className="relative w-full max-w-2xl flex flex-col rounded-3xl border border-white/10 bg-[#121212]/95 shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-300 max-h-[90vh]">
+              {/* --- HEADER --- */}
+              <div className="shrink-0 border-b border-white/5 p-6 pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-xl font-black uppercase tracking-tight text-white">
+                      {listingStepTitles[listingStep - 1]}
+                    </h3>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 mt-1">
+                      Create your persona
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowListingModal(false)}
+                    className="group flex h-8 w-8 items-center justify-center rounded-full bg-white/5 transition-colors hover:bg-white/10 hover:text-white text-gray-400"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowListingModal(false)}
-                  className="text-xs uppercase tracking-widest text-gray-400"
-                >
-                  Close
-                </button>
+
+                {/* Progress Bar */}
+                <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-kipepeo-pink to-purple-600 transition-all duration-500 ease-out"
+                    style={{
+                      width: `${(listingStep / listingStepTitles.length) * 100}%`,
+                    }}
+                  ></div>
+                </div>
               </div>
 
-              {listingStep === 1 && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Display name (locked)
-                    </label>
-                    <input
-                      value={listingDraft.displayName}
-                      disabled
-                      className="w-full rounded-2xl bg-black/40 border border-white/10 px-4 py-3 text-sm text-gray-400 cursor-not-allowed"
-                    />
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
+              {/* --- SCROLLABLE CONTENT --- */}
+              <div className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar">
+                {/* Step 1: Identity */}
+                {listingStep === 1 && (
+                  <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                     <div className="space-y-2">
-                      <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                        Exact age
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Display Name{" "}
+                        <span className="text-gray-600">(Locked)</span>
                       </label>
-                      <input
-                        value={listingDraft.age}
-                        onChange={(e) =>
-                          setListingDraft((prev) => ({
-                            ...prev,
-                            age: e.target.value,
-                          }))
-                        }
-                        placeholder="e.g. 24"
-                        className="w-full rounded-2xl bg-black/40 border border-red-500/20 px-4 py-3 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                      />
+                      <div className="w-full rounded-xl bg-white/5 border border-white/5 px-4 py-3.5 text-sm text-gray-400 opacity-60 cursor-not-allowed font-medium">
+                        {listingDraft.displayName}
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Gender
-                    </label>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {GENDER_OPTIONS.map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() =>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Exact Age
+                        </label>
+                        <input
+                          value={listingDraft.age}
+                          onChange={(e) =>
                             setListingDraft((prev) => ({
                               ...prev,
-                              gender: option.value,
+                              age: e.target.value,
                             }))
                           }
-                          className={`rounded-2xl border px-4 py-3 text-left transition-transform active:scale-[0.98] ${
-                            listingDraft.gender === option.value
-                              ? "bg-red-500/90 border-red-400/60 text-white shadow-[0_0_20px_rgba(255,0,90,0.2)]"
-                              : "bg-black/40 border-red-500/20 text-gray-300"
-                          }`}
-                        >
-                          <p className="text-sm font-black uppercase tracking-widest">
-                            {option.label}
-                          </p>
-                          <p className="text-[10px] uppercase tracking-widest text-gray-400">
-                            {option.hint}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Bio / About
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={listingDraft.bio}
-                      onChange={(e) =>
-                        setListingDraft((prev) => ({
-                          ...prev,
-                          bio: e.target.value,
-                        }))
-                      }
-                      placeholder="Describe your vibe, experience, and what makes you unique."
-                      className="w-full rounded-2xl bg-black/40 border border-red-500/20 p-3 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Languages spoken
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {LANGUAGE_OPTIONS.map((language) => (
-                        <button
-                          key={language}
-                          onClick={() => handleToggleLanguage(language)}
-                          className={`px-3 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                            listingDraft.languages.includes(language)
-                              ? "bg-red-500/80 text-white border-red-400/60"
-                              : "bg-black/40 text-gray-400 border-red-500/20"
-                          }`}
-                        >
-                          {language}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">
-                      Tap to select one or more languages.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {listingStep === 2 && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      What you offer
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {SERVICE_OPTIONS.map((offer) => (
-                        <button
-                          key={offer}
-                          onClick={() => handleToggleOffer(offer)}
-                          className={`px-3 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                            listingDraft.offers.includes(offer)
-                              ? "bg-red-500/80 text-white border-red-400/60"
-                              : "bg-black/40 text-gray-400 border-red-500/20"
-                          }`}
-                        >
-                          {offer}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest">
-                      Select one or more services.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Additional details (optional)
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={listingDraft.offerNotes}
-                      onChange={(e) =>
-                        setListingDraft((prev) => ({
-                          ...prev,
-                          offerNotes: e.target.value,
-                        }))
-                      }
-                      placeholder="Describe your offers in your own words."
-                      className="w-full rounded-2xl bg-black/40 border border-red-500/20 p-3 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {listingStep === 3 && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Service pricing (set a price for each service)
-                    </label>
-                    {listingDraft.offers.length === 0 ? (
-                      <p className="text-xs text-gray-500">
-                        Select services in Step 2 to set pricing.
-                      </p>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {listingDraft.offers.map((offer) => (
-                          <div
-                            key={offer}
-                            className="flex flex-wrap items-center gap-2 rounded-2xl border border-red-500/20 bg-black/40 px-3 py-3"
-                          >
-                            <span className="flex-1 text-xs uppercase tracking-widest text-gray-200">
-                              {offer}
-                            </span>
-                            <input
-                              value={listingDraft.servicePricing[offer] || ""}
-                              onChange={(e) =>
-                                handleServicePriceChange(offer, e.target.value)
-                              }
-                              placeholder="KES"
-                              className="w-28 rounded-2xl bg-black/50 border border-red-500/20 px-3 py-2 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                            />
-                            <button
-                              onClick={() => handleSetMainService(offer)}
-                              className={`px-3 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                                listingDraft.mainService === offer
-                                  ? "bg-red-500/80 text-white border-red-400/60"
-                                  : "bg-white/5 text-gray-300 border-white/10"
-                              }`}
-                            >
-                              {listingDraft.mainService === offer
-                                ? "Main Service"
-                                : "Set Main"}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {listingDraft.offers.length > 0 && (
-                      <p className="text-[10px] text-gray-500 uppercase tracking-widest">
-                        Choose a main service to feature on your listing card.
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Availability
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={listingDraft.availability}
-                      onChange={(e) =>
-                        setListingDraft((prev) => ({
-                          ...prev,
-                          availability: e.target.value,
-                        }))
-                      }
-                      placeholder="When are you available?"
-                      className="w-full rounded-2xl bg-black/40 border border-red-500/20 p-3 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {listingStep === 4 && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Phone number (public)
-                    </label>
-                    <input
-                      value={listingDraft.phone}
-                      onChange={(e) =>
-                        setListingDraft((prev) => ({
-                          ...prev,
-                          phone: e.target.value,
-                        }))
-                      }
-                      placeholder="+254..."
-                      className="w-full rounded-2xl bg-black/40 border border-red-500/20 px-4 py-3 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Contact note (optional)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={listingDraft.contactNote}
-                      onChange={(e) =>
-                        setListingDraft((prev) => ({
-                          ...prev,
-                          contactNote: e.target.value,
-                        }))
-                      }
-                      placeholder="Add any contact preferences."
-                      className="w-full rounded-2xl bg-black/40 border border-red-500/20 p-3 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                    />
-                  </div>
-                  <div className="rounded-2xl border border-red-500/20 bg-black/40 p-4 flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-widest text-gray-400">
-                      Call + In-app chat buttons will appear on your listing.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {listingStep === 5 && (
-                <div className="space-y-5">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                        Public photos
-                      </label>
-                      <span className="text-[10px] uppercase tracking-widest text-gray-500">
-                        Visible to all
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <label className="px-4 py-3 rounded-full bg-red-500/80 text-white text-xs font-black uppercase tracking-widest cursor-pointer">
-                        Upload Photos
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={(event) => {
-                            handlePhotoUpload(event.target.files, "public");
-                            event.currentTarget.value = "";
-                          }}
-                          className="hidden"
+                          placeholder="e.g. 24"
+                          className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 px-4 py-3.5 text-sm text-white placeholder:text-gray-600 focus:border-kipepeo-pink focus:outline-none transition-colors"
                         />
-                      </label>
-                      {uploadingPublic && (
-                        <span className="text-[10px] uppercase tracking-widest text-gray-500">
-                          Uploading...
-                        </span>
-                      )}
-                    </div>
-                    {uploadError && (
-                      <p className="text-xs text-red-300">{uploadError}</p>
-                    )}
-                    {listingDraft.publicPhotos.length === 0 ? (
-                      <p className="text-xs text-gray-500">
-                        Add at least one public photo (required).
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2">
-                        {listingDraft.publicPhotos.map((photo) => (
-                          <div
-                            key={photo}
-                            className="relative rounded-2xl overflow-hidden border border-red-500/20"
-                          >
-                            <AppImage
-                              src={photo}
-                              alt="Public"
-                              className="w-full h-24 object-cover"
-                            />
-                            <button
-                              onClick={() =>
-                                setListingDraft((prev) => ({
-                                  ...prev,
-                                  publicPhotos: prev.publicPhotos.filter(
-                                    (item) => item !== photo,
-                                  ),
-                                }))
-                              }
-                              className="absolute top-2 right-2 px-2 py-1 rounded-full bg-black/70 text-[10px] uppercase tracking-widest text-white"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
                       </div>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                        X Photos
-                      </label>
-                      <span className="text-[10px] uppercase tracking-widest text-red-300">
-                        Premium-only
-                      </span>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <label className="px-4 py-3 rounded-full bg-white/10 text-gray-200 text-xs font-black uppercase tracking-widest border border-white/10 cursor-pointer">
-                        Upload X Photos
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={(event) => {
-                            handlePhotoUpload(event.target.files, "x");
-                            event.currentTarget.value = "";
-                          }}
-                          className="hidden"
-                        />
-                      </label>
-                      {uploadingX && (
-                        <span className="text-[10px] uppercase tracking-widest text-gray-500">
-                          Uploading...
-                        </span>
-                      )}
-                    </div>
-                    {listingDraft.xPhotos.length === 0 ? (
-                      <p className="text-xs text-gray-500">
-                        Optional: add premium-only photos.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2">
-                        {listingDraft.xPhotos.map((photo) => (
-                          <div
-                            key={photo}
-                            className="relative rounded-2xl overflow-hidden border border-white/10"
-                          >
-                            <AppImage
-                              src={photo}
-                              alt="X Photo"
-                              className="w-full h-24 object-cover"
-                            />
-                            <button
-                              onClick={() =>
-                                setListingDraft((prev) => ({
-                                  ...prev,
-                                  xPhotos: prev.xPhotos.filter(
-                                    (item) => item !== photo,
-                                  ),
-                                }))
-                              }
-                              className="absolute top-2 right-2 px-2 py-1 rounded-full bg-black/70 text-[10px] uppercase tracking-widest text-white"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
-              {listingStep === 6 && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Primary location
-                    </label>
-                    <input
-                      value={listingDraft.primaryLocation}
-                      onChange={(e) =>
-                        setListingDraft((prev) => ({
-                          ...prev,
-                          primaryLocation: e.target.value,
-                        }))
-                      }
-                      placeholder="City or area"
-                      className="w-full rounded-2xl bg-black/40 border border-red-500/20 px-4 py-3 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                    />
-                  </div>
-                  <div className="rounded-2xl border border-red-500/20 bg-black/40 p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                          Pin exact location (mandatory)
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          Location pin helps clients see your exact area.
-                        </p>
-                      </div>
-                      <button
-                        onClick={handlePinLocation}
-                        className="px-4 py-2 rounded-full bg-red-500/80 text-white text-[10px] font-black uppercase tracking-widest"
-                      >
-                        {pinningLocation
-                          ? "Pinning..."
-                          : listingDraft.locationLat !== null
-                            ? "Pinned"
-                            : "Pin Location"}
-                      </button>
-                    </div>
-                    {listingDraft.locationLat !== null &&
-                      listingDraft.locationLng !== null && (
-                        <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                          Lat {listingDraft.locationLat.toFixed(5)} - Lng{" "}
-                          {listingDraft.locationLng.toFixed(5)}
-                        </p>
-                      )}
-                    {pinError && (
-                      <p className="text-xs text-red-300">{pinError}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Additional locations (optional)
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      <input
-                        value={locationInput}
-                        onChange={(e) => setLocationInput(e.target.value)}
-                        placeholder="Add location"
-                        className="flex-1 min-w-[150px] rounded-2xl bg-black/40 border border-red-500/20 px-4 py-3 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                      />
-                      <button
-                        onClick={handleAddLocation}
-                        className="px-4 py-3 rounded-full bg-white/10 text-gray-200 text-xs font-black uppercase tracking-widest border border-white/10"
-                      >
-                        Add
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {listingDraft.extraLocations.map((location) => (
-                        <button
-                          key={location}
-                          onClick={() =>
-                            setListingDraft((prev) => ({
-                              ...prev,
-                              extraLocations: prev.extraLocations.filter(
-                                (item) => item !== location,
-                              ),
-                            }))
-                          }
-                          className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 text-gray-300"
-                        >
-                          {location} x
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-3 text-sm text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={listingDraft.travelOk}
-                      onChange={(e) =>
-                        setListingDraft((prev) => ({
-                          ...prev,
-                          travelOk: e.target.checked,
-                        }))
-                      }
-                      className="w-4 h-4 accent-red-500"
-                    />
-                    Available to travel
-                  </label>
-                </div>
-              )}
-
-              {listingStep === 7 && (
-                <div className="space-y-4">
-                  <label className="flex items-center gap-3 text-sm text-gray-300">
-                    <input
-                      type="checkbox"
-                      checked={listingDraft.videoCallEnabled}
-                      onChange={(e) =>
-                        setListingDraft((prev) => ({
-                          ...prev,
-                          videoCallEnabled: e.target.checked,
-                        }))
-                      }
-                      className="w-4 h-4 accent-red-500"
-                    />
-                    Allow video calls
-                  </label>
-                  {listingDraft.videoCallEnabled && (
-                    <div className="space-y-2">
-                      <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                        Visibility
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Gender
                       </label>
-                      <div className="flex flex-wrap gap-2">
-                        {(
-                          [
-                            "public",
-                            "premium",
-                            "private",
-                          ] as VideoCallVisibility[]
-                        ).map((visibility) => (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {GENDER_OPTIONS.map((option) => (
                           <button
-                            key={visibility}
+                            key={option.value}
                             onClick={() =>
                               setListingDraft((prev) => ({
                                 ...prev,
-                                videoCallVisibility: visibility,
+                                gender: option.value,
                               }))
                             }
-                            className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                              listingDraft.videoCallVisibility === visibility
-                                ? "bg-red-500/80 text-white border-red-400/60"
-                                : "bg-black/40 text-gray-400 border-red-500/20"
+                            className={`relative overflow-hidden rounded-xl border p-4 text-left transition-all active:scale-[0.98] ${
+                              listingDraft.gender === option.value
+                                ? "border-kipepeo-pink bg-gradient-to-br from-kipepeo-pink/20 to-purple-900/20 text-white"
+                                : "border-white/10 bg-[#0a0a0a] text-gray-400 hover:border-white/20 hover:bg-white/5"
                             }`}
                           >
-                            {visibility === "public"
-                              ? "Public"
-                              : visibility === "premium"
-                                ? "Premium-only"
-                                : "Private"}
+                            <p className="text-sm font-black uppercase tracking-wider relative z-10">
+                              {option.label}
+                            </p>
+                            <p className="mt-1 text-[10px] text-gray-500 relative z-10">
+                              {option.hint}
+                            </p>
                           </button>
                         ))}
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
 
-              {listingStep === 8 && (
-                <div className="space-y-5">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase tracking-widest text-gray-500">
-                        Social links
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Bio / About
                       </label>
-                      <button
-                        onClick={handleAddSocial}
-                        className="px-4 py-2 rounded-full bg-white/10 text-gray-200 text-[10px] font-black uppercase tracking-widest border border-white/10"
-                      >
-                        Add Social
-                      </button>
+                      <textarea
+                        rows={4}
+                        value={listingDraft.bio}
+                        onChange={(e) =>
+                          setListingDraft((prev) => ({
+                            ...prev,
+                            bio: e.target.value,
+                          }))
+                        }
+                        placeholder="Describe your vibe, experience, and what makes you unique..."
+                        className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 p-4 text-sm text-white placeholder:text-gray-600 focus:border-kipepeo-pink focus:outline-none transition-colors resize-none"
+                      />
                     </div>
-                    {listingDraft.socials.length === 0 ? (
-                      <p className="text-xs text-gray-500">
-                        Add your social handles and set visibility.
-                      </p>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {listingDraft.socials.map((social) => (
-                          <div
-                            key={social.id}
-                            className="flex flex-wrap gap-2 items-center"
+
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Languages Spoken
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {LANGUAGE_OPTIONS.map((language) => (
+                          <button
+                            key={language}
+                            onClick={() => handleToggleLanguage(language)}
+                            className={`px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border transition-all ${
+                              listingDraft.languages.includes(language)
+                                ? "bg-white text-black border-white hover:bg-gray-200"
+                                : "bg-transparent text-gray-400 border-white/10 hover:border-white/30 hover:text-white"
+                            }`}
                           >
-                            <input
-                              value={social.platform}
-                              onChange={(e) =>
-                                handleSocialChange(
-                                  social.id,
-                                  "platform",
-                                  e.target.value,
-                                )
-                              }
-                              placeholder="Platform"
-                              className="flex-1 min-w-[120px] rounded-2xl bg-black/40 border border-red-500/20 px-4 py-2 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                            />
-                            <input
-                              value={social.handle}
-                              onChange={(e) =>
-                                handleSocialChange(
-                                  social.id,
-                                  "handle",
-                                  e.target.value,
-                                )
-                              }
-                              placeholder="@handle"
-                              className="flex-1 min-w-[140px] rounded-2xl bg-black/40 border border-red-500/20 px-4 py-2 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
-                            />
-                            <label className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-gray-400">
-                              <input
-                                type="checkbox"
-                                checked={social.isPublic}
-                                onChange={(e) =>
-                                  handleSocialChange(
-                                    social.id,
-                                    "isPublic",
-                                    e.target.checked,
-                                  )
-                                }
-                                className="w-4 h-4 accent-red-500"
-                              />
-                              Public
-                            </label>
-                            <button
-                              onClick={() => handleRemoveSocial(social.id)}
-                              className="px-3 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 text-gray-300"
+                            {language}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 2: Offers */}
+                {listingStep === 2 && (
+                  <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Select Your Services
+                      </label>
+                      <div className="flex flex-wrap gap-2.5">
+                        {SERVICE_OPTIONS.map((offer) => (
+                          <button
+                            key={offer}
+                            onClick={() => handleToggleOffer(offer)}
+                            className={`group px-4 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-widest border transition-all ${
+                              listingDraft.offers.includes(offer)
+                                ? "bg-kipepeo-pink border-kipepeo-pink text-white shadow-[0_0_15px_-3px_rgba(236,72,153,0.4)]"
+                                : "bg-[#0a0a0a] border-white/10 text-gray-400 hover:border-white/30 hover:text-white"
+                            }`}
+                          >
+                            {offer}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Additional Details{" "}
+                        <span className="text-gray-600">(Optional)</span>
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={listingDraft.offerNotes}
+                        onChange={(e) =>
+                          setListingDraft((prev) => ({
+                            ...prev,
+                            offerNotes: e.target.value,
+                          }))
+                        }
+                        placeholder="Describe your offers in your own words..."
+                        className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 p-4 text-sm text-white placeholder:text-gray-600 focus:border-kipepeo-pink focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Pricing */}
+                {listingStep === 3 && (
+                  <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Service Pricing
+                        </label>
+                        <span className="text-[10px] text-gray-600">
+                          Set rates in KES
+                        </span>
+                      </div>
+
+                      {listingDraft.offers.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-white/10 bg-white/5 p-8 text-center">
+                          <p className="text-sm text-gray-500">
+                            Go back to Step 2 to select services first.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-3">
+                          {listingDraft.offers.map((offer) => (
+                            <div
+                              key={offer}
+                              className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#0a0a0a] p-3 transition-colors hover:border-white/20"
                             >
-                              Remove
-                            </button>
+                              <span className="flex-1 text-xs font-bold uppercase tracking-wider text-gray-200 pl-2">
+                                {offer}
+                              </span>
+
+                              <div className="relative w-24 sm:w-32">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-500">
+                                  KES
+                                </span>
+                                <input
+                                  value={
+                                    listingDraft.servicePricing[offer] || ""
+                                  }
+                                  onChange={(e) =>
+                                    handleServicePriceChange(
+                                      offer,
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder="0"
+                                  className="w-full rounded-lg bg-white/5 border border-white/5 py-2 pl-9 pr-3 text-right text-sm text-white focus:border-kipepeo-pink focus:outline-none"
+                                />
+                              </div>
+
+                              <button
+                                onClick={() => handleSetMainService(offer)}
+                                className={`h-9 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all ${
+                                  listingDraft.mainService === offer
+                                    ? "bg-white text-black border-white"
+                                    : "bg-transparent text-gray-500 border-white/10 hover:text-white"
+                                }`}
+                              >
+                                {listingDraft.mainService === offer
+                                  ? "Main"
+                                  : "Set Main"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Availability
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={listingDraft.availability}
+                        onChange={(e) =>
+                          setListingDraft((prev) => ({
+                            ...prev,
+                            availability: e.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Weekdays after 6pm, Weekends all day..."
+                        className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 p-4 text-sm text-white placeholder:text-gray-600 focus:border-kipepeo-pink focus:outline-none transition-colors"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 4: Contact */}
+                {listingStep === 4 && (
+                  <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Phone Number{" "}
+                        <span className="text-gray-600">(Public)</span>
+                      </label>
+                      <input
+                        value={listingDraft.phone}
+                        onChange={(e) =>
+                          setListingDraft((prev) => ({
+                            ...prev,
+                            phone: e.target.value,
+                          }))
+                        }
+                        placeholder="+254 7..."
+                        className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 px-4 py-3.5 text-sm text-white placeholder:text-gray-600 focus:border-kipepeo-pink focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Contact Preferences{" "}
+                        <span className="text-gray-600">(Optional)</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={listingDraft.contactNote}
+                        onChange={(e) =>
+                          setListingDraft((prev) => ({
+                            ...prev,
+                            contactNote: e.target.value,
+                          }))
+                        }
+                        placeholder="e.g. WhatsApp only, No calls after 10pm..."
+                        className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 p-4 text-sm text-white placeholder:text-gray-600 focus:border-kipepeo-pink focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="rounded-xl bg-kipepeo-pink/10 border border-kipepeo-pink/20 p-4 flex items-start gap-3">
+                      <span className="text-lg">📱</span>
+                      <p className="text-xs text-kipepeo-pink/80 leading-relaxed">
+                        Your number will be visible to registered users. Call
+                        and Chat buttons will be added to your profile
+                        automatically.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 5: Photos */}
+                {listingStep === 5 && (
+                  <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                    {/* Public Photos Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Public Photos <span className="text-red-400">*</span>
+                        </label>
+                        <span className="text-[9px] uppercase tracking-wider text-gray-600">
+                          Visible to everyone
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        {/* Upload Button */}
+                        <label className="aspect-[3/4] cursor-pointer flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-white/20 bg-white/5 transition-all hover:bg-white/10 hover:border-white/40">
+                          <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center mb-2">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="text-gray-400"
+                            >
+                              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"></path>
+                              <line x1="16" y1="5" x2="22" y2="5"></line>
+                              <line x1="19" y1="2" x2="19" y2="8"></line>
+                              <circle cx="9" cy="9" r="2"></circle>
+                              <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>
+                            </svg>
+                          </div>
+                          <span className="text-[9px] font-bold uppercase text-gray-400">
+                            Add
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(event) => {
+                              handlePhotoUpload(event.target.files, "public");
+                              event.currentTarget.value = "";
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+
+                        {/* Previews */}
+                        {listingDraft.publicPhotos.map((photo) => (
+                          <div
+                            key={photo}
+                            className="group relative aspect-[3/4] rounded-xl overflow-hidden border border-white/10 bg-black"
+                          >
+                            <AppImage
+                              src={photo}
+                              alt="Public"
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center">
+                              <button
+                                onClick={() =>
+                                  setListingDraft((prev) => ({
+                                    ...prev,
+                                    publicPhotos: prev.publicPhotos.filter(
+                                      (item) => item !== photo,
+                                    ),
+                                  }))
+                                }
+                                className="p-2 rounded-full bg-white/10 hover:bg-red-500/80 text-white transition-colors"
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="14"
+                                  height="14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
+                      {uploadingPublic && (
+                        <p className="text-xs text-kipepeo-pink animate-pulse">
+                          Uploading photos...
+                        </p>
+                      )}
+                      {uploadError && (
+                        <p className="text-xs text-red-400">{uploadError}</p>
+                      )}
+                    </div>
 
-                  <div className="rounded-2xl border border-red-500/20 bg-black/40 p-4 space-y-2">
-                    <h4 className="text-xs font-black uppercase tracking-widest text-red-200">
-                      Verification badge
-                    </h4>
-                    <p className="text-sm text-gray-300">
-                      Status:{" "}
-                      {listingDraft.verificationStatus === "verified"
-                        ? "Verified"
-                        : listingDraft.verificationStatus === "pending"
-                          ? "Pending review"
-                          : "Not verified"}
-                    </p>
-                    <p className="text-[10px] text-gray-500">
-                      One badge per profile. Badge applies to your entire
-                      listing.
-                    </p>
-                    {listingDraft.verificationStatus !== "verified" && (
-                      <button
-                        onClick={() =>
+                    {/* X Photos Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-kipepeo-pink">
+                          X Photos
+                        </label>
+                        <span className="rounded bg-kipepeo-pink/20 px-2 py-0.5 text-[9px] font-bold uppercase text-kipepeo-pink">
+                          Premium Only
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <label className="aspect-[3/4] cursor-pointer flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-kipepeo-pink/30 bg-kipepeo-pink/5 transition-all hover:bg-kipepeo-pink/10 hover:border-kipepeo-pink/50">
+                          <div className="h-8 w-8 rounded-full bg-kipepeo-pink/20 flex items-center justify-center mb-2">
+                            <span className="text-kipepeo-pink text-lg">
+                              🔒
+                            </span>
+                          </div>
+                          <span className="text-[9px] font-bold uppercase text-kipepeo-pink/70">
+                            Add X
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            onChange={(event) => {
+                              handlePhotoUpload(event.target.files, "x");
+                              event.currentTarget.value = "";
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+
+                        {listingDraft.xPhotos.map((photo) => (
+                          <div
+                            key={photo}
+                            className="group relative aspect-[3/4] rounded-xl overflow-hidden border border-kipepeo-pink/20 bg-black"
+                          >
+                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 backdrop-blur-[2px] pointer-events-none">
+                              <span className="text-xl">🔞</span>
+                            </div>
+                            <AppImage
+                              src={photo}
+                              alt="X Photo"
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 z-20 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center">
+                              <button
+                                onClick={() =>
+                                  setListingDraft((prev) => ({
+                                    ...prev,
+                                    xPhotos: prev.xPhotos.filter(
+                                      (item) => item !== photo,
+                                    ),
+                                  }))
+                                }
+                                className="p-2 rounded-full bg-white/10 hover:bg-red-500/80 text-white transition-colors"
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="14"
+                                  height="14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {uploadingX && (
+                        <p className="text-xs text-kipepeo-pink animate-pulse">
+                          Uploading private content...
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 6: Location */}
+                {listingStep === 6 && (
+                  <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Primary Location
+                      </label>
+                      <input
+                        value={listingDraft.primaryLocation}
+                        onChange={(e) =>
                           setListingDraft((prev) => ({
                             ...prev,
-                            verificationStatus:
-                              prev.verificationStatus === "pending"
-                                ? "none"
-                                : "pending",
+                            primaryLocation: e.target.value,
                           }))
                         }
-                        className="px-4 py-2 rounded-full bg-red-500/80 text-white text-[10px] font-black uppercase tracking-widest"
+                        placeholder="City, District, or Area"
+                        className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 px-4 py-3.5 text-sm text-white placeholder:text-gray-600 focus:border-kipepeo-pink focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-gradient-to-br from-[#0a0a0a] to-[#1a1a1a] p-5 shadow-lg">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-white">
+                            Pin Exact Location
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Helping clients find you nearby.
+                          </p>
+                        </div>
+                        <button
+                          onClick={handlePinLocation}
+                          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-transform active:scale-95 ${
+                            listingDraft.locationLat !== null
+                              ? "bg-green-500/20 text-green-400 border border-green-500/50"
+                              : "bg-white text-black hover:bg-gray-200"
+                          }`}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                            <circle cx="12" cy="10" r="3"></circle>
+                          </svg>
+                          {pinningLocation
+                            ? "Pinning..."
+                            : listingDraft.locationLat !== null
+                              ? "Pinned"
+                              : "Drop Pin"}
+                        </button>
+                      </div>
+                      {pinError && (
+                        <p className="mt-3 text-xs text-red-400 bg-red-400/10 p-2 rounded">
+                          {pinError}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                        Other Locations{" "}
+                        <span className="text-gray-600">(Optional)</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          value={locationInput}
+                          onChange={(e) => setLocationInput(e.target.value)}
+                          placeholder="Add another area..."
+                          className="flex-1 rounded-xl bg-[#0a0a0a] border border-white/10 px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30"
+                        />
+                        <button
+                          onClick={handleAddLocation}
+                          className="px-5 rounded-xl bg-white/10 text-white text-xs font-bold uppercase tracking-widest hover:bg-white/20"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {listingDraft.extraLocations.map((location) => (
+                          <button
+                            key={location}
+                            onClick={() =>
+                              setListingDraft((prev) => ({
+                                ...prev,
+                                extraLocations: prev.extraLocations.filter(
+                                  (item) => item !== location,
+                                ),
+                              }))
+                            }
+                            className="flex items-center gap-1 pl-3 pr-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-300 hover:border-red-500/50 hover:text-red-400 transition-colors"
+                          >
+                            {location}
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <line x1="18" y1="6" x2="6" y2="18"></line>
+                              <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-4 p-4 rounded-xl border border-white/5 bg-white/5 cursor-pointer hover:bg-white/10 transition-colors">
+                      <div
+                        className={`w-5 h-5 rounded border flex items-center justify-center ${listingDraft.travelOk ? "bg-kipepeo-pink border-kipepeo-pink" : "border-gray-500"}`}
                       >
-                        {listingDraft.verificationStatus === "pending"
-                          ? "Cancel Request"
-                          : "Request Badge"}
-                      </button>
+                        {listingDraft.travelOk && (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-white"
+                          >
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                        )}
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={listingDraft.travelOk}
+                        onChange={(e) =>
+                          setListingDraft((prev) => ({
+                            ...prev,
+                            travelOk: e.target.checked,
+                          }))
+                        }
+                        className="hidden"
+                      />
+                      <span className="text-sm font-medium text-gray-200">
+                        I am available to travel
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                {/* Step 7: Video */}
+                {listingStep === 7 && (
+                  <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                    <label className="flex items-center gap-4 p-5 rounded-xl border border-white/5 bg-gradient-to-r from-kipepeo-purple/10 to-transparent cursor-pointer transition-colors">
+                      <div
+                        className={`w-6 h-6 rounded border flex items-center justify-center transition-colors ${listingDraft.videoCallEnabled ? "bg-kipepeo-pink border-kipepeo-pink" : "border-gray-500"}`}
+                      >
+                        {listingDraft.videoCallEnabled && (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-white"
+                          >
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                        )}
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={listingDraft.videoCallEnabled}
+                        onChange={(e) =>
+                          setListingDraft((prev) => ({
+                            ...prev,
+                            videoCallEnabled: e.target.checked,
+                          }))
+                        }
+                        className="hidden"
+                      />
+                      <div>
+                        <span className="block text-sm font-bold text-white uppercase tracking-wide">
+                          Enable Video Calls
+                        </span>
+                        <span className="block text-xs text-gray-500 mt-0.5">
+                          Allow users to request video dates
+                        </span>
+                      </div>
+                    </label>
+
+                    {listingDraft.videoCallEnabled && (
+                      <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Who can request calls?
+                        </label>
+                        <div className="grid grid-cols-3 gap-3">
+                          {(
+                            [
+                              "public",
+                              "premium",
+                              "private",
+                            ] as VideoCallVisibility[]
+                          ).map((visibility) => (
+                            <button
+                              key={visibility}
+                              onClick={() =>
+                                setListingDraft((prev) => ({
+                                  ...prev,
+                                  videoCallVisibility: visibility,
+                                }))
+                              }
+                              className={`py-3 px-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                                listingDraft.videoCallVisibility === visibility
+                                  ? "bg-white text-black border-white shadow-lg"
+                                  : "bg-[#0a0a0a] text-gray-500 border-white/10 hover:border-white/30 hover:text-white"
+                              }`}
+                            >
+                              {visibility === "public"
+                                ? "Everyone"
+                                : visibility === "premium"
+                                  ? "Premium Only"
+                                  : "Private"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  onClick={() =>
-                    setListingStep((prev) => Math.max(1, prev - 1))
-                  }
-                  disabled={listingStep === 1}
-                  className="px-4 py-2 rounded-full bg-white/10 text-gray-200 text-[10px] font-black uppercase tracking-widest border border-white/10 disabled:opacity-40"
-                >
-                  Back
-                </button>
-                <span className="text-[10px] uppercase tracking-[0.3em] text-gray-500">
-                  Step {listingStep} / {listingStepTitles.length}
-                </span>
-                {listingStep < listingStepTitles.length ? (
+                {/* Step 8: Socials & Verification */}
+                {listingStep === 8 && (
+                  <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Social Links
+                        </label>
+                        <button
+                          onClick={handleAddSocial}
+                          className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-white hover:bg-white/10"
+                        >
+                          + Add Link
+                        </button>
+                      </div>
+
+                      {listingDraft.socials.length === 0 ? (
+                        <div className="text-center py-6 border border-dashed border-white/10 rounded-xl">
+                          <p className="text-xs text-gray-500">
+                            No social links added yet.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {listingDraft.socials.map((social) => (
+                            <div
+                              key={social.id}
+                              className="flex flex-col gap-2 p-3 rounded-xl bg-[#0a0a0a] border border-white/5 sm:flex-row sm:items-center"
+                            >
+                              <div className="flex flex-1 gap-2">
+                                <input
+                                  value={social.platform}
+                                  onChange={(e) =>
+                                    handleSocialChange(
+                                      social.id,
+                                      "platform",
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder="Platform (e.g. IG)"
+                                  className="flex-1 min-w-0 rounded-lg bg-white/5 border border-white/5 px-3 py-2 text-xs text-white focus:outline-none focus:border-white/20"
+                                />
+                                <input
+                                  value={social.handle}
+                                  onChange={(e) =>
+                                    handleSocialChange(
+                                      social.id,
+                                      "handle",
+                                      e.target.value,
+                                    )
+                                  }
+                                  placeholder="@handle"
+                                  className="flex-[1.5] min-w-0 rounded-lg bg-white/5 border border-white/5 px-3 py-2 text-xs text-white focus:outline-none focus:border-white/20"
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between gap-3 sm:justify-end">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <div
+                                    className={`w-4 h-4 rounded border flex items-center justify-center ${social.isPublic ? "bg-kipepeo-pink border-kipepeo-pink" : "border-gray-600"}`}
+                                  >
+                                    {social.isPublic && (
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="10"
+                                        height="10"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="3"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="text-white"
+                                      >
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                      </svg>
+                                    )}
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={social.isPublic}
+                                    onChange={(e) =>
+                                      handleSocialChange(
+                                        social.id,
+                                        "isPublic",
+                                        e.target.checked,
+                                      )
+                                    }
+                                    className="hidden"
+                                  />
+                                  <span className="text-[10px] font-bold uppercase text-gray-400">
+                                    Public
+                                  </span>
+                                </label>
+                                <button
+                                  onClick={() => handleRemoveSocial(social.id)}
+                                  className="text-gray-500 hover:text-red-400 transition-colors"
+                                >
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-kipepeo-purple/30 bg-gradient-to-br from-kipepeo-purple/10 to-transparent p-5">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="text-sm font-black uppercase tracking-widest text-white">
+                            Verification Badge
+                          </h4>
+                          <p className="text-[10px] uppercase tracking-wider text-kipepeo-purple mt-1">
+                            Status:{" "}
+                            {listingDraft.verificationStatus === "verified"
+                              ? "Verified"
+                              : listingDraft.verificationStatus === "pending"
+                                ? "Pending Review"
+                                : "Unverified"}
+                          </p>
+                        </div>
+                        <div className="h-8 w-8 rounded-full bg-kipepeo-purple/20 flex items-center justify-center text-kipepeo-purple">
+                          ✓
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-3 leading-relaxed">
+                        Boost your credibility. Verified profiles get 3x more
+                        interactions.
+                      </p>
+
+                      {listingDraft.verificationStatus !== "verified" && (
+                        <button
+                          onClick={() =>
+                            setListingDraft((prev) => ({
+                              ...prev,
+                              verificationStatus:
+                                prev.verificationStatus === "pending"
+                                  ? "none"
+                                  : "pending",
+                            }))
+                          }
+                          className="mt-4 w-full rounded-lg bg-white/10 border border-white/10 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/20 transition-colors"
+                        >
+                          {listingDraft.verificationStatus === "pending"
+                            ? "Cancel Request"
+                            : "Request Verification"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* --- FOOTER --- */}
+              <div className="shrink-0 border-t border-white/5 p-6 bg-[#121212]/95 backdrop-blur-xl rounded-b-3xl">
+                <div className="flex items-center justify-between">
                   <button
                     onClick={() =>
-                      setListingStep((prev) =>
-                        Math.min(listingStepTitles.length, prev + 1),
-                      )
+                      setListingStep((prev) => Math.max(1, prev - 1))
                     }
-                    disabled={!listingStepValid || listingSubmitting}
-                    className="px-4 py-2 rounded-full bg-red-500/90 text-white text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+                    disabled={listingStep === 1}
+                    className="px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest text-gray-400 transition-colors hover:text-white disabled:opacity-30 disabled:hover:text-gray-400"
                   >
-                    Next
+                    Back
                   </button>
-                ) : (
-                  <button
-                    onClick={handleListingPublish}
-                    disabled={!listingStepValid || listingSubmitting}
-                    className="px-4 py-2 rounded-full bg-red-500/90 text-white text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
-                  >
-                    {listingSubmitting ? "Publishing..." : "Publish Listing"}
-                  </button>
-                )}
+
+                  {listingStep < listingStepTitles.length ? (
+                    <button
+                      onClick={() =>
+                        setListingStep((prev) =>
+                          Math.min(listingStepTitles.length, prev + 1),
+                        )
+                      }
+                      disabled={!listingStepValid || listingSubmitting}
+                      className="group relative overflow-hidden rounded-xl bg-white px-8 py-3 text-xs font-black uppercase tracking-widest text-black transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+                    >
+                      <span className="relative z-10">Next Step</span>
+                      <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-gray-200 to-transparent opacity-50 transition-transform duration-700 group-hover:translate-x-full"></div>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleListingPublish}
+                      disabled={!listingStepValid || listingSubmitting}
+                      className="relative overflow-hidden rounded-xl bg-gradient-to-r from-kipepeo-pink to-purple-600 px-8 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-kipepeo-pink/25 transition-transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:shadow-none"
+                    >
+                      {listingSubmitting ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                          Publishing...
+                        </span>
+                      ) : (
+                        "Publish Listing"
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
