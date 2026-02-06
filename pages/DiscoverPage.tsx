@@ -490,7 +490,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               <span className="block mb-2 text-xs uppercase tracking-widest text-red-500 font-bold">
                 Confidential Zone
               </span>
-              Strict anonymity enforced. High-security, paid-introductions only.
+              Strict anonymity enforced.
             </p>
           </div>
 

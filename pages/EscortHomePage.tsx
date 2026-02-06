@@ -186,8 +186,9 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
   const [detailsListing, setDetailsListing] = useState<EscortListing | null>(
     null,
   );
-  const [requestTarget, setRequestTarget] =
-    useState<EscortListing | null>(null);
+  const [requestTarget, setRequestTarget] = useState<EscortListing | null>(
+    null,
+  );
   const [requestMessage, setRequestMessage] = useState("");
   const [requestContact, setRequestContact] = useState(user.email || "");
   const [requestSending, setRequestSending] = useState(false);
@@ -261,8 +262,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
   }, [user.id]);
 
   useEffect(() => {
-    const accepted =
-      sessionStorage.getItem("hushly_age_gate_escort") === "1";
+    const accepted = sessionStorage.getItem("hushly_age_gate_escort") === "1";
     if (!accepted) {
       setShowAgeGate(true);
       setAgeGateChecked(false);
@@ -277,12 +277,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
     }
   }, [user.id, userListing]);
 
-  const categories = [
-    "All",
-    "Verified",
-    "Travel",
-    "Video Call",
-  ];
+  const categories = ["All", "Verified", "Travel", "Video Call"];
 
   const filteredListings = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -306,8 +301,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
   }, [listings, query, category]);
 
   const isPremiumUser = useMemo(() => {
-    const isOwner =
-      normalizeEmail(user.email) === normalizeEmail(OWNER_EMAIL);
+    const isOwner = normalizeEmail(user.email) === normalizeEmail(OWNER_EMAIL);
     if (isOwner) return true;
     if (!user.isPremium) return false;
     if (!user.premiumExpiresAt) return true;
@@ -474,7 +468,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
       }
       const mainService = offers.includes(prev.mainService)
         ? prev.mainService
-        : offers[0] ?? "";
+        : (offers[0] ?? "");
       return {
         ...prev,
         offers,
@@ -526,7 +520,9 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
       },
       (err) => {
         console.error(err);
-        setPinError("Unable to access your location. Enable GPS and try again.");
+        setPinError(
+          "Unable to access your location. Enable GPS and try again.",
+        );
         setPinningLocation(false);
       },
       { enableHighAccuracy: true, timeout: 10000 },
@@ -718,15 +714,9 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
 
       <header className="px-6 pt-6 pb-4 flex items-center justify-between border-b border-white/5 sticky top-0 z-20 backdrop-blur-sm bg-[#0b0508]/80">
         <div>
-          <p className="text-[10px] text-rose-200 uppercase tracking-[0.5em]">
-            Confidential
-          </p>
           <h1 className="text-2xl font-black uppercase tracking-widest text-red-100">
-            Velvet Escort Lounge
+            Escort Lounge
           </h1>
-          <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em]">
-            Verified private companions
-          </p>
         </div>
         <button
           onClick={() => setShowExitConfirm(true)}
@@ -758,16 +748,9 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
         <section className="rounded-3xl border border-red-500/25 bg-[#14070c]/90 p-5 space-y-4 shadow-[0_0_30px_rgba(255,0,90,0.08)]">
           <div className="flex items-start justify-between flex-wrap gap-4">
             <div>
-              <p className="text-[10px] text-rose-200 uppercase tracking-[0.5em]">
-                Premium Listings
-              </p>
               <h2 className="text-lg font-black uppercase tracking-widest text-red-100">
                 Create Your Listing
               </h2>
-              <p className="text-sm text-gray-400 max-w-lg">
-                Only premium members can create listings. Everyone can browse
-                listings. X Photos are visible only to premium viewers.
-              </p>
             </div>
             {!activeListing ? (
               <button
@@ -814,8 +797,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
                 {activeListing.bio || "Complete your bio to stand out."}
               </p>
               <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                Main service:{" "}
-                {activeListing.mainService || "Not set"} -{" "}
+                Main service: {activeListing.mainService || "Not set"} -{" "}
                 {activeListing.mainService
                   ? activeListing.servicePricing[activeListing.mainService] ||
                     "Ask"
@@ -860,8 +842,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
             </div>
           ) : (
             <div className="rounded-2xl border border-red-500/20 bg-black/40 p-4 text-sm text-gray-400">
-              No listing yet. Click "Create Listing" to build your premium
-              profile with rates, gallery, contact details, and more.
+              No listing yet.
             </div>
           )}
         </section>
@@ -915,77 +896,78 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
               const mainPrice =
                 listing.servicePricing[listing.mainService] || "Ask";
               return (
-              <div
-                key={listing.id}
-                className="rounded-3xl border border-red-500/20 bg-[#14070c]/90 overflow-hidden shadow-[0_0_30px_rgba(255,0,90,0.08)]"
-              >
-                <div className="relative h-72">
-                  {heroImage ? (
-                    <AppImage
-                      src={heroImage}
-                      alt={listing.displayName}
-                      className="w-full h-full object-cover"
-                      fetchPriority="high"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-black/50 flex items-center justify-center text-xs uppercase tracking-widest text-gray-500">
-                      No Photo
+                <div
+                  key={listing.id}
+                  className="rounded-3xl border border-red-500/20 bg-[#14070c]/90 overflow-hidden shadow-[0_0_30px_rgba(255,0,90,0.08)]"
+                >
+                  <div className="relative h-72">
+                    {heroImage ? (
+                      <AppImage
+                        src={heroImage}
+                        alt={listing.displayName}
+                        className="w-full h-full object-cover"
+                        fetchPriority="high"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-black/50 flex items-center justify-center text-xs uppercase tracking-widest text-gray-500">
+                        No Photo
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"></div>
+                    <div className="absolute bottom-4 left-4">
+                      <p className="text-xl font-black">
+                        {listing.displayName}
+                      </p>
+                      <p className="text-xs text-gray-300 uppercase tracking-widest">
+                        {listing.primaryLocation}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-widest text-rose-200">
+                        {listing.mainService || "Service"} - {mainPrice}
+                      </p>
                     </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"></div>
-                  <div className="absolute bottom-4 left-4">
-                    <p className="text-xl font-black">
-                      {listing.displayName}
-                    </p>
-                    <p className="text-xs text-gray-300 uppercase tracking-widest">
-                      {listing.primaryLocation}
-                    </p>
-                    <p className="text-[10px] uppercase tracking-widest text-rose-200">
-                      {listing.mainService || "Service"} - {mainPrice}
-                    </p>
-                  </div>
-                  {listing.verificationStatus === "verified" && (
-                    <div className="absolute top-4 right-4 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-[10px] uppercase tracking-widest text-emerald-200">
-                      Verified
-                    </div>
-                  )}
-                </div>
-                <div className="p-4 space-y-3">
-                  <p className="text-sm text-gray-300 line-clamp-2">
-                    {listing.bio}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {listing.offers.slice(0, 3).map((offer) => (
-                      <span
-                        key={`${listing.id}-${offer}`}
-                        className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 text-gray-300"
-                      >
-                        {offer}
-                      </span>
-                    ))}
-                    {listing.offers.length > 3 && (
-                      <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 text-gray-400">
-                        +{listing.offers.length - 3} more
-                      </span>
+                    {listing.verificationStatus === "verified" && (
+                      <div className="absolute top-4 right-4 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-[10px] uppercase tracking-widest text-emerald-200">
+                        Verified
+                      </div>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleRequestOpen(listing)}
-                      className="flex-1 py-2 rounded-full bg-red-500/90 text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
-                    >
-                      Request
-                    </button>
-                    <button
-                      onClick={() => setDetailsListing(listing)}
-                      className="flex-1 py-2 rounded-full bg-black/40 text-gray-300 text-xs font-black uppercase tracking-widest border border-red-500/20 text-center"
-                    >
-                      View
-                    </button>
+                  <div className="p-4 space-y-3">
+                    <p className="text-sm text-gray-300 line-clamp-2">
+                      {listing.bio}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {listing.offers.slice(0, 3).map((offer) => (
+                        <span
+                          key={`${listing.id}-${offer}`}
+                          className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 text-gray-300"
+                        >
+                          {offer}
+                        </span>
+                      ))}
+                      {listing.offers.length > 3 && (
+                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/10 text-gray-400">
+                          +{listing.offers.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleRequestOpen(listing)}
+                        className="flex-1 py-2 rounded-full bg-red-500/90 text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+                      >
+                        Request
+                      </button>
+                      <button
+                        onClick={() => setDetailsListing(listing)}
+                        className="flex-1 py-2 rounded-full bg-black/40 text-gray-300 text-xs font-black uppercase tracking-widest border border-red-500/20 text-center"
+                      >
+                        View
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )})}
+              );
+            })}
           </div>
         )}
 
@@ -1126,9 +1108,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
                       {LANGUAGE_OPTIONS.map((language) => (
                         <button
                           key={language}
-                          onClick={() =>
-                            handleToggleLanguage(language)
-                          }
+                          onClick={() => handleToggleLanguage(language)}
                           className={`px-3 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${
                             listingDraft.languages.includes(language)
                               ? "bg-red-500/80 text-white border-red-400/60"
@@ -1214,10 +1194,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
                             <input
                               value={listingDraft.servicePricing[offer] || ""}
                               onChange={(e) =>
-                                handleServicePriceChange(
-                                  offer,
-                                  e.target.value,
-                                )
+                                handleServicePriceChange(offer, e.target.value)
                               }
                               placeholder="KES"
                               className="w-28 rounded-2xl bg-black/50 border border-red-500/20 px-3 py-2 text-sm text-red-100 placeholder:text-gray-500 focus:outline-none"
@@ -1567,30 +1544,34 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
                         Visibility
                       </label>
                       <div className="flex flex-wrap gap-2">
-                        {(["public", "premium", "private"] as VideoCallVisibility[]).map(
-                          (visibility) => (
-                            <button
-                              key={visibility}
-                              onClick={() =>
-                                setListingDraft((prev) => ({
-                                  ...prev,
-                                  videoCallVisibility: visibility,
-                                }))
-                              }
-                              className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${
-                                listingDraft.videoCallVisibility === visibility
-                                  ? "bg-red-500/80 text-white border-red-400/60"
-                                  : "bg-black/40 text-gray-400 border-red-500/20"
-                              }`}
-                            >
-                              {visibility === "public"
-                                ? "Public"
-                                : visibility === "premium"
-                                  ? "Premium-only"
-                                  : "Private"}
-                            </button>
-                          ),
-                        )}
+                        {(
+                          [
+                            "public",
+                            "premium",
+                            "private",
+                          ] as VideoCallVisibility[]
+                        ).map((visibility) => (
+                          <button
+                            key={visibility}
+                            onClick={() =>
+                              setListingDraft((prev) => ({
+                                ...prev,
+                                videoCallVisibility: visibility,
+                              }))
+                            }
+                            className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                              listingDraft.videoCallVisibility === visibility
+                                ? "bg-red-500/80 text-white border-red-400/60"
+                                : "bg-black/40 text-gray-400 border-red-500/20"
+                            }`}
+                          >
+                            {visibility === "public"
+                              ? "Public"
+                              : visibility === "premium"
+                                ? "Premium-only"
+                                : "Private"}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -1822,8 +1803,9 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
                   </p>
                   <p className="text-gray-200">
                     {previewListing.mainService
-                      ? previewListing.servicePricing[previewListing.mainService] ||
-                        "-"
+                      ? previewListing.servicePricing[
+                          previewListing.mainService
+                        ] || "-"
                       : "-"}
                   </p>
                 </div>
@@ -2200,11 +2182,9 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-6">
             <div className="w-full max-w-md rounded-3xl border border-red-500/30 bg-[#14070c] p-6 space-y-4 text-center">
               <h3 className="text-base font-black uppercase tracking-widest text-red-100">
-                Leave Escort Portal?
+                Leave Escort?
               </h3>
-              <p className="text-sm text-gray-400">
-                You will return to the main app. Are you sure?
-              </p>
+              <p className="text-sm text-gray-400">Are you sure?</p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowExitConfirm(false)}
