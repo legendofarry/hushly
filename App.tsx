@@ -24,6 +24,7 @@ import EscortHomePage from "./pages/EscortHomePage";
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
+  ensurePublicNickname,
   listenToUserProfile,
   updateUserEmailVerification,
   updateUserProfile,
@@ -168,7 +169,7 @@ const AppRoutes: React.FC<{
       <Route
         path="/escort"
         element={
-          user && isVerified && isPremiumUser(user) ? (
+          user && isVerified ? (
             <EscortHomePage user={user} />
           ) : (
             <Navigate to="/discover" />
@@ -270,6 +271,11 @@ const App: React.FC = () => {
             }
             profile.isPremium = true;
             profile.premiumExpiresAt = null;
+          }
+          try {
+            await ensurePublicNickname(profile);
+          } catch (error) {
+            console.error(error);
           }
           setUser(profile);
           localStorage.setItem("kipepeo_user", JSON.stringify(profile));

@@ -1,8 +1,5 @@
 {
-  "name": "Kipepeo - Kenyan Soulmate Finder",
+  "name": "hushly",
   "description": "A vibrant, AI-powered dating app specifically crafted for the Kenyan vibe, featuring Sheng-inspired UI, county-based matching, and an AI wingman.",
-  "requestFramePermissions": [
-    "camera",
-    "geolocation"
-  ]
+  "requestFramePermissions": ["camera", "geolocation"]
 }

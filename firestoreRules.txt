@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function isOwnerEmail() {
+      return signedIn() && request.auth.token.email == "legendofarrie@gmail.com";
+    }
+
+    match /user/{userId} {
+      allow read: if signedIn();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isOwnerEmail();
+      allow delete: if false;
+    }
+
+    match /user_settings/{userId} {
+      allow read: if signedIn();
+      allow create, update: if isOwner(userId);
+      allow delete: if false;
+    }
+
+    match /public_nicknames/{nicknameId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.nicknameLower == nicknameId
+        && !exists(/databases/$(database)/documents/public_nicknames/$(nicknameId));
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.nicknameLower == nicknameId;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if signedIn() && resource.data.toUserId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.toUserId is string
+        && (
+          (request.resource.data.fromUserId == request.auth.uid) ||
+          (!("fromUserId" in request.resource.data) && isOwnerEmail())
+        );
+      allow update: if signedIn()
+        && resource.data.toUserId == request.auth.uid
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(["read"]);
+      allow delete: if false;
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
+      allow create: if signedIn()
+        && request.resource.data.members is list
+        && request.auth.uid in request.resource.data.members;
+      allow update: if signedIn() && request.auth.uid in resource.data.members;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.members;
+        allow create: if signedIn()
+          && request.resource.data.senderId == request.auth.uid
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.members;
+        allow update, delete: if false;
+      }
+    }
+
+    match /likes/{likeId} {
+      allow read: if signedIn()
+        && (resource.data.fromUserId == request.auth.uid
+          || resource.data.toUserId == request.auth.uid);
+      allow create, update: if signedIn()
+        && request.resource.data.fromUserId == request.auth.uid;
+      allow delete: if signedIn() && resource.data.fromUserId == request.auth.uid;
+    }
+
+    match /weekend_plans/{planId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.creatorId == request.auth.uid;
+      allow update: if signedIn()
+        && (
+          resource.data.creatorId == request.auth.uid
+          || request.resource.data.diff(resource.data).changedKeys().hasOnly(["rsvpCount"])
+        );
+      allow delete: if signedIn() && resource.data.creatorId == request.auth.uid;
+
+      match /rsvps/{rsvpId} {
+        allow read: if signedIn()
+          && (
+            request.auth.uid == rsvpId
+            || request.auth.uid == get(/databases/$(database)/documents/weekend_plans/$(planId)).data.creatorId
+          );
+        allow create: if signedIn() && request.auth.uid == rsvpId;
+        allow update, delete: if false;
+      }
+    }
+
+    match /payment_requests/{requestId} {
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid || isOwnerEmail());
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && isOwnerEmail();
+      allow delete: if false;
+    }
+
+    match /escort_listings/{listingId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && listingId == request.auth.uid
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn()
+        && listingId == request.auth.uid
+        && resource.data.ownerId == request.auth.uid;
+      allow delete: if signedIn() && listingId == request.auth.uid;
+    }
+  }
+}

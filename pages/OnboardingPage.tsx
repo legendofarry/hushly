@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
+import { deleteUser } from "firebase/auth";
 import type { User } from "firebase/auth";
 import { IntentType, KENYAN_AREAS, AGE_RANGES, UserProfile } from "../types";
 import { uploadToCloudinary } from "../services/cloudinaryService";
 import {
+  clearSession,
   registerWithEmail,
   refreshUser,
   sendVerificationEmail,
@@ -42,6 +44,9 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showAgeGate, setShowAgeGate] = useState(false);
+  const [ageGateChecked, setAgeGateChecked] = useState(false);
+  const [ageGateProfile, setAgeGateProfile] = useState<UserProfile | null>(null);
   const selfieInputRef = useRef<HTMLInputElement | null>(null);
 
   const normalizeEmail = (value: string) => value.trim().toLowerCase();
@@ -161,15 +166,28 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       return;
     }
 
-    const nicknameAvailable = await checkNicknameAvailability(nickname);
-    if (!nicknameAvailable) {
-      return;
-    }
-
     setIsSaving(true);
     setErrorMessage(null);
+    let authUser: User | null = null;
     try {
-      const authUser = await registerWithEmail(trimmedEmail, password);
+      authUser = await registerWithEmail(trimmedEmail, password);
+      const nicknameTaken = await nicknameExists(nickname, authUser.uid);
+      if (nicknameTaken) {
+        setNicknameError("Nickname already taken. Choose another.");
+        setErrorMessage("Nickname already taken. Choose another.");
+        setStep(2);
+        try {
+          await deleteUser(authUser);
+        } catch (deleteError) {
+          console.error(deleteError);
+        }
+        try {
+          await clearSession();
+        } catch (signOutError) {
+          console.error(signOutError);
+        }
+        return;
+      }
       const newUser = buildUserProfile(authUser.uid);
       await createUserProfile(newUser);
       await sendVerificationEmail(authUser);
@@ -179,6 +197,25 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       setToastMessage("Verification email sent.");
     } catch (error: any) {
       console.error(error);
+      const message = String(error?.message ?? "");
+      if (message.includes("nickname-taken")) {
+        setNicknameError("Nickname already taken. Choose another.");
+        setErrorMessage("Nickname already taken. Choose another.");
+        setStep(2);
+        if (authUser) {
+          try {
+            await deleteUser(authUser);
+          } catch (deleteError) {
+            console.error(deleteError);
+          }
+          try {
+            await clearSession();
+          } catch (signOutError) {
+            console.error(signOutError);
+          }
+        }
+        return;
+      }
       setErrorMessage(getFriendlyAuthError(error));
     } finally {
       setIsSaving(false);
@@ -225,7 +262,15 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         true,
         normalizeEmail(verificationUser.email ?? baseProfile.email),
       );
-      onComplete(readyProfile);
+      const accepted =
+        localStorage.getItem("hushly_age_gate_main") === "1";
+      if (accepted) {
+        onComplete(readyProfile);
+        return;
+      }
+      setAgeGateProfile(readyProfile);
+      setAgeGateChecked(false);
+      setShowAgeGate(true);
     } catch (error: any) {
       console.error(error);
       setErrorMessage("We couldn't verify your email. Please try again.");
@@ -606,6 +651,44 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
           <p className="mt-3 text-[10px] text-red-400 text-center">{errorMessage}</p>
         )}
       </div>
+
+      {showAgeGate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6">
+          <div className="w-full max-w-md glass rounded-3xl border border-white/10 p-6 space-y-4 text-center">
+            <h3 className="text-xl font-black uppercase tracking-widest">
+              Age Gate
+            </h3>
+            <p className="text-sm text-gray-300">
+              You must be 18+ to continue.
+            </p>
+            <label className="flex items-center gap-3 text-sm text-gray-300 justify-center">
+              <input
+                type="checkbox"
+                checked={ageGateChecked}
+                onChange={(e) => setAgeGateChecked(e.target.checked)}
+                className="w-4 h-4 accent-kipepeo-pink"
+              />
+              I confirm I am at least 18 years old.
+            </label>
+            <p className="text-[10px] text-gray-500">
+              By continuing, you agree that you are of legal age in your
+              jurisdiction and understand this app contains adult content.
+            </p>
+            <button
+              onClick={() => {
+                if (!ageGateChecked || !ageGateProfile) return;
+                localStorage.setItem("hushly_age_gate_main", "1");
+                setShowAgeGate(false);
+                onComplete(ageGateProfile);
+              }}
+              disabled={!ageGateChecked}
+              className="w-full py-3 bg-white text-black font-black rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

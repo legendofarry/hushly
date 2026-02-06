@@ -6,32 +6,75 @@ import {
   limit,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   where,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { auth, db } from "../firebase";
 import { DEFAULT_USER_SETTINGS, UserProfile, UserSettings } from "../types";
 
 const USERS_COLLECTION = "user";
 const SETTINGS_COLLECTION = "user_settings";
+const PUBLIC_NICKNAMES_COLLECTION = "public_nicknames";
 const usersCollectionRef = collection(db, USERS_COLLECTION);
 const settingsCollectionRef = collection(db, SETTINGS_COLLECTION);
 
 const normalizeNickname = (value: string) => value.trim().toLowerCase();
 
+const snapshotHasOtherUser = (
+  snapshot: Awaited<ReturnType<typeof getDocs>>,
+  excludeUserId?: string,
+) => snapshot.docs.some((docSnap) => !excludeUserId || docSnap.id !== excludeUserId);
+
+const publicNicknameDocRef = (nicknameLower: string) =>
+  doc(db, PUBLIC_NICKNAMES_COLLECTION, nicknameLower);
+
+const buildPublicNicknamePayload = (
+  userId: string,
+  nickname: string,
+  nicknameLower: string,
+  isNew: boolean,
+) => ({
+  userId,
+  nickname,
+  nicknameLower,
+  ...(isNew ? { createdAt: serverTimestamp() } : {}),
+  updatedAt: serverTimestamp(),
+});
+
 export const createUserProfile = async (user: UserProfile) => {
   const userRef = doc(db, USERS_COLLECTION, user.id);
   const nicknameLower = user.nicknameLower ?? normalizeNickname(user.nickname);
-  await setDoc(
-    userRef,
-    {
-      ...user,
-      nicknameLower,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
+  const nicknameRef = publicNicknameDocRef(nicknameLower);
+  await runTransaction(db, async (tx) => {
+    const nicknameSnap = await tx.get(nicknameRef);
+    if (nicknameSnap.exists()) {
+      const existing = nicknameSnap.data() as { userId?: string };
+      if (existing.userId && existing.userId !== user.id) {
+        throw new Error("nickname-taken");
+      }
+    }
+    tx.set(
+      nicknameRef,
+      buildPublicNicknamePayload(
+        user.id,
+        user.nickname,
+        nicknameLower,
+        !nicknameSnap.exists(),
+      ),
+      { merge: true },
+    );
+    tx.set(
+      userRef,
+      {
+        ...user,
+        nicknameLower,
+        createdAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
 };
 
 export const getUserProfile = async (userId: string) => {
@@ -88,9 +131,62 @@ export const updateUserProfile = async (
 ) => {
   const userRef = doc(db, USERS_COLLECTION, userId);
   const sanitizedUpdates = { ...updates };
+  const hasNicknameUpdate = typeof updates.nickname === "string";
   if (typeof updates.nickname === "string") {
     sanitizedUpdates.nicknameLower = normalizeNickname(updates.nickname);
   }
+
+  if (hasNicknameUpdate) {
+    const nextNickname = updates.nickname?.trim() ?? "";
+    const nextNicknameLower = normalizeNickname(nextNickname);
+    await runTransaction(db, async (tx) => {
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists()) {
+        throw new Error("user-not-found");
+      }
+      const userData = userSnap.data() as UserProfile;
+      const currentNicknameLower =
+        userData.nicknameLower ?? normalizeNickname(userData.nickname ?? "");
+      const nextNicknameRef = publicNicknameDocRef(nextNicknameLower);
+      const nextNicknameSnap = await tx.get(nextNicknameRef);
+      if (nextNicknameSnap.exists()) {
+        const existing = nextNicknameSnap.data() as { userId?: string };
+        if (existing.userId && existing.userId !== userId) {
+          throw new Error("nickname-taken");
+        }
+      }
+      tx.set(
+        nextNicknameRef,
+        buildPublicNicknamePayload(
+          userId,
+          nextNickname,
+          nextNicknameLower,
+          !nextNicknameSnap.exists(),
+        ),
+        { merge: true },
+      );
+      if (currentNicknameLower && currentNicknameLower !== nextNicknameLower) {
+        const currentRef = publicNicknameDocRef(currentNicknameLower);
+        const currentSnap = await tx.get(currentRef);
+        if (currentSnap.exists()) {
+          const currentData = currentSnap.data() as { userId?: string };
+          if (currentData.userId === userId) {
+            tx.delete(currentRef);
+          }
+        }
+      }
+      tx.set(
+        userRef,
+        {
+          ...sanitizedUpdates,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    });
+    return;
+  }
+
   await setDoc(
     userRef,
     {
@@ -152,17 +248,29 @@ export const userEmailExists = async (email: string) => {
   return Boolean(profile);
 };
 
-const snapshotHasOtherUser = (
-  snapshot: Awaited<ReturnType<typeof getDocs>>,
-  excludeUserId?: string,
-) => snapshot.docs.some((docSnap) => !excludeUserId || docSnap.id !== excludeUserId);
-
 export const nicknameExists = async (
   nickname: string,
   excludeUserId?: string,
 ) => {
   const normalized = normalizeNickname(nickname);
   if (!normalized) return false;
+
+  const nicknameRef = publicNicknameDocRef(normalized);
+  const nicknameSnap = await getDoc(nicknameRef);
+  if (nicknameSnap.exists()) {
+    const data = nicknameSnap.data() as { userId?: string };
+    if (!excludeUserId) {
+      return true;
+    }
+    if (data.userId !== excludeUserId) {
+      return true;
+    }
+    return false;
+  }
+
+  if (!auth.currentUser) {
+    return false;
+  }
 
   const lowerQuery = query(
     usersCollectionRef,
@@ -185,6 +293,39 @@ export const nicknameExists = async (
   }
 
   return false;
+};
+
+export const ensurePublicNickname = async (profile: UserProfile) => {
+  const nicknameLower =
+    profile.nicknameLower ?? normalizeNickname(profile.nickname);
+  if (!nicknameLower) return;
+  const nicknameRef = publicNicknameDocRef(nicknameLower);
+  const nicknameSnap = await getDoc(nicknameRef);
+  if (!nicknameSnap.exists()) {
+    await setDoc(
+      nicknameRef,
+      buildPublicNicknamePayload(
+        profile.id,
+        profile.nickname,
+        nicknameLower,
+        true,
+      ),
+    );
+    return;
+  }
+  const existing = nicknameSnap.data() as { userId?: string };
+  if (existing.userId === profile.id) {
+    await setDoc(
+      nicknameRef,
+      buildPublicNicknamePayload(
+        profile.id,
+        profile.nickname,
+        nicknameLower,
+        false,
+      ),
+      { merge: true },
+    );
+  }
 };
 
 export const getAllUsers = async () => {

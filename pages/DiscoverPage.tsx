@@ -334,10 +334,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   const handleEscortEnter = () => {
     setEscortError(null);
-    if (!premiumUnlocked) {
-      setEscortError("Premium access required to enter the escort portal.");
-      return;
-    }
     setEscortLoading(true);
     setTimeout(() => {
       navigate("/escort");

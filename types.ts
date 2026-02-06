@@ -106,6 +106,51 @@ export interface PaymentRequest {
   decisionBy?: string;
 }
 
+export type VideoCallVisibility = "public" | "premium" | "private";
+
+export type VerificationStatus = "none" | "pending" | "verified";
+
+export interface EscortSocialLink {
+  id: string;
+  platform: string;
+  handle: string;
+  isPublic: boolean;
+}
+
+export interface EscortListing {
+  id: string;
+  ownerId: string;
+  ownerNickname: string;
+  ownerPhotoUrl: string;
+  ownerArea: string;
+  displayName: string;
+  age: string;
+  gender: string;
+  bio: string;
+  languages: string[];
+  offers: string[];
+  offerNotes?: string;
+  servicePricing: Record<string, string>;
+  mainService: string;
+  availability: string;
+  phone: string;
+  contactNote?: string;
+  publicPhotos: string[];
+  xPhotos: string[];
+  primaryLocation: string;
+  extraLocations: string[];
+  travelOk: boolean;
+  locationLat: number | null;
+  locationLng: number | null;
+  videoCallEnabled: boolean;
+  videoCallVisibility: VideoCallVisibility;
+  socials: EscortSocialLink[];
+  verificationStatus: VerificationStatus;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export const KENYAN_AREAS = [
   // Nairobi County
   "Nairobi - CBD",
