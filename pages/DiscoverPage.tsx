@@ -66,6 +66,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [rsvpSuccess, setRsvpSuccess] = useState<string | null>(null);
   const [rsvpError, setRsvpError] = useState<string | null>(null);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [installStep, setInstallStep] = useState<
+    "intro" | "choose" | "android" | "ios"
+  >("intro");
 
   useEffect(() => {
     let active = true;
@@ -106,9 +109,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     if (dismissed) return;
     const ua = navigator.userAgent || "";
     const isAndroid = /Android/i.test(ua);
-    const isHushlyApp = ua.includes("Hushly/1.0 Android");
-    if (isAndroid && !isHushlyApp) {
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+    const isSafari =
+      /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|Chrome/i.test(ua);
+    const isIOSBrowser = isIOS && isSafari;
+    const isHushlyApp = /Hushly\/1\.0/i.test(ua);
+    if ((isAndroid || isIOSBrowser) && !isHushlyApp) {
       setShowInstallPrompt(true);
+      setInstallStep("intro");
     }
   }, []);
 
@@ -312,6 +320,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   const handleInstallDismiss = () => {
     setShowInstallPrompt(false);
+    setInstallStep("intro");
     localStorage.setItem("hushly_install_dismissed", "1");
   };
 
@@ -473,32 +482,124 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 px-6">
           <div className="w-full max-w-md glass rounded-3xl border border-white/10 p-6 text-center space-y-5">
             <div className="w-16 h-16 mx-auto rounded-2xl bg-kipepeo-pink/15 border border-kipepeo-pink/30 flex items-center justify-center text-2xl">
-              ⬇
+              App
             </div>
-            <div>
-              <h2 className="text-xl font-black uppercase tracking-widest">
-                Install Hushly App
-              </h2>
-              <p className="text-sm text-gray-400 mt-2">
-                Get the full experience and faster access by installing the
-                Android app.
-              </p>
-            </div>
-            <div className="space-y-3">
-              <a
-                href="/assets/apk/apk.apk"
-                className="block w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
-                download
-              >
-                Install App
-              </a>
-              <button
-                onClick={handleInstallDismiss}
-                className="w-full py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
-              >
-                Not Now
-              </button>
-            </div>
+
+            {installStep === "intro" && (
+              <>
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-widest">
+                    Install Hushly App
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Get the full experience and faster access by installing the app.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setInstallStep("choose")}
+                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+                  >
+                    Install App
+                  </button>
+                  <button
+                    onClick={handleInstallDismiss}
+                    className="w-full py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                  >
+                    Not Now
+                  </button>
+                </div>
+              </>
+            )}
+
+            {installStep === "choose" && (
+              <>
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-widest">
+                    Choose Your Device
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Select Android or iOS to continue installation.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setInstallStep("android")}
+                    className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+                  >
+                    Android
+                  </button>
+                  <button
+                    onClick={() => setInstallStep("ios")}
+                    className="w-full py-3 rounded-full bg-white/5 text-gray-200 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                  >
+                    iOS
+                  </button>
+                  <button
+                    onClick={handleInstallDismiss}
+                    className="w-full py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                  >
+                    Not Now
+                  </button>
+                </div>
+              </>
+            )}
+
+            {installStep === "android" && (
+              <>
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-widest">
+                    Android Install
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Download the APK and install manually.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <a
+                    href="/assets/apk/apk.apk"
+                    className="block w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+                    download
+                  >
+                    Download APK
+                  </a>
+                  <button
+                    onClick={() => setInstallStep("choose")}
+                    className="w-full py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                  >
+                    Back
+                  </button>
+                </div>
+              </>
+            )}
+
+            {installStep === "ios" && (
+              <>
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-widest">
+                    iOS Install
+                  </h2>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Use the Safari share menu and tap Add to Home Screen.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-left text-xs text-gray-300">
+                    1. Open this site in Safari
+                    <br />
+                    2. Tap Share
+                    <br />
+                    3. Select Add to Home Screen
+                  </div>
+                  <button
+                    onClick={() => setInstallStep("choose")}
+                    className="w-full py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                  >
+                    Back
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
