@@ -509,7 +509,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               }}
               className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/5 text-gray-400 hover:text-white font-semibold rounded-xl uppercase tracking-widest text-xs transition-all"
             >
-              Exit to Safety
+              Exit
             </button>
             {escortError && (
               <p className="text-xs text-red-300 text-center">{escortError}</p>

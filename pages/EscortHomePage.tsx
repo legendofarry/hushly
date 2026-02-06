@@ -715,14 +715,14 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
       <header className="px-6 pt-6 pb-4 flex items-center justify-between border-b border-white/5 sticky top-0 z-20 backdrop-blur-sm bg-[#0b0508]/80">
         <div>
           <h1 className="text-2xl font-black uppercase tracking-widest text-red-100">
-            Escort Lounge
+            Lounge
           </h1>
         </div>
         <button
           onClick={() => setShowExitConfirm(true)}
           className="px-4 py-2 rounded-full border border-red-500/30 text-red-100 text-[10px] font-black uppercase tracking-widest hover:bg-red-500/10 active:scale-95 transition-transform"
         >
-          Exit Escort Portal
+          Exit Lounge
         </button>
       </header>
 
