@@ -2182,7 +2182,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-6">
             <div className="w-full max-w-md rounded-3xl border border-red-500/30 bg-[#14070c] p-6 space-y-4 text-center">
               <h3 className="text-base font-black uppercase tracking-widest text-red-100">
-                Leave Escort?
+                Leave Lounge?
               </h3>
               <p className="text-sm text-gray-400">Are you sure?</p>
               <div className="flex gap-3">
