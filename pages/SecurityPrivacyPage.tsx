@@ -573,6 +573,24 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
               />
             </section>
 
+            <section className="glass rounded-[2rem] p-6 border border-white/5 space-y-4">
+              <h2 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500">
+                Privacy Terms
+              </h2>
+              <p className="text-sm text-gray-300">
+                Protecting member privacy is mandatory. By using the app, you
+                agree to:
+              </p>
+              <ul className="text-xs text-gray-400 space-y-2">
+                <li>Never capture or share screenshots without consent.</li>
+                <li>Respect private content and keep chats confidential.</li>
+                <li>Report suspicious behavior or impersonation immediately.</li>
+              </ul>
+              <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                Violations may lead to account restrictions or removal.
+              </p>
+            </section>
+
             {(message || errorMessage) && (
               <div
                 className={`text-xs ${

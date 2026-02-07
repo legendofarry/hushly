@@ -204,6 +204,9 @@ const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isVerified, setIsVerified] = useState(false);
+  const [focusShieldActive, setFocusShieldActive] = useState(false);
+  const [screenshotShieldActive, setScreenshotShieldActive] = useState(false);
+  const [showPrivacyNotice, setShowPrivacyNotice] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -309,6 +312,113 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) {
+      setShowPrivacyNotice(false);
+      return;
+    }
+    const key = `privacy_notice_${user.id}`;
+    if (!sessionStorage.getItem(key)) {
+      setShowPrivacyNotice(true);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    let screenshotTimer: number | null = null;
+    const triggerScreenshotShield = () => {
+      setScreenshotShieldActive(true);
+      if (screenshotTimer) {
+        window.clearTimeout(screenshotTimer);
+      }
+      screenshotTimer = window.setTimeout(() => {
+        setScreenshotShieldActive(false);
+      }, 1500);
+    };
+    const setFocusShield = (active: boolean) => {
+      setFocusShieldActive(active);
+    };
+    const handleVisibility = () => {
+      setFocusShield(document.hidden);
+    };
+    const handleBlur = () => setFocusShield(true);
+    const handleFocus = () => setFocusShield(false);
+    const handleContextMenu = (event: Event) => {
+      event.preventDefault();
+    };
+    const handleCopy = (event: Event) => {
+      event.preventDefault();
+    };
+    const handleCut = (event: Event) => {
+      event.preventDefault();
+    };
+    const handlePaste = (event: Event) => {
+      event.preventDefault();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (event.key === "PrintScreen") {
+        triggerScreenshotShield();
+      }
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        ["c", "x", "v", "s", "p"].includes(key)
+      ) {
+        event.preventDefault();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("contextmenu", handleContextMenu, true);
+    document.addEventListener("copy", handleCopy, true);
+    document.addEventListener("cut", handleCut, true);
+    document.addEventListener("paste", handlePaste, true);
+    document.addEventListener("keydown", handleKeyDown, true);
+
+    const maybeAndroid = (window as any)?.HushlyAndroid?.setSecureFlag;
+    if (typeof maybeAndroid === "function") {
+      try {
+        maybeAndroid(true);
+      } catch (error) {
+        console.warn("Unable to enable Android secure flag.", error);
+      }
+    }
+    const maybeIOS = (window as any)?.webkit?.messageHandlers?.privacyShield;
+    if (maybeIOS?.postMessage) {
+      try {
+        maybeIOS.postMessage({ action: "enableScreenshotDetection" });
+      } catch (error) {
+        console.warn("Unable to enable iOS screenshot detection.", error);
+      }
+    }
+
+    (window as any).kipepeoScreenshotDetected = triggerScreenshotShield;
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("contextmenu", handleContextMenu, true);
+      document.removeEventListener("copy", handleCopy, true);
+      document.removeEventListener("cut", handleCut, true);
+      document.removeEventListener("paste", handlePaste, true);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      if (screenshotTimer) {
+        window.clearTimeout(screenshotTimer);
+      }
+      delete (window as any).kipepeoScreenshotDetected;
+    };
+  }, []);
+
+  const privacyShieldActive = focusShieldActive || screenshotShieldActive;
+  const dismissPrivacyNotice = () => {
+    if (user?.id) {
+      sessionStorage.setItem(`privacy_notice_${user.id}`, "1");
+    }
+    setShowPrivacyNotice(false);
+  };
+
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-kipepeo-dark">
@@ -319,13 +429,47 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      <div className="min-h-screen font-sans selection:bg-kipepeo-pink selection:text-white bg-kipepeo-dark">
-        <AppRoutes
-          user={user}
-          isVerified={isVerified}
-          setUser={setUser}
-          setIsVerified={setIsVerified}
-        />
+      <div className="relative min-h-screen font-sans selection:bg-kipepeo-pink selection:text-white bg-kipepeo-dark privacy-lock">
+        {privacyShieldActive && (
+          <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl">
+            <div className="rounded-2xl border border-white/10 bg-black/60 px-6 py-4 text-center text-xs uppercase tracking-[0.3em] text-white">
+              {focusShieldActive
+                ? "Privacy Shield Active"
+                : "Screenshots Are Blocked"}
+            </div>
+          </div>
+        )}
+
+        {showPrivacyNotice && user && (
+          <div className="fixed bottom-6 left-1/2 z-40 w-[90%] max-w-md -translate-x-1/2 rounded-3xl border border-white/10 bg-black/70 p-4 text-xs text-gray-200 shadow-xl">
+            <p className="font-semibold uppercase tracking-widest text-white">
+              Privacy Notice
+            </p>
+            <p className="mt-2 text-gray-300">
+              Screenshots and screen recordings are prohibited. Sharing private
+              content without consent may lead to account restrictions.
+            </p>
+            <button
+              onClick={dismissPrivacyNotice}
+              className="mt-3 rounded-full bg-kipepeo-pink px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white"
+            >
+              I Understand
+            </button>
+          </div>
+        )}
+
+        <div
+          className={`min-h-screen transition-all ${
+            privacyShieldActive ? "blur-2xl pointer-events-none" : ""
+          }`}
+        >
+          <AppRoutes
+            user={user}
+            isVerified={isVerified}
+            setUser={setUser}
+            setIsVerified={setIsVerified}
+          />
+        </div>
       </div>
     </HashRouter>
   );

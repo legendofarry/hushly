@@ -82,6 +82,20 @@
             display: none;
             /* Chrome, Safari */
         }
+
+        .privacy-lock,
+        .privacy-lock * {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .privacy-lock input,
+        .privacy-lock textarea,
+        .privacy-lock [contenteditable="true"] {
+            -webkit-user-select: text;
+            user-select: text;
+        }
     </style>
     <script type="importmap">
 {
