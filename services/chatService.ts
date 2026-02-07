@@ -121,10 +121,16 @@ export const sendMessage = async (payload: {
   conversationId: string;
   sender: UserProfile;
   recipientId: string;
-  text: string;
+  text?: string;
+  imageUrl?: string;
+  audioUrl?: string;
   recipientNickname?: string;
 }) => {
-  const { conversationId, sender, recipientId, text } = payload;
+  const { conversationId, sender, recipientId } = payload;
+  const text = payload.text?.trim() ?? "";
+  const imageUrl = payload.imageUrl?.trim() ?? "";
+  const audioUrl = payload.audioUrl?.trim() ?? "";
+  if (!text && !imageUrl && !audioUrl) return;
   const messagesRef = collection(
     db,
     CONVERSATIONS_COLLECTION,
@@ -133,13 +139,15 @@ export const sendMessage = async (payload: {
   );
   await addDoc(messagesRef, {
     senderId: sender.id,
-    text,
+    text: text || null,
+    imageUrl: imageUrl || null,
+    audioUrl: audioUrl || null,
     createdAt: serverTimestamp(),
   });
 
   const conversationRef = doc(conversationsRef, conversationId);
   await updateDoc(conversationRef, {
-    lastMessage: text,
+    lastMessage: text || (imageUrl ? "📷 Photo" : audioUrl ? "🎤 Voice note" : ""),
     lastMessageAt: serverTimestamp(),
     lastSenderId: sender.id,
   });

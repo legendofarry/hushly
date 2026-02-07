@@ -67,7 +67,9 @@ export interface WeekendPlan {
 export interface ChatMessage {
   id: string;
   senderId: string;
-  text: string;
+  text?: string;
+  imageUrl?: string;
+  audioUrl?: string;
   timestamp: number;
 }
 
