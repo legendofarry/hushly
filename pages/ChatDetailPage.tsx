@@ -10,7 +10,11 @@ import {
 import {
   listenToConversation,
   listenToMessages,
+  clearConversationForUser,
   markConversationRead,
+  setConversationMuted,
+  setConversationPinned,
+  setMessageReaction,
   sendMessage as sendChatMessage,
 } from "../services/chatService";
 import {
@@ -22,12 +26,18 @@ import {
   updateVideoCall,
   type VideoCallRecord,
 } from "../services/videoCallService";
-import { markNotificationsReadByConversation } from "../services/notificationService";
+import {
+  createNotification,
+  markNotificationsReadByConversation,
+} from "../services/notificationService";
+import { getUserProfileByEmail } from "../services/userService";
+import { OWNER_EMAIL } from "../services/paymentService";
 import {
   getIceBreakers,
   getSmartReplies,
   summarizeConversation,
 } from "../services/aiService";
+import { createBlock, listenToBlock } from "../services/blockService";
 import maskNeon from "../assets/masks/mask-neon.svg";
 import maskPixel from "../assets/masks/mask-pixel.svg";
 import maskHolo from "../assets/masks/mask-holo.svg";
@@ -52,6 +62,8 @@ const MASK_ASSETS: Record<MaskStyle, string> = {
   holo: maskHolo,
   noir: maskNoir,
 };
+
+const REACTION_OPTIONS = ["😍", "😂", "🔥", "😮", "👏", "❤️"];
 
 const FACE_LANDMARKER_WASM =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
@@ -88,6 +100,23 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const [callError, setCallError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [showOptions, setShowOptions] = useState(false);
+  const [reactionTargetId, setReactionTargetId] = useState<string | null>(null);
+  const [reactionError, setReactionError] = useState<string | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(
+    null,
+  );
+  const [isMuted, setIsMuted] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isBlockedByOther, setIsBlockedByOther] = useState(false);
+  const [menuMessage, setMenuMessage] = useState<string | null>(null);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [isReporting, setIsReporting] = useState(false);
+  const [isUpdatingChat, setIsUpdatingChat] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
   const [maskEnabled, setMaskEnabled] = useState(false);
   const [maskMode, setMaskMode] = useState<"mask" | "blur">("mask");
   const [maskStyle, setMaskStyle] = useState<MaskStyle>("visor");
@@ -110,6 +139,11 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+  const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const optionsRef = useRef<HTMLDivElement | null>(null);
+  const reactionMenuRef = useRef<HTMLDivElement | null>(null);
+  const reactionLongPressRef = useRef<number | null>(null);
+  const reactionTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -192,6 +226,15 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     });
   };
 
+  const getTimestampMs = (value: any) => {
+    if (!value) return 0;
+    if (typeof value?.toMillis === "function") return value.toMillis();
+    if (typeof value?.toDate === "function") return value.toDate().getTime();
+    if (typeof value === "number") return value;
+    if (value instanceof Date) return value.getTime();
+    return 0;
+  };
+
   const saveAudioDuration = (messageId: string, duration: number) => {
     if (!Number.isFinite(duration) || duration <= 0) return;
     setAudioDurations((prev) =>
@@ -207,8 +250,9 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const getVideoSender = () => {
     if (videoSenderRef.current) return videoSenderRef.current;
     const sender =
-      peerConnectionRef.current?.getSenders().find((s) => s.track?.kind === "video") ??
-      null;
+      peerConnectionRef.current
+        ?.getSenders()
+        .find((s) => s.track?.kind === "video") ?? null;
     videoSenderRef.current = sender;
     return sender;
   };
@@ -276,9 +320,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     }
 
     faceLandmarkerPromiseRef.current = (async () => {
-      const vision = await FilesetResolver.forVisionTasks(
-        FACE_LANDMARKER_WASM,
-      );
+      const vision = await FilesetResolver.forVisionTasks(FACE_LANDMARKER_WASM);
       const create = async (delegate: "GPU" | "CPU") =>
         FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
@@ -386,7 +428,8 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     }
 
     const width = video.videoWidth || rawVideoTrack.getSettings().width || 640;
-    const height = video.videoHeight || rawVideoTrack.getSettings().height || 480;
+    const height =
+      video.videoHeight || rawVideoTrack.getSettings().height || 480;
 
     const canvas = maskCanvasRef.current ?? document.createElement("canvas");
     canvas.width = width;
@@ -456,7 +499,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           facesRef.current = result.faceLandmarks ?? [];
           if (facesRef.current.length === 0) {
             maskMissCountRef.current += 1;
-            if (maskModeRef.current === "mask" && maskMissCountRef.current >= 8) {
+            if (
+              maskModeRef.current === "mask" &&
+              maskMissCountRef.current >= 8
+            ) {
               maskModeRef.current = "blur";
               setMaskMode("blur");
               setMaskNotice("Face not detected. Using blur.");
@@ -597,6 +643,12 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   }, [conversationId]);
 
   useEffect(() => {
+    if (!conversation || !user.id) return;
+    setIsMuted(Boolean(conversation.mutedBy?.[user.id]));
+    setIsPinned(Boolean(conversation.pinnedBy?.[user.id]));
+  }, [conversation, user.id]);
+
+  useEffect(() => {
     if (!conversationId) return;
     const unsubscribe = listenToMessages(conversationId, (items) => {
       setMessages(items);
@@ -638,7 +690,34 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     return otherParticipant?.nickname ?? "Call";
   }, [activeCall, incomingCall, otherParticipant?.nickname, user.id]);
 
+  const isChatBlocked = isBlocked || isBlockedByOther;
+  const blockNotice = isBlocked
+    ? "You blocked this user."
+    : isBlockedByOther
+      ? "You can’t message this user."
+      : "";
+
   const aiSuggestions = aiReplies.length > 0 ? aiReplies : aiIceBreakers;
+
+  const clearedAtMs = useMemo(
+    () => getTimestampMs(conversation?.clearedAt?.[user.id]),
+    [conversation, user.id],
+  );
+
+  const visibleMessages = useMemo(() => {
+    if (!clearedAtMs) return messages;
+    return messages.filter(
+      (message) => getTimestampMs(message.createdAt) >= clearedAtMs,
+    );
+  }, [messages, clearedAtMs]);
+
+  const searchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return [];
+    return visibleMessages
+      .filter((message) => message.text?.toLowerCase().includes(query))
+      .slice(0, 20);
+  }, [visibleMessages, searchQuery]);
 
   useEffect(() => {
     return () => {
@@ -667,6 +746,61 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     setAiIceBreakers([]);
     setAiSummary(summarizeConversation(messages));
   }, [messages, otherParticipant, aiTone]);
+
+  useEffect(() => {
+    if (!otherParticipant?.id) return;
+    const unsubscribeMe = listenToBlock(
+      user.id,
+      otherParticipant.id,
+      setIsBlocked,
+    );
+    const unsubscribeOther = listenToBlock(
+      otherParticipant.id,
+      user.id,
+      setIsBlockedByOther,
+    );
+    return () => {
+      unsubscribeMe();
+      unsubscribeOther();
+    };
+  }, [user.id, otherParticipant?.id]);
+
+  useEffect(() => {
+    if (!showOptions) return;
+    const handleOutside = (event: MouseEvent) => {
+      if (
+        optionsRef.current &&
+        !optionsRef.current.contains(event.target as Node)
+      ) {
+        setShowOptions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showOptions]);
+
+  useEffect(() => {
+    if (!reactionTargetId) return;
+    const handleOutside = (event: MouseEvent) => {
+      if (
+        reactionMenuRef.current &&
+        !reactionMenuRef.current.contains(event.target as Node)
+      ) {
+        setReactionTargetId(null);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setReactionTargetId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [reactionTargetId]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -737,8 +871,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     shouldUpdate = true,
     callIdOverride?: string | null,
   ) => {
-    const callId =
-      callIdOverride ?? activeCall?.id ?? incomingCall?.id ?? null;
+    const callId = callIdOverride ?? activeCall?.id ?? incomingCall?.id ?? null;
     clearCallListeners();
     resetPeerConnection();
     stopCallMedia();
@@ -759,6 +892,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   };
 
   const startVideoCall = async () => {
+    if (isChatBlocked) {
+      setCallError(blockNotice);
+      return;
+    }
     if (!conversationId || !otherParticipant) return;
     if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
       setCallError("Video calling is not supported in this browser.");
@@ -856,9 +993,11 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         callId,
         role: "callee",
         onCandidate: (candidate) => {
-          void pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => {
-            console.error(err);
-          });
+          void pc
+            .addIceCandidate(new RTCIceCandidate(candidate))
+            .catch((err) => {
+              console.error(err);
+            });
         },
       });
     } catch (error) {
@@ -951,9 +1090,11 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         callId: incomingCall.id,
         role: "caller",
         onCandidate: (candidate) => {
-          void pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => {
-            console.error(err);
-          });
+          void pc
+            .addIceCandidate(new RTCIceCandidate(candidate))
+            .catch((err) => {
+              console.error(err);
+            });
         },
       });
     } catch (error) {
@@ -968,8 +1109,232 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     await endVideoCall("declined", true);
   };
 
+  useEffect(() => {
+    if (!menuMessage && !menuError) return;
+    const timeout = window.setTimeout(() => {
+      setMenuMessage(null);
+      setMenuError(null);
+    }, 3000);
+    return () => window.clearTimeout(timeout);
+  }, [menuMessage, menuError]);
+
+  const handleToggleMute = async () => {
+    if (!conversationId) return;
+    setIsUpdatingChat(true);
+    setMenuError(null);
+    try {
+      const next = !isMuted;
+      await setConversationMuted(conversationId, user.id, next);
+      setIsMuted(next);
+      setMenuMessage(next ? "Notifications muted." : "Notifications unmuted.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Could not update notifications.");
+    } finally {
+      setIsUpdatingChat(false);
+      setShowOptions(false);
+    }
+  };
+
+  const handleTogglePin = async () => {
+    if (!conversationId) return;
+    setIsUpdatingChat(true);
+    setMenuError(null);
+    try {
+      const next = !isPinned;
+      await setConversationPinned(conversationId, user.id, next);
+      setIsPinned(next);
+      setMenuMessage(next ? "Conversation pinned." : "Conversation unpinned.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Could not update pin.");
+    } finally {
+      setIsUpdatingChat(false);
+      setShowOptions(false);
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (!conversationId) return;
+    setIsUpdatingChat(true);
+    setMenuError(null);
+    try {
+      await clearConversationForUser(conversationId, user.id);
+      setMenuMessage("Chat cleared.");
+      setSearchQuery("");
+      setShowSearch(false);
+    } catch (error) {
+      console.error(error);
+      setMenuError("Could not clear chat.");
+    } finally {
+      setIsUpdatingChat(false);
+      setShowOptions(false);
+    }
+  };
+
+  const handleReportUser = async () => {
+    if (!otherParticipant) return;
+    setIsReporting(true);
+    setMenuError(null);
+    try {
+      const owner = await getUserProfileByEmail(OWNER_EMAIL);
+      if (!owner) {
+        throw new Error("owner-not-found");
+      }
+      await createNotification({
+        toUserId: owner.id,
+        fromUserId: user.id,
+        fromNickname: user.nickname,
+        type: "system",
+        conversationId,
+        body: `${user.nickname} reported ${otherParticipant.nickname} in chat.`,
+      });
+      setMenuMessage("Report sent.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to send report.");
+    } finally {
+      setIsReporting(false);
+      setShowOptions(false);
+    }
+  };
+
+  const handleBlockUser = async () => {
+    if (!otherParticipant) return;
+    setIsUpdatingChat(true);
+    setMenuError(null);
+    try {
+      await createBlock(user.id, otherParticipant.id);
+      setIsBlocked(true);
+      if (callState !== "idle") {
+        await endVideoCall("ended", true);
+      }
+      setMenuMessage("User blocked.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to block user.");
+    } finally {
+      setIsUpdatingChat(false);
+      setShowOptions(false);
+    }
+  };
+
+  const handleSearchOpen = () => {
+    setShowOptions(false);
+    setShowSearch(true);
+  };
+
+  const handleSearchClose = () => {
+    setShowSearch(false);
+    setSearchQuery("");
+  };
+
+  const handleMessageContextMenu = (
+    event: React.MouseEvent,
+    message: any,
+  ) => {
+    event.preventDefault();
+    if (message.senderId === user.id || isChatBlocked) return;
+    setReactionError(null);
+    setReactionTargetId(message.id);
+  };
+
+  const handleMessageTouchStart = (
+    event: React.TouchEvent,
+    message: any,
+  ) => {
+    if (message.senderId === user.id || isChatBlocked) return;
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    reactionTouchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    if (reactionLongPressRef.current) {
+      window.clearTimeout(reactionLongPressRef.current);
+    }
+    reactionLongPressRef.current = window.setTimeout(() => {
+      reactionLongPressRef.current = null;
+      setReactionError(null);
+      setReactionTargetId(message.id);
+    }, 500);
+  };
+
+  const handleMessageTouchMove = (event: React.TouchEvent) => {
+    if (!reactionTouchStartRef.current || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const deltaX = Math.abs(touch.clientX - reactionTouchStartRef.current.x);
+    const deltaY = Math.abs(touch.clientY - reactionTouchStartRef.current.y);
+    if (deltaX > 10 || deltaY > 10) {
+      if (reactionLongPressRef.current) {
+        window.clearTimeout(reactionLongPressRef.current);
+        reactionLongPressRef.current = null;
+      }
+    }
+  };
+
+  const handleMessageTouchEnd = () => {
+    if (reactionLongPressRef.current) {
+      window.clearTimeout(reactionLongPressRef.current);
+      reactionLongPressRef.current = null;
+    }
+    reactionTouchStartRef.current = null;
+  };
+
+  const handleReactToMessage = async (message: any, emoji: string) => {
+    if (!conversationId) return;
+    if (message.senderId === user.id) return;
+    if (isChatBlocked) {
+      setReactionError(blockNotice);
+      return;
+    }
+    setReactionError(null);
+    try {
+      const currentEmoji = message?.reactions?.[user.id]?.emoji ?? null;
+      const nextEmoji = currentEmoji === emoji ? null : emoji;
+      await setMessageReaction({
+        conversationId,
+        messageId: message.id,
+        userId: user.id,
+        emoji: nextEmoji,
+      });
+      if (nextEmoji) {
+        const targetLabel = message.imageUrl
+          ? "photo"
+          : message.audioUrl
+            ? "voice note"
+            : "message";
+        await createNotification({
+          toUserId: message.senderId,
+          fromUserId: user.id,
+          fromNickname: user.nickname,
+          type: "system",
+          conversationId,
+          body: `${user.nickname} reacted ${nextEmoji} to your ${targetLabel}.`,
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      setReactionError("Unable to send reaction.");
+    } finally {
+      setReactionTargetId(null);
+    }
+  };
+
+  const scrollToMessage = (messageId: string) => {
+    const target = messageRefs.current[messageId];
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightMessageId(messageId);
+    window.setTimeout(() => {
+      setHighlightMessageId((prev) => (prev === messageId ? null : prev));
+    }, 1800);
+  };
+
   const sendMessage = async () => {
+    if (isChatBlocked) {
+      setChatError(blockNotice);
+      return;
+    }
     if (!inputValue.trim() || !conversationId || !otherParticipant) return;
+    setChatError(null);
     try {
       await sendChatMessage({
         conversationId,
@@ -981,10 +1346,16 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       setInputValue("");
     } catch (error) {
       console.error(error);
+      setChatError("Unable to send message.");
     }
   };
 
   const handleSelectPhoto = () => {
+    if (isChatBlocked) {
+      setChatError(blockNotice);
+      return;
+    }
+    setChatError(null);
     if (!fileInputRef.current) return;
     fileInputRef.current.value = "";
     fileInputRef.current.click();
@@ -994,7 +1365,12 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
+    if (isChatBlocked) {
+      setChatError(blockNotice);
+      return;
+    }
     if (!file || !conversationId || !otherParticipant) return;
+    setChatError(null);
     if (!file.type.startsWith("image/")) {
       setUploadError("Please select a valid image file.");
       return;
@@ -1062,6 +1438,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   };
 
   const sendPendingAudio = async () => {
+    if (isChatBlocked) {
+      setRecordingError(blockNotice);
+      return;
+    }
     if (!pendingAudio || isUploadingAudio) return;
     setIsUploadingAudio(true);
     try {
@@ -1103,6 +1483,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
 
   const startRecording = async () => {
     if (isRecording || isUploadingAudio) return;
+    if (isChatBlocked) {
+      setRecordingError(blockNotice);
+      return;
+    }
     if (pendingAudio) {
       clearPendingAudio();
     }
@@ -1377,9 +1761,6 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
               <h3 className="text-sm font-black tracking-wide text-white">
                 {otherParticipant?.nickname ?? "Chat"}
               </h3>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-kipepeo-pink">
-                Online Now
-              </span>
             </div>
           </div>
         </div>
@@ -1387,9 +1768,11 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowVideoConfirm(true)}
-            disabled={!otherParticipant || callState !== "idle"}
+            disabled={
+              !otherParticipant || callState !== "idle" || isChatBlocked
+            }
             className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-              !otherParticipant || callState !== "idle"
+              !otherParticipant || callState !== "idle" || isChatBlocked
                 ? "text-gray-600 cursor-not-allowed"
                 : "text-gray-500 hover:bg-white/5 hover:text-white"
             }`}
@@ -1411,29 +1794,160 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             </svg>
           </button>
 
-          {/* Option Menu Placeholder */}
-          <button className="optionBtn flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-white/5 hover:text-white">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="1" />
-            <circle cx="12" cy="5" r="1" />
-            <circle cx="12" cy="19" r="1" />
-          </svg>
-          </button>
+          <div ref={optionsRef} className="relative">
+            <button
+              onClick={() => setShowOptions((prev) => !prev)}
+              className="optionBtn flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-white/5 hover:text-white"
+              aria-label="Chat options"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="1" />
+                <circle cx="12" cy="5" r="1" />
+                <circle cx="12" cy="19" r="1" />
+              </svg>
+            </button>
+
+            {showOptions && (
+              <div className="absolute right-0 top-10 z-40 w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl">
+                <button
+                  onClick={handleToggleMute}
+                  disabled={isUpdatingChat}
+                  className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5 disabled:opacity-60"
+                >
+                  {isMuted ? "Unmute Chat" : "Mute Chat"}
+                  <span className="text-[9px] text-gray-500">
+                    Notifications
+                  </span>
+                </button>
+                <button
+                  onClick={handleTogglePin}
+                  disabled={isUpdatingChat}
+                  className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5 disabled:opacity-60"
+                >
+                  {isPinned ? "Unpin Chat" : "Pin Chat"}
+                  <span className="text-[9px] text-gray-500">Priority</span>
+                </button>
+                <button
+                  onClick={handleSearchOpen}
+                  className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5"
+                >
+                  Search in Chat
+                  <span className="text-[9px] text-gray-500">
+                    Find messages
+                  </span>
+                </button>
+                <button
+                  onClick={handleReportUser}
+                  disabled={isReporting}
+                  className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-amber-200 hover:bg-white/5 disabled:opacity-60"
+                >
+                  Report User
+                  <span className="text-[9px] text-amber-300">
+                    Notify admin
+                  </span>
+                </button>
+                <button
+                  onClick={handleBlockUser}
+                  disabled={isUpdatingChat || isBlocked}
+                  className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-red-300 hover:bg-white/5 disabled:opacity-60"
+                >
+                  {isBlocked ? "User Blocked" : "Block User"}
+                  <span className="text-[9px] text-red-300">Stop contact</span>
+                </button>
+                <button
+                  onClick={handleClearChat}
+                  disabled={isUpdatingChat}
+                  className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-300 hover:bg-white/5 disabled:opacity-60"
+                >
+                  Clear Chat
+                  <span className="text-[9px] text-gray-500">For you</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
       {callError && (
         <div className="px-4 pt-2 text-[10px] text-red-400">{callError}</div>
+      )}
+      {menuMessage && (
+        <div className="px-4 pt-2 text-[10px] text-emerald-300">
+          {menuMessage}
+        </div>
+      )}
+      {menuError && (
+        <div className="px-4 pt-2 text-[10px] text-red-400">{menuError}</div>
+      )}
+      {chatError && (
+        <div className="px-4 pt-2 text-[10px] text-red-400">{chatError}</div>
+      )}
+      {reactionError && (
+        <div className="px-4 pt-2 text-[10px] text-red-400">
+          {reactionError}
+        </div>
+      )}
+      {isChatBlocked && (
+        <div className="px-4 pt-2 text-[10px] text-amber-300">
+          {blockNotice}
+        </div>
+      )}
+
+      {showSearch && (
+        <div className="px-4 pt-3 pb-2">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-center gap-2">
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search in chat..."
+                className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
+              />
+              <button
+                onClick={handleSearchClose}
+                className="text-[10px] uppercase tracking-widest text-gray-400 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+            {searchQuery.trim() && (
+              <div className="mt-3 max-h-48 overflow-y-auto space-y-2">
+                {searchResults.length === 0 ? (
+                  <p className="text-[10px] text-gray-500">No matches found.</p>
+                ) : (
+                  searchResults.map((result) => (
+                    <button
+                      key={result.id}
+                      onClick={() => {
+                        scrollToMessage(result.id);
+                        setShowSearch(false);
+                      }}
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-xs text-gray-200 hover:bg-white/10"
+                    >
+                      <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-gray-400">
+                        <span>
+                          {result.senderId === user.id ? "You" : "Them"}
+                        </span>
+                        <span>{formatMessageTime(result.createdAt)}</span>
+                      </div>
+                      <p className="mt-1 line-clamp-2">{result.text}</p>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* --- AI Copilot --- */}
@@ -1443,16 +1957,6 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             <span className="text-[10px] uppercase tracking-widest text-gray-400">
               AI Copilot
             </span>
-            <select
-              value={aiTone}
-              onChange={(e) => setAiTone(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] uppercase tracking-widest text-gray-200"
-            >
-              <option value="warm">Warm</option>
-              <option value="direct">Direct</option>
-              <option value="playful">Playful</option>
-              <option value="confident">Confident</option>
-            </select>
           </div>
           {aiSummary && (
             <p className="text-xs text-gray-300 mb-3">{aiSummary}</p>
@@ -1476,7 +1980,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
       >
-        {messages.length === 0 ? (
+        {visibleMessages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center space-y-4 opacity-50">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/5 text-4xl grayscale">
               👋
@@ -1486,21 +1990,40 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             </p>
           </div>
         ) : (
-          messages.map((m, index) => {
+          visibleMessages.map((m, index) => {
             const isMe = m.senderId === user.id;
-            const isLast = index === messages.length - 1;
+            const isLast = index === visibleMessages.length - 1;
             const timeLabel = formatMessageTime(m.createdAt);
             const statusLabel =
-              isMe && isLast
-                ? timeLabel
-                  ? " • Delivered"
-                  : "Delivered"
-                : "";
+              isMe && isLast ? (timeLabel ? " • Delivered" : "Delivered") : "";
+            const reactionList = Object.values(m.reactions ?? {})
+              .map((reaction: any) => reaction?.emoji)
+              .filter(Boolean) as string[];
+            const reactionCounts = reactionList.reduce(
+              (acc: Record<string, number>, emoji) => {
+                acc[emoji] = (acc[emoji] ?? 0) + 1;
+                return acc;
+              },
+              {},
+            );
+            const reactionEntries = Object.entries(reactionCounts);
+            const userReaction = m.reactions?.[user.id]?.emoji ?? null;
 
             return (
               <div
                 key={m.id}
-                className={`flex w-full ${isMe ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300`}
+                ref={(el) => {
+                  messageRefs.current[m.id] = el;
+                }}
+                onContextMenu={(event) => handleMessageContextMenu(event, m)}
+                onTouchStart={(event) => handleMessageTouchStart(event, m)}
+                onTouchMove={handleMessageTouchMove}
+                onTouchEnd={handleMessageTouchEnd}
+                className={`flex w-full ${isMe ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300 ${
+                  highlightMessageId === m.id
+                    ? "ring-2 ring-kipepeo-pink/60 rounded-2xl"
+                    : ""
+                }`}
               >
                 <div
                   className={`flex max-w-[75%] flex-col ${isMe ? "items-end" : "items-start"}`}
@@ -1586,7 +2109,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
                           src={m.audioUrl}
                           preload="metadata"
                           onLoadedMetadata={(event) =>
-                            saveAudioDuration(m.id, event.currentTarget.duration)
+                            saveAudioDuration(
+                              m.id,
+                              event.currentTarget.duration,
+                            )
                           }
                           onEnded={() => setPlayingAudioId(null)}
                           className="hidden"
@@ -1595,6 +2121,48 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
                     )}
                     {m.text && <p className="whitespace-pre-wrap">{m.text}</p>}
                   </div>
+                  {reactionTargetId === m.id && !isMe && (
+                    <div
+                      ref={reactionMenuRef}
+                      className={`mt-2 flex flex-wrap items-center gap-2 rounded-full border border-white/10 bg-[#141414]/90 px-3 py-2 shadow-lg backdrop-blur ${
+                        isMe ? "self-end" : "self-start"
+                      }`}
+                    >
+                      {REACTION_OPTIONS.map((emoji) => (
+                        <button
+                          key={`${m.id}-reaction-${emoji}`}
+                          onClick={() => handleReactToMessage(m, emoji)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-base transition hover:bg-white/10"
+                          aria-label={`React ${emoji}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {reactionEntries.length > 0 && (
+                    <div
+                      className={`mt-2 flex flex-wrap gap-2 ${
+                        isMe ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      {reactionEntries.map(([emoji, count]) => (
+                        <span
+                          key={`${m.id}-reaction-${emoji}`}
+                          className={`inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-1 text-[11px] ${
+                            userReaction === emoji
+                              ? "bg-kipepeo-pink/20 text-kipepeo-pink"
+                              : "bg-white/5 text-gray-300"
+                          }`}
+                        >
+                          <span>{emoji}</span>
+                          {count > 1 && (
+                            <span className="text-[10px]">{count}</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {/* Timestamp / Status (Visual Polish) */}
                   <span className="mt-1 text-[9px] font-medium text-gray-600">
                     {timeLabel}
@@ -1686,9 +2254,9 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
 
             <button
               onClick={sendPendingAudio}
-              disabled={isUploadingAudio}
+              disabled={isUploadingAudio || isChatBlocked}
               className={`flex h-9 w-9 items-center justify-center rounded-full shadow-lg transition-all active:scale-95 ${
-                isUploadingAudio
+                isUploadingAudio || isChatBlocked
                   ? "bg-white/5 text-gray-500 cursor-not-allowed"
                   : "bg-gradient-to-r from-kipepeo-pink to-purple-600 text-white hover:shadow-kipepeo-pink/25"
               }`}
@@ -1731,10 +2299,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           {/* Attachment Button (Visual) */}
           <button
             onClick={handleSelectPhoto}
-            disabled={isUploadingImage}
+            disabled={isUploadingImage || isChatBlocked}
             aria-label="Attach photo"
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
-              isUploadingImage
+              isUploadingImage || isChatBlocked
                 ? "text-gray-500 cursor-not-allowed"
                 : "text-gray-400 hover:bg-white/5 hover:text-white"
             }`}
@@ -1761,10 +2329,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           {/* Voice Note Button */}
           <button
             onClick={isRecording ? stopRecording : startRecording}
-            disabled={isUploadingAudio}
+            disabled={isUploadingAudio || isChatBlocked}
             aria-label="Record voice note"
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors ${
-              isUploadingAudio
+              isUploadingAudio || isChatBlocked
                 ? "text-gray-500 cursor-not-allowed"
                 : isRecording
                   ? "text-red-300 bg-red-500/10"
@@ -1805,17 +2373,23 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           <input
             type="text"
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => {
+              setInputValue(e.target.value);
+              if (chatError) setChatError(null);
+            }}
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-            placeholder="Type your vibe..."
-            className="max-h-32 min-h-[44px] flex-1 bg-transparent py-3 text-sm text-white placeholder-gray-500 focus:outline-none"
+            placeholder={
+              isChatBlocked ? "Messaging disabled" : "Type your vibe..."
+            }
+            disabled={isChatBlocked}
+            className="max-h-32 min-h-[44px] flex-1 bg-transparent py-3 text-sm text-white placeholder-gray-500 focus:outline-none disabled:opacity-60"
           />
 
           <button
             onClick={sendMessage}
-            disabled={!inputValue.trim()}
+            disabled={!inputValue.trim() || isChatBlocked}
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-lg transition-all active:scale-95 ${
-              inputValue.trim()
+              inputValue.trim() && !isChatBlocked
                 ? "bg-gradient-to-r from-kipepeo-pink to-purple-600 text-white hover:shadow-kipepeo-pink/25"
                 : "bg-white/5 text-gray-500 cursor-not-allowed"
             }`}

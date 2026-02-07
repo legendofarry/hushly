@@ -68,7 +68,16 @@ service cloud.firestore {
         allow create: if signedIn()
           && request.resource.data.senderId == request.auth.uid
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.members;
-        allow update, delete: if false;
+        allow update: if signedIn()
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.members
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(["reactions"])
+          && request.resource.data.reactions is map
+          && (
+            (!("reactions" in resource.data)
+              && request.resource.data.reactions.keys().hasOnly([request.auth.uid]))
+            || request.resource.data.reactions.diff(resource.data.reactions).changedKeys().hasOnly([request.auth.uid])
+          );
+        allow delete: if false;
       }
     }
 
@@ -101,6 +110,17 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/video_calls/$(callId)).data.calleeId == request.auth.uid;
         allow update, delete: if false;
       }
+    }
+
+    match /blocks/{blockId} {
+      allow read: if signedIn()
+        && (resource.data.fromUserId == request.auth.uid
+          || resource.data.toUserId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.fromUserId == request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn()
+        && resource.data.fromUserId == request.auth.uid;
     }
 
     match /likes/{likeId} {

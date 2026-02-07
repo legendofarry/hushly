@@ -1,7 +1,9 @@
 import {
   addDoc,
   collection,
+  deleteField,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -117,6 +119,76 @@ export const listenToMessages = (
   });
 };
 
+export const setConversationMuted = async (
+  conversationId: string,
+  userId: string,
+  muted: boolean,
+) => {
+  const conversationRef = doc(conversationsRef, conversationId);
+  await updateDoc(conversationRef, {
+    [`mutedBy.${userId}`]: muted,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const setConversationPinned = async (
+  conversationId: string,
+  userId: string,
+  pinned: boolean,
+) => {
+  const conversationRef = doc(conversationsRef, conversationId);
+  await updateDoc(conversationRef, {
+    [`pinnedBy.${userId}`]: pinned,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const setConversationArchived = async (
+  conversationId: string,
+  userId: string,
+  archived: boolean,
+) => {
+  const conversationRef = doc(conversationsRef, conversationId);
+  await updateDoc(conversationRef, {
+    [`archivedBy.${userId}`]: archived,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const setConversationDeleted = async (
+  conversationId: string,
+  userId: string,
+) => {
+  const conversationRef = doc(conversationsRef, conversationId);
+  await updateDoc(conversationRef, {
+    [`deletedAt.${userId}`]: serverTimestamp(),
+    [`archivedBy.${userId}`]: false,
+    [`pinnedBy.${userId}`]: false,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const markConversationUnread = async (
+  conversationId: string,
+  userId: string,
+) => {
+  const conversationRef = doc(conversationsRef, conversationId);
+  await updateDoc(conversationRef, {
+    [`lastReadAt.${userId}`]: 0,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const clearConversationForUser = async (
+  conversationId: string,
+  userId: string,
+) => {
+  const conversationRef = doc(conversationsRef, conversationId);
+  await updateDoc(conversationRef, {
+    [`clearedAt.${userId}`]: serverTimestamp(),
+  });
+};
+
 export const sendMessage = async (payload: {
   conversationId: string;
   sender: UserProfile;
@@ -152,10 +224,50 @@ export const sendMessage = async (payload: {
     lastSenderId: sender.id,
   });
 
-  await createMessageNotification({
-    toUserId: recipientId,
-    fromUserId: sender.id,
-    fromNickname: sender.nickname,
-    conversationId,
-  });
+  let isMuted = false;
+  try {
+    const conversationSnap = await getDoc(conversationRef);
+    if (conversationSnap.exists()) {
+      const mutedBy = conversationSnap.data()?.mutedBy ?? {};
+      isMuted = Boolean(mutedBy?.[recipientId]);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  if (!isMuted) {
+    await createMessageNotification({
+      toUserId: recipientId,
+      fromUserId: sender.id,
+      fromNickname: sender.nickname,
+      conversationId,
+    });
+  }
+};
+
+export const setMessageReaction = async (payload: {
+  conversationId: string;
+  messageId: string;
+  userId: string;
+  emoji: string | null;
+}) => {
+  const messageRef = doc(
+    db,
+    CONVERSATIONS_COLLECTION,
+    payload.conversationId,
+    "messages",
+    payload.messageId,
+  );
+  if (payload.emoji) {
+    await updateDoc(messageRef, {
+      [`reactions.${payload.userId}`]: {
+        emoji: payload.emoji,
+        reactedAt: serverTimestamp(),
+      },
+    });
+  } else {
+    await updateDoc(messageRef, {
+      [`reactions.${payload.userId}`]: deleteField(),
+    });
+  }
 };

@@ -1,8 +1,16 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AppNotification, UserProfile } from "../types";
 import AppImage from "../components/AppImage";
-import { listenToConversations } from "../services/chatService";
+import {
+  clearConversationForUser,
+  listenToConversations,
+  markConversationUnread,
+  setConversationArchived,
+  setConversationDeleted,
+  setConversationMuted,
+  setConversationPinned,
+} from "../services/chatService";
 import {
   listenToNotifications,
   markNotificationsRead,
@@ -18,6 +26,19 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [menuMessage, setMenuMessage] = useState<string | null>(null);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    conversation: any;
+    x: number;
+    y: number;
+  } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const longPressTimeoutRef = useRef<number | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = listenToConversations(user.id, (items) => {
@@ -34,18 +55,249 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     return () => unsubscribe();
   }, [user.id]);
 
+  useEffect(() => {
+    if (!menuMessage && !menuError) return;
+    const timeout = window.setTimeout(() => {
+      setMenuMessage(null);
+      setMenuError(null);
+    }, 2800);
+    return () => window.clearTimeout(timeout);
+  }, [menuMessage, menuError]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        closeContextMenu();
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeContextMenu();
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [contextMenu]);
+
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
+      const aPinned = Boolean(a?.pinnedBy?.[user.id]);
+      const bPinned = Boolean(b?.pinnedBy?.[user.id]);
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
       const aTime = a?.lastMessageAt?.toMillis?.() ?? 0;
       const bTime = b?.lastMessageAt?.toMillis?.() ?? 0;
       return bTime - aTime;
     });
-  }, [conversations]);
+  }, [conversations, user.id]);
+
+  const activeConversations = useMemo(() => {
+    return sortedConversations.filter((conversation) => {
+      const isDeleted = Boolean(conversation?.deletedAt?.[user.id]);
+      const isArchived = Boolean(conversation?.archivedBy?.[user.id]);
+      return !isDeleted && !isArchived;
+    });
+  }, [sortedConversations, user.id]);
+
+  const archivedConversations = useMemo(() => {
+    return sortedConversations.filter((conversation) => {
+      const isDeleted = Boolean(conversation?.deletedAt?.[user.id]);
+      const isArchived = Boolean(conversation?.archivedBy?.[user.id]);
+      return !isDeleted && isArchived;
+    });
+  }, [sortedConversations, user.id]);
+
+  const visibleConversations = showArchived
+    ? archivedConversations
+    : activeConversations;
 
   const unreadNotifications = useMemo(
     () => notifications.filter((notification) => !notification.read),
     [notifications],
   );
+
+  const clampMenuPosition = (x: number, y: number) => {
+    const menuWidth = 240;
+    const menuHeight = 300;
+    const padding = 16;
+    const maxX = window.innerWidth - menuWidth - padding;
+    const maxY = window.innerHeight - menuHeight - padding;
+    return {
+      x: Math.max(padding, Math.min(x, maxX)),
+      y: Math.max(padding, Math.min(y, maxY)),
+    };
+  };
+
+  const openContextMenu = (conversation: any, x: number, y: number) => {
+    const position = clampMenuPosition(x, y);
+    setContextMenu({ conversation, ...position });
+  };
+
+  const closeContextMenu = () => {
+    suppressClickRef.current = false;
+    setContextMenu(null);
+  };
+
+  const handleConversationClick = (conversation: any) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    navigate(`/chats/${conversation.id}`);
+  };
+
+  const handleConversationContextMenu = (
+    event: React.MouseEvent,
+    conversation: any,
+  ) => {
+    event.preventDefault();
+    openContextMenu(conversation, event.clientX, event.clientY);
+  };
+
+  const handleTouchStart = (
+    event: React.TouchEvent,
+    conversation: any,
+  ) => {
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    suppressClickRef.current = false;
+    if (longPressTimeoutRef.current) {
+      window.clearTimeout(longPressTimeoutRef.current);
+    }
+    longPressTimeoutRef.current = window.setTimeout(() => {
+      suppressClickRef.current = true;
+      longPressTimeoutRef.current = null;
+      openContextMenu(conversation, touch.clientX, touch.clientY);
+    }, 550);
+  };
+
+  const handleTouchMove = (event: React.TouchEvent) => {
+    if (!touchStartRef.current || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const deltaX = Math.abs(touch.clientX - touchStartRef.current.x);
+    const deltaY = Math.abs(touch.clientY - touchStartRef.current.y);
+    if (deltaX > 10 || deltaY > 10) {
+      if (longPressTimeoutRef.current) {
+        window.clearTimeout(longPressTimeoutRef.current);
+        longPressTimeoutRef.current = null;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimeoutRef.current) {
+      window.clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    touchStartRef.current = null;
+  };
+
+  const handleToggleArchive = async () => {
+    if (!contextMenu?.conversation) return;
+    setIsUpdating(true);
+    setMenuError(null);
+    try {
+      const archived = Boolean(
+        contextMenu.conversation?.archivedBy?.[user.id],
+      );
+      await setConversationArchived(
+        contextMenu.conversation.id,
+        user.id,
+        !archived,
+      );
+      setMenuMessage(archived ? "Chat unarchived." : "Chat archived.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to archive this chat.");
+    } finally {
+      setIsUpdating(false);
+      closeContextMenu();
+    }
+  };
+
+  const handleTogglePin = async () => {
+    if (!contextMenu?.conversation) return;
+    setIsUpdating(true);
+    setMenuError(null);
+    try {
+      const pinned = Boolean(contextMenu.conversation?.pinnedBy?.[user.id]);
+      await setConversationPinned(
+        contextMenu.conversation.id,
+        user.id,
+        !pinned,
+      );
+      setMenuMessage(pinned ? "Chat unpinned." : "Chat pinned.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to update pin.");
+    } finally {
+      setIsUpdating(false);
+      closeContextMenu();
+    }
+  };
+
+  const handleToggleMute = async () => {
+    if (!contextMenu?.conversation) return;
+    setIsUpdating(true);
+    setMenuError(null);
+    try {
+      const muted = Boolean(contextMenu.conversation?.mutedBy?.[user.id]);
+      await setConversationMuted(
+        contextMenu.conversation.id,
+        user.id,
+        !muted,
+      );
+      setMenuMessage(muted ? "Notifications unmuted." : "Chat muted.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to update notifications.");
+    } finally {
+      setIsUpdating(false);
+      closeContextMenu();
+    }
+  };
+
+  const handleMarkUnread = async () => {
+    if (!contextMenu?.conversation) return;
+    setIsUpdating(true);
+    setMenuError(null);
+    try {
+      await markConversationUnread(contextMenu.conversation.id, user.id);
+      setMenuMessage("Marked as unread.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to mark unread.");
+    } finally {
+      setIsUpdating(false);
+      closeContextMenu();
+    }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!contextMenu?.conversation) return;
+    const confirmDelete = window.confirm(
+      "Delete this chat for you? This will hide it and clear your view.",
+    );
+    if (!confirmDelete) return;
+    setIsUpdating(true);
+    setMenuError(null);
+    try {
+      await clearConversationForUser(contextMenu.conversation.id, user.id);
+      await setConversationDeleted(contextMenu.conversation.id, user.id);
+      setMenuMessage("Chat deleted.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to delete chat.");
+    } finally {
+      setIsUpdating(false);
+      closeContextMenu();
+    }
+  };
 
   const handleToggleNotifications = () => {
     const nextState = !showNotifications;
@@ -257,11 +509,47 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
       {/* Main Conversation List */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 no-scrollbar">
         <div className="mx-auto max-w-2xl space-y-4">
-          <div className="flex items-end justify-between px-2 pb-2">
-            <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">
-              Recent Chats
-            </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-2 pb-2">
+            <div>
+              <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">
+                {showArchived ? "Archived Chats" : "Recent Chats"}
+              </h2>
+              <p className="mt-1 text-[10px] uppercase tracking-widest text-gray-600">
+                Hold or right click for options
+              </p>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-white/5 bg-white/[0.03] p-1">
+              <button
+                onClick={() => setShowArchived(false)}
+                className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest transition ${
+                  showArchived
+                    ? "text-gray-500 hover:text-gray-300"
+                    : "bg-white text-black"
+                }`}
+              >
+                Active
+              </button>
+              <button
+                onClick={() => setShowArchived(true)}
+                className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest transition ${
+                  showArchived
+                    ? "bg-white text-black"
+                    : "text-gray-500 hover:text-gray-300"
+                }`}
+              >
+                Archived
+              </button>
+            </div>
           </div>
+
+          {menuMessage && (
+            <div className="px-2 text-[10px] text-emerald-300">
+              {menuMessage}
+            </div>
+          )}
+          {menuError && (
+            <div className="px-2 text-[10px] text-red-400">{menuError}</div>
+          )}
 
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 opacity-50">
@@ -270,20 +558,40 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                 Syncing...
               </p>
             </div>
-          ) : sortedConversations.length > 0 ? (
+          ) : visibleConversations.length > 0 ? (
             <div className="space-y-3">
-              {sortedConversations.map((conversation) => {
+              {visibleConversations.map((conversation) => {
                 const members: string[] = conversation.members ?? [];
                 const otherId = members.find((id) => id !== user.id);
                 const profile =
                   conversation.memberProfiles?.[otherId ?? ""] ?? {};
                 const isUnread = isConversationUnread(conversation);
+                const isPinned = Boolean(conversation?.pinnedBy?.[user.id]);
+                const isMuted = Boolean(conversation?.mutedBy?.[user.id]);
+                const isArchived = Boolean(
+                  conversation?.archivedBy?.[user.id],
+                );
 
                 return (
-                  <Link
-                    to={`/chats/${conversation.id}`}
+                  <div
                     key={conversation.id}
-                    className={`group relative flex items-center gap-4 rounded-2xl border p-4 transition-all duration-300 hover:scale-[1.01] hover:bg-white/5 active:scale-95 ${
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleConversationClick(conversation)}
+                    onContextMenu={(event) =>
+                      handleConversationContextMenu(event, conversation)
+                    }
+                    onTouchStart={(event) =>
+                      handleTouchStart(event, conversation)
+                    }
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        handleConversationClick(conversation);
+                      }
+                    }}
+                    className={`group relative flex items-center gap-4 rounded-2xl border p-4 text-left transition-all duration-300 hover:scale-[1.01] hover:bg-white/5 active:scale-95 focus:outline-none focus:ring-2 focus:ring-kipepeo-pink/40 ${
                       isUnread
                         ? "border-kipepeo-pink/30 bg-gradient-to-r from-kipepeo-pink/10 to-transparent shadow-[0_0_20px_-10px_rgba(236,72,153,0.3)]"
                         : "border-white/5 bg-white/[0.02]"
@@ -308,15 +616,27 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                     {/* Text Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-baseline mb-1">
-                        <h3
-                          className={`truncate text-base font-black tracking-tight ${
-                            isUnread
-                              ? "text-white"
-                              : "text-gray-300 group-hover:text-white"
-                          }`}
-                        >
-                          {profile.nickname ?? "Unknown"}
-                        </h3>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <h3
+                            className={`truncate text-base font-black tracking-tight ${
+                              isUnread
+                                ? "text-white"
+                                : "text-gray-300 group-hover:text-white"
+                            }`}
+                          >
+                            {profile.nickname ?? "Unknown"}
+                          </h3>
+                          {isPinned && (
+                            <span className="text-[9px] uppercase tracking-widest text-kipepeo-pink">
+                              Pinned
+                            </span>
+                          )}
+                          {isArchived && (
+                            <span className="text-[9px] uppercase tracking-widest text-gray-500">
+                              Archived
+                            </span>
+                          )}
+                        </div>
                         <span className="ml-2 shrink-0 text-[10px] font-bold uppercase tracking-widest text-gray-600">
                           {formatTime(conversation.lastMessageAt)}
                         </span>
@@ -330,6 +650,11 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                       >
                         {conversation.lastMessage ?? "Start the conversation"}
                       </p>
+                      {isMuted && (
+                        <span className="mt-1 inline-flex items-center gap-1 text-[9px] uppercase tracking-widest text-gray-600">
+                          Muted
+                        </span>
+                      )}
                     </div>
 
                     {/* Right Arrow (Chevron) */}
@@ -349,29 +674,109 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                         <path d="M9 18l6-6-6-6" />
                       </svg>
                     </div>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-24 text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/5 grayscale">
-                <span className="text-3xl">👻</span>
+                <span className="text-3xl">
+                  {showArchived ? "🗂️" : "👻"}
+                </span>
               </div>
-              <h3 className="text-lg font-black text-gray-300">No chats yet</h3>
+              <h3 className="text-lg font-black text-gray-300">
+                {showArchived ? "No archived chats" : "No chats yet"}
+              </h3>
               <p className="max-w-[200px] text-xs text-gray-600 mt-1">
-                Explore the discover feed to find someone to vibe with.
+                {showArchived
+                  ? "Archived chats will show up here."
+                  : "Explore the discover feed to find someone to vibe with."}
               </p>
-              <Link
-                to="/discover"
-                className="mt-6 rounded-xl bg-white px-6 py-3 text-xs font-black uppercase tracking-widest text-black transition-transform hover:scale-105 active:scale-95"
-              >
-                Start Exploring
-              </Link>
+              {!showArchived && (
+                <Link
+                  to="/discover"
+                  className="mt-6 rounded-xl bg-white px-6 py-3 text-xs font-black uppercase tracking-widest text-black transition-transform hover:scale-105 active:scale-95"
+                >
+                  Start Exploring
+                </Link>
+              )}
             </div>
           )}
         </div>
       </div>
+
+      {contextMenu && (
+        <div className="fixed inset-0 z-50" onClick={closeContextMenu}>
+          <div
+            ref={menuRef}
+            onClick={(event) => event.stopPropagation()}
+            className="absolute w-60 overflow-hidden rounded-2xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+          >
+            <div className="border-b border-white/5 px-4 py-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-300">
+                Chat Options
+              </p>
+              <p className="mt-1 text-[10px] text-gray-500">
+                {contextMenu.conversation?.memberProfiles?.[
+                  (contextMenu.conversation.members ?? []).find(
+                    (id: string) => id !== user.id,
+                  ) ?? ""
+                ]?.nickname ?? "Conversation"}
+              </p>
+            </div>
+            <div className="py-1">
+              <button
+                onClick={handleToggleMute}
+                disabled={isUpdating}
+                className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5 disabled:opacity-60"
+              >
+                {contextMenu.conversation?.mutedBy?.[user.id]
+                  ? "Unmute Chat"
+                  : "Mute Chat"}
+                <span className="text-[9px] text-gray-500">Alerts</span>
+              </button>
+              <button
+                onClick={handleTogglePin}
+                disabled={isUpdating}
+                className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5 disabled:opacity-60"
+              >
+                {contextMenu.conversation?.pinnedBy?.[user.id]
+                  ? "Unpin Chat"
+                  : "Pin Chat"}
+                <span className="text-[9px] text-gray-500">Priority</span>
+              </button>
+              <button
+                onClick={handleToggleArchive}
+                disabled={isUpdating}
+                className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5 disabled:opacity-60"
+              >
+                {contextMenu.conversation?.archivedBy?.[user.id]
+                  ? "Unarchive"
+                  : "Archive"}
+                <span className="text-[9px] text-gray-500">Hide</span>
+              </button>
+              <button
+                onClick={handleMarkUnread}
+                disabled={isUpdating}
+                className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5 disabled:opacity-60"
+              >
+                Mark Unread
+                <span className="text-[9px] text-gray-500">Reminder</span>
+              </button>
+              <button
+                onClick={handleDeleteConversation}
+                disabled={isUpdating}
+                className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-red-300 hover:bg-white/5 disabled:opacity-60"
+              >
+                Delete Chat
+                <span className="text-[9px] text-red-300">For you</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

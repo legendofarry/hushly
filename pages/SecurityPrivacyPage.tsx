@@ -258,9 +258,7 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
   }) => (
     <div className="flex items-center justify-between p-4 glass rounded-2xl border border-white/5">
       <div>
-        <p className="text-xs font-black uppercase tracking-widest">
-          {label}
-        </p>
+        <p className="text-xs font-black uppercase tracking-widest">{label}</p>
         {description && (
           <p className="text-xs text-gray-500 mt-1">{description}</p>
         )}
@@ -269,7 +267,9 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
         onClick={onToggle}
         disabled={disabled}
         className={`w-12 h-6 rounded-full border transition-colors ${
-          enabled ? "bg-kipepeo-pink/80 border-kipepeo-pink" : "bg-white/5 border-white/10"
+          enabled
+            ? "bg-kipepeo-pink/80 border-kipepeo-pink"
+            : "bg-white/5 border-white/10"
         } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
       >
         <span
@@ -285,8 +285,25 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
     <div className="min-h-screen bg-kipepeo-dark text-white font-sans flex flex-col">
       <header className="p-6 flex justify-between items-center border-b border-white/5 bg-kipepeo-dark sticky top-0 z-20">
         <div className="flex items-center space-x-4">
-          <Link to="/profile" className="text-2xl active:scale-90 transition-transform">
-            â†
+          <Link
+            to="/profile"
+            className="group flex h-10 w-10 items-center justify-center rounded-full bg-white/5 transition-all hover:bg-white/10 active:scale-90"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-gray-400 group-hover:text-white"
+            >
+              <path d="M19 12H5" />
+              <path d="M12 19l-7-7 7-7" />
+            </svg>
           </Link>
           <h1 className="text-xl font-black uppercase tracking-widest">
             Security & Privacy
@@ -584,7 +601,9 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
               <ul className="text-xs text-gray-400 space-y-2">
                 <li>Never capture or share screenshots without consent.</li>
                 <li>Respect private content and keep chats confidential.</li>
-                <li>Report suspicious behavior or impersonation immediately.</li>
+                <li>
+                  Report suspicious behavior or impersonation immediately.
+                </li>
               </ul>
               <p className="text-[10px] uppercase tracking-widest text-gray-500">
                 Violations may lead to account restrictions or removal.
@@ -608,4 +627,3 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
 };
 
 export default SecurityPrivacyPage;
-

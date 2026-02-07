@@ -28,7 +28,9 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
   const [intents, setIntents] = useState<IntentType[]>(user.intents);
   const [photoUrl, setPhotoUrl] = useState(user.photoUrl);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [photoAiReport, setPhotoAiReport] = useState<PhotoAiReport | null>(null);
+  const [photoAiReport, setPhotoAiReport] = useState<PhotoAiReport | null>(
+    null,
+  );
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -55,7 +57,8 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
 
   const validateNickname = (value: string) => {
     if (!value.trim()) return "Nickname is required.";
-    if (value.trim().length < 3) return "Nickname must be at least 3 characters.";
+    if (value.trim().length < 3)
+      return "Nickname must be at least 3 characters.";
     return null;
   };
 
@@ -168,8 +171,25 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
     <div className="min-h-screen bg-kipepeo-dark text-white font-sans flex flex-col">
       <header className="p-6 flex justify-between items-center border-b border-white/5 bg-kipepeo-dark sticky top-0 z-20">
         <div className="flex items-center space-x-4">
-          <Link to="/profile" className="text-2xl active:scale-90 transition-transform">
-            â†
+          <Link
+            to="/profile"
+            className="group flex h-10 w-10 items-center justify-center rounded-full bg-white/5 transition-all hover:bg-white/10 active:scale-90"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-gray-400 group-hover:text-white"
+            >
+              <path d="M19 12H5" />
+              <path d="M12 19l-7-7 7-7" />
+            </svg>
           </Link>
           <h1 className="text-xl font-black uppercase tracking-widest">
             Personal Information
@@ -430,4 +450,3 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
 };
 
 export default PersonalInfoPage;
-
