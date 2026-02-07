@@ -937,7 +937,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
             <button
               onClick={() => setView("portal")}
-              className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors active:scale-95"
+              className="hidden w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors active:scale-95"
             >
               <span className="text-lg filter drop-shadow-[0_0_5px_rgba(220,38,38,0.5)]">
                 <svg

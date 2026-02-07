@@ -12,6 +12,15 @@ import {
   markConversationRead,
   sendMessage as sendChatMessage,
 } from "../services/chatService";
+import {
+  addVideoCallCandidate,
+  createVideoCall,
+  listenToIncomingVideoCalls,
+  listenToVideoCall,
+  listenToVideoCallCandidates,
+  updateVideoCall,
+  type VideoCallRecord,
+} from "../services/videoCallService";
 import { markNotificationsReadByConversation } from "../services/notificationService";
 import {
   getIceBreakers,
@@ -22,6 +31,13 @@ import {
 interface Props {
   user: UserProfile;
 }
+
+const VIDEO_CALL_ICE_SERVERS: RTCConfiguration = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
 
 const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const { id: conversationId } = useParams();
@@ -35,6 +51,21 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [recordingError, setRecordingError] = useState<string | null>(null);
+  const [showVideoConfirm, setShowVideoConfirm] = useState(false);
+  const [callState, setCallState] = useState<
+    "idle" | "calling" | "incoming" | "in-call"
+  >("idle");
+  const [incomingCall, setIncomingCall] = useState<VideoCallRecord | null>(
+    null,
+  );
+  const [activeCall, setActiveCall] = useState<VideoCallRecord | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [audioDurations, setAudioDurations] = useState<Record<string, string>>(
+    {},
+  );
+  const [previewDuration, setPreviewDuration] = useState("0:00");
   const [pendingAudio, setPendingAudio] = useState<{
     blob: Blob;
     url: string;
@@ -49,6 +80,13 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const callUnsubscribeRef = useRef<(() => void) | null>(null);
+  const candidatesUnsubscribeRef = useRef<(() => void) | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -63,12 +101,66 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const [aiIceBreakers, setAiIceBreakers] = useState<string[]>([]);
   const [aiSummary, setAiSummary] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const callStateRef = useRef(callState);
+
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
+
+  const formatDuration = (rawSeconds: number) => {
+    if (!Number.isFinite(rawSeconds) || rawSeconds <= 0) return "0:00";
+    const totalSeconds = Math.round(rawSeconds);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  const formatMessageTime = (value: any) => {
+    const date =
+      typeof value?.toDate === "function"
+        ? value.toDate()
+        : value?.toMillis
+          ? new Date(value.toMillis())
+          : typeof value === "number"
+            ? new Date(value)
+            : value instanceof Date
+              ? value
+              : null;
+    if (!date || Number.isNaN(date.getTime())) return "";
+    return date.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
+  const saveAudioDuration = (messageId: string, duration: number) => {
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    setAudioDurations((prev) =>
+      prev[messageId]
+        ? prev
+        : {
+            ...prev,
+            [messageId]: formatDuration(duration),
+          },
+    );
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (!localVideoRef.current) return;
+    localVideoRef.current.srcObject = localStream;
+  }, [localStream]);
+
+  useEffect(() => {
+    if (!remoteVideoRef.current) return;
+    remoteVideoRef.current.srcObject = remoteStream;
+  }, [remoteStream]);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -108,6 +200,18 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     };
   }, [conversation, user.id, user.photoUrl]);
 
+  const remoteCallName = useMemo(() => {
+    if (activeCall) {
+      return activeCall.callerId === user.id
+        ? activeCall.calleeNickname
+        : activeCall.callerNickname;
+    }
+    if (incomingCall) {
+      return incomingCall.callerNickname;
+    }
+    return otherParticipant?.nickname ?? "Call";
+  }, [activeCall, incomingCall, otherParticipant?.nickname, user.id]);
+
   const aiSuggestions = aiReplies.length > 0 ? aiReplies : aiIceBreakers;
 
   useEffect(() => {
@@ -137,6 +241,298 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     setAiIceBreakers([]);
     setAiSummary(summarizeConversation(messages));
   }, [messages, otherParticipant, aiTone]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const unsubscribe = listenToIncomingVideoCalls({
+      calleeId: user.id,
+      conversationId,
+      onChange: (calls) => {
+        if (calls.length === 0) {
+          if (callState === "incoming") {
+            setIncomingCall(null);
+            setCallState("idle");
+          }
+          return;
+        }
+        const call = calls[0];
+        const currentCallId = activeCall?.id ?? incomingCall?.id ?? null;
+        if (callState !== "idle") {
+          if (currentCallId === call.id) {
+            setIncomingCall(call);
+            return;
+          }
+          void updateVideoCall(call.id, {
+            status: "missed",
+            endedAt: Date.now(),
+          });
+          return;
+        }
+        setIncomingCall(call);
+        setCallState("incoming");
+      },
+    });
+    return () => unsubscribe();
+  }, [conversationId, user.id, callState, activeCall?.id, incomingCall?.id]);
+
+  const clearCallListeners = () => {
+    if (callUnsubscribeRef.current) {
+      callUnsubscribeRef.current();
+      callUnsubscribeRef.current = null;
+    }
+    if (candidatesUnsubscribeRef.current) {
+      candidatesUnsubscribeRef.current();
+      candidatesUnsubscribeRef.current = null;
+    }
+  };
+
+  const stopCallMedia = () => {
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    remoteStreamRef.current = null;
+    setLocalStream(null);
+    setRemoteStream(null);
+  };
+
+  const resetPeerConnection = () => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.ontrack = null;
+      peerConnectionRef.current.onicecandidate = null;
+      peerConnectionRef.current.close();
+    }
+    peerConnectionRef.current = null;
+  };
+
+  const endVideoCall = async (
+    status: "ended" | "declined" | "missed" = "ended",
+    shouldUpdate = true,
+    callIdOverride?: string | null,
+  ) => {
+    const callId =
+      callIdOverride ?? activeCall?.id ?? incomingCall?.id ?? null;
+    clearCallListeners();
+    resetPeerConnection();
+    stopCallMedia();
+    setCallState("idle");
+    setIncomingCall(null);
+    setActiveCall(null);
+    setShowVideoConfirm(false);
+    if (callId && shouldUpdate) {
+      try {
+        await updateVideoCall(callId, {
+          status,
+          endedAt: Date.now(),
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
+
+  const startVideoCall = async () => {
+    if (!conversationId || !otherParticipant) return;
+    if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
+      setCallError("Video calling is not supported in this browser.");
+      return;
+    }
+    if (callState !== "idle") return;
+    setCallError(null);
+    setShowVideoConfirm(false);
+    setCallState("calling");
+
+    let callId: string | null = null;
+    try {
+      callId = await createVideoCall({
+        conversationId,
+        caller: user,
+        callee: otherParticipant,
+      });
+      setActiveCall({
+        id: callId,
+        conversationId,
+        callerId: user.id,
+        callerNickname: user.nickname,
+        callerPhotoUrl: user.photoUrl,
+        calleeId: otherParticipant.id,
+        calleeNickname: otherParticipant.nickname,
+        calleePhotoUrl: otherParticipant.photoUrl,
+        status: "ringing",
+      });
+
+      const pc = new RTCPeerConnection(VIDEO_CALL_ICE_SERVERS);
+      peerConnectionRef.current = pc;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+
+      const inboundStream = new MediaStream();
+      remoteStreamRef.current = inboundStream;
+      setRemoteStream(inboundStream);
+
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
+      });
+
+      pc.ontrack = (event) => {
+        event.streams[0]?.getTracks().forEach((track) => {
+          inboundStream.addTrack(track);
+        });
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          void addVideoCallCandidate({
+            callId: callId as string,
+            role: "caller",
+            candidate: event.candidate.toJSON(),
+          });
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await updateVideoCall(callId, { offer });
+
+      callUnsubscribeRef.current = listenToVideoCall(callId, (call) => {
+        if (!call) return;
+        setActiveCall(call);
+        if (
+          call.status === "declined" ||
+          call.status === "ended" ||
+          call.status === "missed"
+        ) {
+          void endVideoCall(call.status, false);
+          return;
+        }
+        if (call.answer && !pc.currentRemoteDescription) {
+          void pc
+            .setRemoteDescription(new RTCSessionDescription(call.answer))
+            .then(() => setCallState("in-call"))
+            .catch((error) => {
+              console.error(error);
+              setCallError("Unable to connect the call.");
+              void endVideoCall("ended", false);
+            });
+        }
+      });
+
+      candidatesUnsubscribeRef.current = listenToVideoCallCandidates({
+        callId,
+        role: "callee",
+        onCandidate: (candidate) => {
+          void pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => {
+            console.error(err);
+          });
+        },
+      });
+    } catch (error) {
+      console.error(error);
+      setCallError("Unable to start video call.");
+      if (callId) {
+        await endVideoCall("ended", true, callId);
+      } else {
+        setCallState("idle");
+      }
+    }
+  };
+
+  const acceptVideoCall = async () => {
+    if (!incomingCall) return;
+    if (!incomingCall.offer) {
+      setCallError("The call is still connecting. Try again.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
+      setCallError("Video calling is not supported in this browser.");
+      return;
+    }
+    setCallError(null);
+    setIncomingCall(null);
+    setActiveCall(incomingCall);
+    setCallState("in-call");
+
+    try {
+      const pc = new RTCPeerConnection(VIDEO_CALL_ICE_SERVERS);
+      peerConnectionRef.current = pc;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+
+      const inboundStream = new MediaStream();
+      remoteStreamRef.current = inboundStream;
+      setRemoteStream(inboundStream);
+
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
+      });
+
+      pc.ontrack = (event) => {
+        event.streams[0]?.getTracks().forEach((track) => {
+          inboundStream.addTrack(track);
+        });
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          void addVideoCallCandidate({
+            callId: incomingCall.id,
+            role: "callee",
+            candidate: event.candidate.toJSON(),
+          });
+        }
+      };
+
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(incomingCall.offer),
+      );
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await updateVideoCall(incomingCall.id, {
+        answer,
+        status: "accepted",
+        acceptedAt: Date.now(),
+      });
+
+      callUnsubscribeRef.current = listenToVideoCall(
+        incomingCall.id,
+        (call) => {
+          if (!call) return;
+          setActiveCall(call);
+          if (call.status === "ended" || call.status === "declined") {
+            void endVideoCall(call.status, false);
+          }
+        },
+      );
+
+      candidatesUnsubscribeRef.current = listenToVideoCallCandidates({
+        callId: incomingCall.id,
+        role: "caller",
+        onCandidate: (candidate) => {
+          void pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) => {
+            console.error(err);
+          });
+        },
+      });
+    } catch (error) {
+      console.error(error);
+      setCallError("Unable to connect the call.");
+      await endVideoCall("ended", true);
+    }
+  };
+
+  const declineVideoCall = async () => {
+    if (!incomingCall) return;
+    await endVideoCall("declined", true);
+  };
 
   const sendMessage = async () => {
     if (!inputValue.trim() || !conversationId || !otherParticipant) return;
@@ -193,6 +589,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const clearPendingAudio = () => {
     setPendingAudio(null);
     setIsPreviewPlaying(false);
+    setPreviewDuration("0:00");
     if (previewAudioRef.current) {
       previewAudioRef.current.pause();
       previewAudioRef.current.currentTime = 0;
@@ -353,6 +750,18 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (callStateRef.current !== "idle") {
+        void endVideoCall("ended", true);
+      } else {
+        clearCallListeners();
+        resetPeerConnection();
+        stopCallMedia();
+      }
+    };
+  }, []);
+
   return (
     <div className="relative flex h-screen flex-col bg-[#121212] font-sans selection:bg-kipepeo-pink/30">
       {/* Ambient Background Effects */}
@@ -360,6 +769,106 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-900/10 rounded-full blur-[100px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-kipepeo-pink/5 rounded-full blur-[100px]"></div>
       </div>
+
+      {showVideoConfirm && otherParticipant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="w-[90%] max-w-sm rounded-3xl border border-white/10 bg-[#141414] p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 h-14 w-14 overflow-hidden rounded-full border border-white/10">
+              <AppImage
+                src={otherParticipant.photoUrl ?? user.photoUrl}
+                alt={otherParticipant.nickname}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <h3 className="text-base font-semibold text-white">
+              Start a video call?
+            </h3>
+            <p className="mt-2 text-xs text-gray-400">
+              Call {otherParticipant.nickname} and go live instantly.
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <button
+                onClick={() => setShowVideoConfirm(false)}
+                className="rounded-full border border-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-gray-300 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={startVideoCall}
+                className="rounded-full bg-gradient-to-r from-kipepeo-pink to-purple-600 px-5 py-2 text-xs font-semibold uppercase tracking-widest text-white shadow-lg"
+              >
+                Start Call
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {callState === "incoming" && incomingCall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="w-[90%] max-w-sm rounded-3xl border border-white/10 bg-[#141414] p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 h-14 w-14 overflow-hidden rounded-full border border-white/10">
+              <AppImage
+                src={incomingCall.callerPhotoUrl || user.photoUrl}
+                alt={incomingCall.callerNickname}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <h3 className="text-base font-semibold text-white">
+              Incoming video call
+            </h3>
+            <p className="mt-2 text-xs text-gray-400">
+              {incomingCall.callerNickname} is calling you now.
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <button
+                onClick={declineVideoCall}
+                className="rounded-full border border-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-gray-300 hover:bg-white/5"
+              >
+                Decline
+              </button>
+              <button
+                onClick={acceptVideoCall}
+                className="rounded-full bg-gradient-to-r from-kipepeo-pink to-purple-600 px-5 py-2 text-xs font-semibold uppercase tracking-widest text-white shadow-lg"
+              >
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(callState === "calling" || callState === "in-call") && (
+        <div className="fixed inset-0 z-40 bg-black">
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className="h-full w-full object-cover"
+          />
+          <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-[10px] uppercase tracking-widest text-white">
+            {callState === "calling" ? "Calling..." : "Live"}
+          </div>
+          <div className="absolute right-4 top-4 rounded-full border border-white/10 bg-black/40 px-4 py-2 text-[10px] uppercase tracking-widest text-white">
+            {remoteCallName}
+          </div>
+          <video
+            ref={localVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="absolute bottom-24 right-4 h-36 w-24 rounded-2xl border border-white/10 object-cover shadow-lg"
+          />
+          <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center">
+            <button
+              onClick={() => endVideoCall("ended", true)}
+              className="rounded-full bg-red-500/90 px-6 py-3 text-xs font-semibold uppercase tracking-widest text-white shadow-lg"
+            >
+              End Call
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* --- Header --- */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-[#121212]/80 px-4 py-3 backdrop-blur-xl transition-all">
@@ -408,8 +917,35 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           </div>
         </div>
 
-        {/* Option Menu Placeholder */}
-        <button className="optionBtn flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-white/5 hover:text-white">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowVideoConfirm(true)}
+            disabled={!otherParticipant || callState !== "idle"}
+            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+              !otherParticipant || callState !== "idle"
+                ? "text-gray-600 cursor-not-allowed"
+                : "text-gray-500 hover:bg-white/5 hover:text-white"
+            }`}
+            aria-label="Start video call"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="2" y="7" width="14" height="10" rx="2" ry="2" />
+              <polygon points="16 7 22 12 16 17 16 7" />
+            </svg>
+          </button>
+
+          {/* Option Menu Placeholder */}
+          <button className="optionBtn flex h-8 w-8 items-center justify-center rounded-full text-gray-500 hover:bg-white/5 hover:text-white">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="20"
@@ -425,8 +961,13 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             <circle cx="12" cy="5" r="1" />
             <circle cx="12" cy="19" r="1" />
           </svg>
-        </button>
+          </button>
+        </div>
       </header>
+
+      {callError && (
+        <div className="px-4 pt-2 text-[10px] text-red-400">{callError}</div>
+      )}
 
       {/* --- AI Copilot --- */}
       <div className="px-4 pt-3 pb-2">
@@ -481,6 +1022,13 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           messages.map((m, index) => {
             const isMe = m.senderId === user.id;
             const isLast = index === messages.length - 1;
+            const timeLabel = formatMessageTime(m.createdAt);
+            const statusLabel =
+              isMe && isLast
+                ? timeLabel
+                  ? " • Delivered"
+                  : "Delivered"
+                : "";
 
             return (
               <div
@@ -493,7 +1041,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
                   <div
                     className={`relative px-4 py-3 text-sm leading-relaxed shadow-lg space-y-2 ${
                       isMe
-                        ? "rounded-2xl rounded-tr-sm bg-gradient-to-br from-kipepeo-pink to-purple-600 text-white"
+                        ? "rounded-2xl rounded-tr-sm text-white"
                         : "rounded-2xl rounded-tl-sm border border-white/5 bg-[#1E1E1E] text-gray-200"
                     }`}
                   >
@@ -560,12 +1108,19 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
                           <span className="text-[10px] uppercase tracking-widest text-gray-300">
                             Voice note
                           </span>
+                          <span className="text-[10px] text-gray-300 tabular-nums">
+                            {audioDurations[m.id] ?? "0:00"}
+                          </span>
                         </div>
                         <audio
                           ref={(el) => {
                             audioRefs.current[m.id] = el;
                           }}
                           src={m.audioUrl}
+                          preload="metadata"
+                          onLoadedMetadata={(event) =>
+                            saveAudioDuration(m.id, event.currentTarget.duration)
+                          }
                           onEnded={() => setPlayingAudioId(null)}
                           className="hidden"
                         />
@@ -575,7 +1130,8 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
                   </div>
                   {/* Timestamp / Status (Visual Polish) */}
                   <span className="mt-1 text-[9px] font-medium text-gray-600">
-                    {isMe && isLast ? "Delivered" : ""}
+                    {timeLabel}
+                    {statusLabel}
                   </span>
                 </div>
               </div>
@@ -635,6 +1191,9 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
               <span className="text-[10px] uppercase tracking-widest text-gray-300">
                 Voice note ready
               </span>
+              <span className="text-[10px] text-gray-400 tabular-nums">
+                {previewDuration}
+              </span>
             </div>
 
             <button
@@ -691,6 +1250,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             <audio
               ref={previewAudioRef}
               src={pendingAudio.url}
+              preload="metadata"
+              onLoadedMetadata={(event) =>
+                setPreviewDuration(formatDuration(event.currentTarget.duration))
+              }
               onEnded={() => setIsPreviewPlaying(false)}
               className="hidden"
             />
