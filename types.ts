@@ -94,6 +94,15 @@ export interface LikeRecord {
   createdAt: number;
 }
 
+export interface DislikeRecord {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  fromNickname?: string;
+  toNickname?: string;
+  createdAt: number;
+}
+
 export type PaymentStatus = "pending" | "approved" | "rejected";
 
 export interface PaymentRequest {

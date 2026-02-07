@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  deleteDoc,
   onSnapshot,
   orderBy,
   query,
@@ -45,6 +46,11 @@ export const createLike = async (payload: {
     },
     { merge: true },
   );
+};
+
+export const deleteLike = async (fromUserId: string, toUserId: string) => {
+  const likeRef = doc(likesRef, getLikeId(fromUserId, toUserId));
+  await deleteDoc(likeRef);
 };
 
 export const listenToLikesReceived = (

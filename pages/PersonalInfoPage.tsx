@@ -18,6 +18,10 @@ interface Props {
 const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
   const [realName, setRealName] = useState(user.realName);
   const [nickname, setNickname] = useState(user.nickname);
+  const [occupation, setOccupation] = useState(user.occupation ?? "");
+  const [occupationVisibility, setOccupationVisibility] = useState<
+    "public" | "private"
+  >(user.occupationVisibility ?? "private");
   const [ageRange, setAgeRange] = useState(user.ageRange);
   const [area, setArea] = useState(user.area);
   const [bio, setBio] = useState(user.bio);
@@ -140,6 +144,8 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
       const updates = {
         realName: realName.trim(),
         nickname: nickname.trim(),
+        occupation: occupation.trim() ? occupation.trim() : undefined,
+        occupationVisibility,
         ageRange,
         area,
         bio: bio.trim(),
@@ -264,6 +270,52 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
             {nicknameError && (
               <p className="text-xs text-red-400 mt-2">{nicknameError}</p>
             )}
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-400 uppercase">
+              What You Do (Optional)
+            </label>
+            <input
+              type="text"
+              value={occupation}
+              onChange={(e) => setOccupation(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
+              placeholder="e.g. Designer, Student, Entrepreneur"
+            />
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  Visibility
+                </p>
+                <p className="text-[10px] text-gray-500">
+                  Show this on your public profile?
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOccupationVisibility("public")}
+                  className={`px-3 py-2 rounded-full text-[10px] uppercase tracking-widest font-black ${
+                    occupationVisibility === "public"
+                      ? "bg-kipepeo-pink/20 text-kipepeo-pink border border-kipepeo-pink/40"
+                      : "bg-white/5 text-gray-400 border border-white/10"
+                  }`}
+                >
+                  Public
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOccupationVisibility("private")}
+                  className={`px-3 py-2 rounded-full text-[10px] uppercase tracking-widest font-black ${
+                    occupationVisibility === "private"
+                      ? "bg-white/10 text-white border border-white/20"
+                      : "bg-white/5 text-gray-400 border border-white/10"
+                  }`}
+                >
+                  Private
+                </button>
+              </div>
+            </div>
           </div>
           <div>
             <label className="text-xs font-bold text-gray-400 uppercase">

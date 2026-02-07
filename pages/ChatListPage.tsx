@@ -156,18 +156,6 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
               <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
             </svg>
           </button>
-
-          <Link
-            to="/profile"
-            className="h-10 w-10 overflow-hidden rounded-full border border-white/10 ring-2 ring-transparent transition-all hover:ring-kipepeo-pink/50 active:scale-90"
-          >
-            <AppImage
-              src={user.photoUrl}
-              className="h-full w-full object-cover"
-              alt="Profile"
-              loading="eager"
-            />
-          </Link>
         </div>
       </header>
 

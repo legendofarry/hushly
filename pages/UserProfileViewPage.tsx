@@ -89,14 +89,20 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
               <h2 className="text-3xl font-black mb-1 uppercase tracking-tighter">
                 {profile.nickname}
               </h2>
-              <div className="flex items-center space-x-2 flex-wrap justify-center">
-                <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                  Age Range: {profile.ageRange}
-                </span>
-                <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                  {profile.area}
-                </span>
-              </div>
+            <div className="flex items-center space-x-2 flex-wrap justify-center">
+              <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                Age Range: {profile.ageRange}
+              </span>
+              <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                {profile.area}
+              </span>
+              {profile.occupation &&
+                profile.occupationVisibility === "public" && (
+                  <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                    {profile.occupation}
+                  </span>
+                )}
+            </div>
             </div>
 
             <div className="space-y-6">

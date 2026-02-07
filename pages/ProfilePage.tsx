@@ -57,6 +57,16 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
               {user.area}
             </span>
           </div>
+          {user.occupation && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-gray-400 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                {user.occupation}
+              </span>
+              <span className="text-[9px] uppercase tracking-widest text-gray-600">
+                {user.occupationVisibility === "public" ? "Public" : "Private"}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">

@@ -1,4 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti"; // Import the confetti library
 import {
@@ -34,7 +41,16 @@ import {
   listenToWeekendPlans,
   rsvpToPlan,
 } from "../services/planService";
-import { createLike } from "../services/likeService";
+import {
+  createLike,
+  deleteLike,
+  listenToLikesSent,
+} from "../services/likeService";
+import {
+  createDislike,
+  deleteDislike,
+  listenToDislikesSent,
+} from "../services/dislikeService";
 import {
   getMatchReasons,
   rankProfiles,
@@ -93,11 +109,16 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   >("intro");
   const [escortLoading, setEscortLoading] = useState(false);
   const [escortError, setEscortError] = useState<string | null>(null);
+  const [, startAiTransition] = useTransition();
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set());
   const lastProfileRef = useRef<UserProfile | null>(null);
   const lastViewStartRef = useRef<number>(Date.now());
+  const deferredSignals = useDeferredValue(aiSignals);
+  const deferredQuery = useDeferredValue(aiQuery);
   const hearts = useMemo(
     () =>
-      Array.from({ length: 40 }, (_, index) => ({
+      Array.from({ length: 200 }, (_, index) => ({
         id: index,
         left: Math.random() * 100,
         size: Math.random() * 20 + 10,
@@ -195,6 +216,34 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     return () => unsubscribe();
   }, [user.id]);
 
+  useEffect(() => {
+    const unsubscribe = listenToLikesSent(
+      user.id,
+      (items) => {
+        const next = new Set(items.map((like) => like.toUserId));
+        setLikedIds(next);
+      },
+      (error) => {
+        console.error(error);
+      },
+    );
+    return () => unsubscribe();
+  }, [user.id]);
+
+  useEffect(() => {
+    const unsubscribe = listenToDislikesSent(
+      user.id,
+      (items) => {
+        const next = new Set(items.map((dislike) => dislike.toUserId));
+        setDislikedIds(next);
+      },
+      (error) => {
+        console.error(error);
+      },
+    );
+    return () => unsubscribe();
+  }, [user.id]);
+
   const toggleIntentFilter = (intent: IntentType) => {
     setSelectedIntents((prev) =>
       prev.includes(intent)
@@ -215,20 +264,20 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       return matchesIntent && matchesAge && matchesArea;
     });
 
-    const semanticMatches = aiQuery
-      ? semanticSearchProfiles(aiQuery, matchesFilter)
+    const semanticMatches = deferredQuery
+      ? semanticSearchProfiles(deferredQuery, matchesFilter)
       : [];
     const semanticIds = new Set(semanticMatches.map((item) => item.profile.id));
     const candidates =
-      aiQuery && semanticIds.size > 0
+      deferredQuery && semanticIds.size > 0
         ? matchesFilter.filter((profile) => semanticIds.has(profile.id))
         : matchesFilter;
 
     const ranked = rankProfiles({
       user,
       profiles: candidates,
-      signals: aiSignals,
-      semanticQuery: aiQuery,
+      signals: deferredSignals,
+      semanticQuery: deferredQuery,
     });
 
     return ranked.map((item) => item.profile);
@@ -238,17 +287,17 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     selectedAgeRange,
     selectedArea,
     user,
-    aiSignals,
-    aiQuery,
+    deferredSignals,
+    deferredQuery,
   ]);
 
   const matchReasons = useMemo(() => {
     const map = new Map<string, string[]>();
     filteredProfiles.forEach((profile) => {
-      map.set(profile.id, getMatchReasons(user, profile, aiSignals));
+      map.set(profile.id, getMatchReasons(user, profile, deferredSignals));
     });
     return map;
-  }, [filteredProfiles, aiSignals, user]);
+  }, [filteredProfiles, deferredSignals, user]);
 
   const areaOptions = useMemo(() => {
     const areas = new Set<string>();
@@ -270,13 +319,35 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, [selectedIntents, selectedAgeRange, selectedArea, aiQuery]);
 
   const current = filteredProfiles[currentIndex];
+  const isCurrentLiked = Boolean(current && likedIds.has(current.id));
+  const isCurrentDisliked = Boolean(current && dislikedIds.has(current.id));
+
+  const clearLike = (profileId: string) => {
+    if (!likedIds.has(profileId)) return;
+    void deleteLike(user.id, profileId);
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(profileId);
+      return next;
+    });
+  };
+
+  const clearDislike = (profileId: string) => {
+    if (!dislikedIds.has(profileId)) return;
+    void deleteDislike(user.id, profileId);
+    setDislikedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(profileId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const now = Date.now();
     if (lastProfileRef.current && lastProfileRef.current.id !== current?.id) {
       const dwellMs = now - lastViewStartRef.current;
       const updated = recordDwellSignal(lastProfileRef.current, dwellMs);
-      setAiSignals(updated);
+      startAiTransition(() => setAiSignals(updated));
     }
     if (current) {
       lastProfileRef.current = current;
@@ -287,10 +358,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   useEffect(() => {
     return () => {
       if (lastProfileRef.current) {
-        recordDwellSignal(
+        const updated = recordDwellSignal(
           lastProfileRef.current,
           Date.now() - lastViewStartRef.current,
         );
+        startAiTransition(() => setAiSignals(updated));
       }
     };
   }, []);
@@ -325,7 +397,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     try {
       const conversationId = await ensureConversation(user, target);
       const updated = recordChatSignal(target);
-      setAiSignals(updated);
+      startAiTransition(() => setAiSignals(updated));
       navigate(`/chats/${conversationId}`);
     } catch (error) {
       console.error(error);
@@ -501,15 +573,37 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     e.stopPropagation();
     // Logic to record skip would go here
     if (current) {
+      if (likedIds.has(current.id)) {
+        clearLike(current.id);
+      }
+      void createDislike({
+        fromUserId: user.id,
+        toUserId: current.id,
+        fromNickname: user.nickname,
+        toNickname: current.nickname,
+      });
+      setDislikedIds((prev) => {
+        const next = new Set(prev);
+        next.add(current.id);
+        return next;
+      });
       const updated = recordSkipSignal(current);
-      setAiSignals(updated);
+      startAiTransition(() => setAiSignals(updated));
     }
     handleNextProfile();
   };
 
   const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (current) {
+    if (!current) return;
+    if (likedIds.has(current.id)) {
+      handleNextProfile();
+      return;
+    }
+    if (dislikedIds.has(current.id)) {
+      clearDislike(current.id);
+    }
+    {
       void createLike({
         fromUserId: user.id,
         toUserId: current.id,
@@ -522,7 +616,18 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         fromNickname: user.nickname,
       });
       const updated = recordLikeSignal(current);
-      setAiSignals(updated);
+      startAiTransition(() => setAiSignals(updated));
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        next.add(current.id);
+        return next;
+      });
+      setDislikedIds((prev) => {
+        if (!prev.has(current.id)) return prev;
+        const next = new Set(prev);
+        next.delete(current.id);
+        return next;
+      });
     }
 
     // --- CONFETTI ANIMATION ---
@@ -530,16 +635,18 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     const brandColors = ["#ec4899", "#a855f7", "#ffffff"]; // Pink-500, Purple-600, White
 
     // Fire confetti from the bottom center (where the button is)
-    confetti({
-      particleCount: 150,
-      spread: 100,
-      origin: { y: 0.8 }, // Start from bottom 80% of screen
-      colors: brandColors,
-      disableForReducedMotion: true,
-      zIndex: 9999, // Ensure it sits on top of everything
-      gravity: 1.2,
-      scalar: 1.2,
-      ticks: 300, // Lasts a bit longer
+    requestAnimationFrame(() => {
+      confetti({
+        particleCount: 100,
+        spread: 90,
+        origin: { y: 0.8 }, // Start from bottom 80% of screen
+        colors: brandColors,
+        disableForReducedMotion: true,
+        zIndex: 9999, // Ensure it sits on top of everything
+        gravity: 1.2,
+        scalar: 1.1,
+        ticks: 260, // Slightly shorter
+      });
     });
 
     // Short delay before switching to next profile to let user see the pop
@@ -631,6 +738,16 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           0% { transform: translateY(100vh) scale(0.6); opacity: 0; }
           10% { opacity: 1; }
           100% { transform: translateY(-70vh) scale(1.2); opacity: 0; }
+        }
+        @keyframes cardSwipeIn {
+          0% { opacity: 0; transform: translateY(10px) scale(0.995); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .card-swipe-in {
+          animation: cardSwipeIn 220ms ease-out;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .card-swipe-in { animation: none; }
         }
       `}</style>
       {/* Dynamic Background */}
@@ -997,9 +1114,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                     </label>
                     <select
                       value={selectedArea}
-                      onChange={(event) =>
-                        setSelectedArea(event.target.value)
-                      }
+                      onChange={(event) => setSelectedArea(event.target.value)}
                       className="mt-2 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
                     >
                       <option value="All">All</option>
@@ -1233,7 +1348,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             ) : current ? (
               <div className="flex-1 relative flex flex-col h-full">
                 {/* Profile Card */}
-                <div className="relative flex-1 rounded-[2rem] overflow-hidden bg-gray-900 border border-white/10 shadow-2xl">
+                <div
+                  key={current.id}
+                  className="relative flex-1 rounded-[2rem] overflow-hidden bg-gray-900 border border-white/10 shadow-2xl card-swipe-in"
+                >
                   {/* Main Image */}
                   <div className="absolute inset-0">
                     <AppImage
@@ -1324,72 +1442,99 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         </p>
                       </div>
 
-                      {/* Action Bar (Updated) */}
-                      <div className="grid grid-cols-4 gap-4 mt-auto pt-2 items-center max-w-[400px] mx-auto">
-                        {/* Skip Button */}
+                      {/* Action Bar (Redesigned) */}
+                      <div className="flex items-center justify-center gap-5 sm:gap-8 w-full max-w-md mx-auto mt-auto pt-4 pb-2 z-10">
+                        {/* --- PASS BUTTON --- */}
+                        {/* Logic: Destructive action. Glassy dark circle. Turns Red & Rotates on touch. */}
                         <button
                           onClick={handleSkip}
-                          className="col-span-1 aspect-square rounded-full bg-gray-800/60 backdrop-blur-md border border-white/10 text-gray-400 hover:text-white hover:bg-red-500/20 hover:border-red-500/30 transition-all active:scale-90 flex items-center justify-center group"
-                          aria-label="Skip"
+                          className="group relative flex h-14 w-14 flex-col items-center justify-center rounded-full border border-white/5 bg-[#000000]/40 shadow-xl backdrop-blur-xl transition-all duration-300 active:scale-90 active:bg-rose-500/10 active:border-rose-500/50 active:shadow-[0_0_25px_-5px_rgba(244,63,94,0.4)] hover:bg-white/5"
+                          aria-label="Pass"
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="group-hover:text-red-500 transition-colors"
-                          >
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
+                          <div className="transition-transform duration-300 group-active:-rotate-90 group-hover:-rotate-90">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="26"
+                              height="26"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="text-gray-400 transition-colors duration-300 group-hover:text-rose-500 group-active:text-rose-500"
+                            >
+                              <line x1="18" y1="6" x2="6" y2="18" />
+                              <line x1="6" y1="6" x2="18" y2="18" />
+                            </svg>
+                          </div>
                         </button>
 
-                        {/* Chat Button (Prominent) */}
+                        {/* --- CHAT BUTTON (HERO) --- */}
+                        {/* Logic: Primary Action. Gradient Pill. Liquid animation. Pulsing glow. */}
                         <button
                           onClick={handleChat}
-                          className="col-span-2 h-14 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 text-white font-black text-xs uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-pink-900/40 flex items-center justify-center gap-2"
+                          className="relative flex h-16 w-36 sm:w-44 items-center justify-center gap-3 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 shadow-[0_8px_20px_-6px_rgba(236,72,153,0.5)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_15px_30px_-5px_rgba(236,72,153,0.6)] active:translate-y-0 active:scale-95 active:shadow-none overflow-hidden group"
                         >
-                          <span>Say Hi</span>
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                          </svg>
+                          {/* Inner Shine Animation */}
+                          <div className="absolute inset-0 w-full h-full">
+                            <div className="absolute top-0 -left-[100%] h-full w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12 animate-[shimmer_2s_infinite]"></div>
+                          </div>
+
+                          <span className="relative z-10 text-sm font-black uppercase tracking-[0.15em] text-white drop-shadow-md">
+                            Say Hi
+                          </span>
+
+                          <div className="relative z-10">
+                            {/* Ping Animation Effect */}
+                            <span className="absolute -right-1 -top-1 h-3 w-3 animate-ping rounded-full bg-white opacity-75"></span>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="20"
+                              height="20"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="text-white drop-shadow-sm transform transition-transform duration-300 group-hover:rotate-12 group-active:scale-110"
+                            >
+                              <path d="M4.913 2.658c2.075-.27 4.19-.408 6.337-.408 2.147 0 4.262.139 6.337.408 1.922.25 3.291 1.861 3.405 3.727a4.403 4.403 0 00-1.032 1.722c-2.904.571-5.736.883-8.71 1.055v.65c0 .323-.234.606-.549.664a40.73 40.73 0 01-5.068 0 .675.675 0 01-.548-.664v-.65c-2.975-.172-5.806-.484-8.71-1.055a4.403 4.403 0 00-1.032-1.722A3.75 3.75 0 014.913 2.658z" />
+                              <path d="M20.919 11.312a5.908 5.908 0 01-1.221 1.481l-1.31 4.582a.75.75 0 01-1.174.406l-2.607-1.738a41.34 41.34 0 00-5.186.002l-2.607 1.738a.75.75 0 01-1.174-.406l-1.31-4.582a5.908 5.908 0 01-1.221-1.481 24.168 24.168 0 015.655 1.144c2.164.58 4.475.58 6.64 0a24.168 24.168 0 015.655-1.144z" />
+                            </svg>
+                          </div>
                         </button>
 
-                        {/* Like Button */}
+                        {/* --- LIKE BUTTON --- */}
+                        {/* Logic: Positive action. Glassy circle. Beating Heart. Turns Green/Pink. */}
                         <button
                           onClick={handleLike}
-                          className="col-span-1 aspect-square rounded-full bg-gray-800/60 backdrop-blur-md border border-white/10 text-gray-400 hover:text-white hover:bg-pink-500/20 hover:border-pink-500/30 transition-all active:scale-90 flex items-center justify-center group"
+                          className={`group relative flex h-14 w-14 flex-col items-center justify-center rounded-full border shadow-xl backdrop-blur-xl transition-all duration-300 active:scale-90 ${
+                            isCurrentLiked
+                              ? "border-green-500/50 bg-green-500/10 hover:border-green-400/70 hover:bg-green-500/15"
+                              : "border-white/5 bg-[#000000]/40 hover:bg-white/5 active:bg-green-500/10 active:border-green-500/50 active:shadow-[0_0_25px_-5px_rgba(34,197,94,0.4)]"
+                          }`}
                           aria-label="Like"
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="24"
-                            height="24"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="group-hover:text-pink-500 transition-colors"
+                          <div
+                            className={`transition-all duration-300 ${isCurrentLiked ? "" : "group-hover:scale-110 group-active:scale-75"}`}
                           >
-                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-                          </svg>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="26"
+                              height="26"
+                              viewBox="0 0 24 24"
+                              fill={isCurrentLiked ? "currentColor" : "none"}
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className={`transition-colors duration-300 ${
+                                isCurrentLiked
+                                  ? "text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.8)]"
+                                  : "text-gray-400 group-hover:text-green-400 group-active:text-green-400 group-active:fill-green-400/20"
+                              }`}
+                            >
+                              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                            </svg>
+                          </div>
                         </button>
                       </div>
                     </div>
@@ -1486,14 +1631,17 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                               AI Parse
                             </p>
                             <span className="text-[10px] uppercase tracking-widest text-kipepeo-pink">
-                              {Math.round(parsedMpesa.confidence * 100)}% confidence
+                              {Math.round(parsedMpesa.confidence * 100)}%
+                              confidence
                             </span>
                           </div>
                           <div className="mt-2 grid gap-2 text-xs text-gray-300">
                             <div className="flex items-center justify-between">
                               <span>Amount</span>
                               <span className="text-white">
-                                {parsedMpesa.amount ? `KES ${parsedMpesa.amount}` : "-"}
+                                {parsedMpesa.amount
+                                  ? `KES ${parsedMpesa.amount}`
+                                  : "-"}
                               </span>
                             </div>
                             <div className="flex items-center justify-between">
@@ -1511,7 +1659,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                             <div className="flex items-center justify-between">
                               <span>Date/Time</span>
                               <span className="text-white">
-                                {parsedMpesa.date ?? "-"} {parsedMpesa.time ?? ""}
+                                {parsedMpesa.date ?? "-"}{" "}
+                                {parsedMpesa.time ?? ""}
                               </span>
                             </div>
                           </div>

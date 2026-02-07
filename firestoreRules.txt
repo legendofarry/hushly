@@ -81,6 +81,15 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.fromUserId == request.auth.uid;
     }
 
+    match /dislikes/{dislikeId} {
+      allow read: if signedIn()
+        && (resource.data.fromUserId == request.auth.uid
+          || resource.data.toUserId == request.auth.uid);
+      allow create, update: if signedIn()
+        && request.resource.data.fromUserId == request.auth.uid;
+      allow delete: if signedIn() && resource.data.fromUserId == request.auth.uid;
+    }
+
     match /weekend_plans/{planId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.creatorId == request.auth.uid;

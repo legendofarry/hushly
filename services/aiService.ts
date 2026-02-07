@@ -139,7 +139,10 @@ const vectorize = (tokens: string[]) => {
   return counts;
 };
 
-const cosineSimilarity = (a: Record<string, number>, b: Record<string, number>) => {
+const cosineSimilarity = (
+  a: Record<string, number>,
+  b: Record<string, number>,
+) => {
   let dot = 0;
   let normA = 0;
   let normB = 0;
@@ -153,6 +156,15 @@ const cosineSimilarity = (a: Record<string, number>, b: Record<string, number>) 
   });
   if (!normA || !normB) return 0;
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+};
+
+const stableHash = (value: string) => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash % 1000) / 1000;
 };
 
 export const suggestIntents = (payload: {
@@ -262,7 +274,7 @@ export const rankProfiles = (payload: {
         ).length *
           0.15;
       const semanticBoost = queryScores.get(profile.id) || 0;
-      const jitter = Math.random() * 0.3;
+      const jitter = stableHash(profile.id) * 0.3;
       const score =
         sharedScore +
         areaScore +
