@@ -51,7 +51,8 @@ service cloud.firestore {
       allow update: if signedIn()
         && resource.data.toUserId == request.auth.uid
         && request.resource.data.diff(resource.data).changedKeys().hasOnly(["read"]);
-      allow delete: if false;
+      allow delete: if signedIn()
+        && (resource.data.toUserId == request.auth.uid || isOwnerEmail());
     }
 
     match /conversations/{conversationId} {

@@ -11,6 +11,7 @@ import {
   listenToConversation,
   listenToMessages,
   clearConversationForUser,
+  clearReactionFocus,
   markConversationRead,
   setConversationMuted,
   setConversationPinned,
@@ -144,6 +145,8 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const reactionMenuRef = useRef<HTMLDivElement | null>(null);
   const reactionLongPressRef = useRef<number | null>(null);
   const reactionTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const reactionFocusHandledRef = useRef<string | null>(null);
+  const initialScrollDoneRef = useRef<string | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -223,6 +226,15 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
+    });
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior,
     });
   };
 
@@ -618,11 +630,6 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     await startMaskPipeline();
   };
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
 
   useEffect(() => {
     if (!localVideoRef.current) return;
@@ -658,11 +665,6 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     if (!conversationId) return;
-    void markConversationRead(conversationId, user.id);
-  }, [conversationId, user.id, messages.length]);
-
-  useEffect(() => {
-    if (!conversationId) return;
     void markNotificationsReadByConversation(user.id, conversationId);
   }, [conversationId, user.id]);
 
@@ -694,10 +696,24 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const blockNotice = isBlocked
     ? "You blocked this user."
     : isBlockedByOther
-      ? "You can’t message this user."
+      ? "You can't message this user."
       : "";
 
   const aiSuggestions = aiReplies.length > 0 ? aiReplies : aiIceBreakers;
+  const lastActivityMs = useMemo(
+    () => getTimestampMs(conversation?.lastMessageAt),
+    [conversation?.lastMessageAt],
+  );
+  const reactionFocus = conversation?.reactionFocusBy?.[user.id] ?? null;
+  const reactionFocusMessageId = reactionFocus?.messageId ?? null;
+  const reactionFocusKey = reactionFocusMessageId
+    ? `${reactionFocusMessageId}-${getTimestampMs(reactionFocus?.reactedAt)}`
+    : null;
+
+  useEffect(() => {
+    if (!conversationId) return;
+    void markConversationRead(conversationId, user.id);
+  }, [conversationId, user.id, messages.length, lastActivityMs]);
 
   const clearedAtMs = useMemo(
     () => getTimestampMs(conversation?.clearedAt?.[user.id]),
@@ -718,6 +734,56 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       .filter((message) => message.text?.toLowerCase().includes(query))
       .slice(0, 20);
   }, [visibleMessages, searchQuery]);
+
+  const scrollToLastMessage = (behavior: ScrollBehavior = "auto") => {
+    if (visibleMessages.length === 0) {
+      scrollToBottom(behavior);
+      return;
+    }
+    const lastMessage = visibleMessages[visibleMessages.length - 1];
+    const target = messageRefs.current[lastMessage.id];
+    if (target) {
+      target.scrollIntoView({ behavior, block: "end" });
+    } else {
+      scrollToBottom(behavior);
+    }
+  };
+
+  useEffect(() => {
+    if (!conversationId || !reactionFocusMessageId || !reactionFocusKey) return;
+    if (reactionFocusHandledRef.current === reactionFocusKey) return;
+    reactionFocusHandledRef.current = reactionFocusKey;
+    const exists = visibleMessages.some(
+      (message) => message.id === reactionFocusMessageId,
+    );
+    if (!exists) {
+      void clearReactionFocus(conversationId, user.id);
+      return;
+    }
+    window.setTimeout(() => {
+      scrollToMessage(reactionFocusMessageId);
+    }, 120);
+    initialScrollDoneRef.current = conversationId;
+    void clearReactionFocus(conversationId, user.id);
+  }, [
+    conversationId,
+    reactionFocusMessageId,
+    reactionFocusKey,
+    visibleMessages,
+    user.id,
+  ]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    if (reactionFocusMessageId) return;
+    if (initialScrollDoneRef.current === conversationId) return;
+    if (visibleMessages.length === 0) return;
+    initialScrollDoneRef.current = conversationId;
+    const raf = window.requestAnimationFrame(() => {
+      scrollToLastMessage("auto");
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [conversationId, reactionFocusMessageId, visibleMessages.length]);
 
   useEffect(() => {
     return () => {
@@ -1293,6 +1359,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         conversationId,
         messageId: message.id,
         userId: user.id,
+        recipientId: message.senderId,
         emoji: nextEmoji,
       });
       if (nextEmoji) {

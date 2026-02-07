@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   onSnapshot,
@@ -56,6 +57,26 @@ export const markNotificationsRead = async (ids: string[]) => {
   ids.forEach((id) => {
     batch.update(doc(notificationsRef, id), { read: true });
   });
+  await batch.commit();
+};
+
+export const setNotificationRead = async (
+  notificationId: string,
+  read: boolean,
+) => {
+  await updateDoc(doc(notificationsRef, notificationId), { read });
+};
+
+export const deleteNotification = async (notificationId: string) => {
+  await deleteDoc(doc(notificationsRef, notificationId));
+};
+
+export const clearNotificationsForUser = async (userId: string) => {
+  const q = query(notificationsRef, where("toUserId", "==", userId));
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return;
+  const batch = writeBatch(db);
+  snapshot.docs.forEach((docSnap) => batch.delete(docSnap.ref));
   await batch.commit();
 };
 

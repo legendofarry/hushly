@@ -249,6 +249,7 @@ export const setMessageReaction = async (payload: {
   conversationId: string;
   messageId: string;
   userId: string;
+  recipientId: string;
   emoji: string | null;
 }) => {
   const messageRef = doc(
@@ -265,9 +266,31 @@ export const setMessageReaction = async (payload: {
         reactedAt: serverTimestamp(),
       },
     });
+    const conversationRef = doc(conversationsRef, payload.conversationId);
+    await updateDoc(conversationRef, {
+      lastMessage: `${payload.emoji} Reaction`,
+      lastMessageAt: serverTimestamp(),
+      lastSenderId: payload.userId,
+      [`reactionFocusBy.${payload.recipientId}`]: {
+        messageId: payload.messageId,
+        reactedAt: serverTimestamp(),
+        emoji: payload.emoji,
+        fromUserId: payload.userId,
+      },
+    });
   } else {
     await updateDoc(messageRef, {
       [`reactions.${payload.userId}`]: deleteField(),
     });
   }
+};
+
+export const clearReactionFocus = async (
+  conversationId: string,
+  userId: string,
+) => {
+  const conversationRef = doc(conversationsRef, conversationId);
+  await updateDoc(conversationRef, {
+    [`reactionFocusBy.${userId}`]: deleteField(),
+  });
 };

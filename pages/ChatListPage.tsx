@@ -12,8 +12,11 @@ import {
   setConversationPinned,
 } from "../services/chatService";
 import {
+  clearNotificationsForUser,
+  deleteNotification,
   listenToNotifications,
   markNotificationsRead,
+  setNotificationRead,
 } from "../services/notificationService";
 
 interface Props {
@@ -26,6 +29,14 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationMenu, setNotificationMenu] = useState<{
+    notification: AppNotification;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [freshNotificationIds, setFreshNotificationIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [showArchived, setShowArchived] = useState(false);
   const [menuMessage, setMenuMessage] = useState<string | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
@@ -36,6 +47,13 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     y: number;
   } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const notificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const notificationLongPressRef = useRef<number | null>(null);
+  const notificationTouchStartRef = useRef<{ x: number; y: number } | null>(
+    null,
+  );
+  const suppressNotificationClickRef = useRef(false);
+  const prevNotificationIdsRef = useRef<Set<string>>(new Set());
   const longPressTimeoutRef = useRef<number | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
@@ -54,6 +72,30 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     });
     return () => unsubscribe();
   }, [user.id]);
+
+  useEffect(() => {
+    if (!notifications.length) {
+      setFreshNotificationIds(new Set());
+      prevNotificationIdsRef.current = new Set();
+      return;
+    }
+    const prevIds = prevNotificationIdsRef.current;
+    const nextIds = new Set(notifications.map((n) => n.id));
+    const freshUnread = notifications.filter(
+      (n) => !n.read && !prevIds.has(n.id),
+    );
+    setFreshNotificationIds((prev) => {
+      const next = new Set(prev);
+      freshUnread.forEach((n) => next.add(n.id));
+      Array.from(next).forEach((id) => {
+        if (!nextIds.has(id)) {
+          next.delete(id);
+        }
+      });
+      return next;
+    });
+    prevNotificationIdsRef.current = nextIds;
+  }, [notifications]);
 
   useEffect(() => {
     if (!menuMessage && !menuError) return;
@@ -83,6 +125,31 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
       document.removeEventListener("keydown", handleKey);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!notificationMenu) return;
+    const handleClick = (event: MouseEvent) => {
+      if (
+        notificationMenuRef.current &&
+        !notificationMenuRef.current.contains(event.target as Node)
+      ) {
+        setNotificationMenu(null);
+        suppressNotificationClickRef.current = false;
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNotificationMenu(null);
+        suppressNotificationClickRef.current = false;
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [notificationMenu]);
 
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
@@ -132,14 +199,40 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     };
   };
 
+  const clampNotificationMenuPosition = (x: number, y: number) => {
+    const menuWidth = 220;
+    const menuHeight = 200;
+    const padding = 16;
+    const maxX = window.innerWidth - menuWidth - padding;
+    const maxY = window.innerHeight - menuHeight - padding;
+    return {
+      x: Math.max(padding, Math.min(x, maxX)),
+      y: Math.max(padding, Math.min(y, maxY)),
+    };
+  };
+
   const openContextMenu = (conversation: any, x: number, y: number) => {
     const position = clampMenuPosition(x, y);
     setContextMenu({ conversation, ...position });
   };
 
+  const openNotificationMenu = (
+    notification: AppNotification,
+    x: number,
+    y: number,
+  ) => {
+    const position = clampNotificationMenuPosition(x, y);
+    setNotificationMenu({ notification, ...position });
+  };
+
   const closeContextMenu = () => {
     suppressClickRef.current = false;
     setContextMenu(null);
+  };
+
+  const closeNotificationMenu = () => {
+    suppressNotificationClickRef.current = false;
+    setNotificationMenu(null);
   };
 
   const handleConversationClick = (conversation: any) => {
@@ -308,12 +401,119 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
   };
 
   const handleNotificationClick = (notification: AppNotification) => {
+    if (suppressNotificationClickRef.current) {
+      suppressNotificationClickRef.current = false;
+      return;
+    }
+    setFreshNotificationIds((prev) => {
+      const next = new Set(prev);
+      next.delete(notification.id);
+      return next;
+    });
     if (notification.type === "like" && notification.fromUserId) {
       navigate(`/users/${notification.fromUserId}`);
     } else if (notification.conversationId) {
       navigate(`/chats/${notification.conversationId}`);
     }
     setShowNotifications(false);
+  };
+
+  const handleNotificationContextMenu = (
+    event: React.MouseEvent,
+    notification: AppNotification,
+  ) => {
+    event.preventDefault();
+    openNotificationMenu(notification, event.clientX, event.clientY);
+  };
+
+  const handleNotificationTouchStart = (
+    event: React.TouchEvent,
+    notification: AppNotification,
+  ) => {
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    notificationTouchStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+    };
+    if (notificationLongPressRef.current) {
+      window.clearTimeout(notificationLongPressRef.current);
+    }
+    notificationLongPressRef.current = window.setTimeout(() => {
+      notificationLongPressRef.current = null;
+      suppressNotificationClickRef.current = true;
+      openNotificationMenu(notification, touch.clientX, touch.clientY);
+    }, 500);
+  };
+
+  const handleNotificationTouchMove = (event: React.TouchEvent) => {
+    if (!notificationTouchStartRef.current || event.touches.length !== 1)
+      return;
+    const touch = event.touches[0];
+    const deltaX = Math.abs(touch.clientX - notificationTouchStartRef.current.x);
+    const deltaY = Math.abs(touch.clientY - notificationTouchStartRef.current.y);
+    if (deltaX > 10 || deltaY > 10) {
+      if (notificationLongPressRef.current) {
+        window.clearTimeout(notificationLongPressRef.current);
+        notificationLongPressRef.current = null;
+      }
+    }
+  };
+
+  const handleNotificationTouchEnd = () => {
+    if (notificationLongPressRef.current) {
+      window.clearTimeout(notificationLongPressRef.current);
+      notificationLongPressRef.current = null;
+    }
+    notificationTouchStartRef.current = null;
+  };
+
+  const handleClearNotifications = async () => {
+    const confirmClear = window.confirm("Clear all notifications?");
+    if (!confirmClear) return;
+    setIsUpdating(true);
+    setMenuError(null);
+    try {
+      await clearNotificationsForUser(user.id);
+      setMenuMessage("Notifications cleared.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to clear notifications.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleToggleNotificationRead = async (notification: AppNotification) => {
+    setIsUpdating(true);
+    setMenuError(null);
+    try {
+      await setNotificationRead(notification.id, !notification.read);
+      setMenuMessage(
+        notification.read ? "Marked as unread." : "Marked as read.",
+      );
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to update notification.");
+    } finally {
+      setIsUpdating(false);
+      closeNotificationMenu();
+    }
+  };
+
+  const handleDeleteNotification = async (notification: AppNotification) => {
+    setIsUpdating(true);
+    setMenuError(null);
+    try {
+      await deleteNotification(notification.id);
+      setMenuMessage("Notification removed.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to delete notification.");
+    } finally {
+      setIsUpdating(false);
+      closeNotificationMenu();
+    }
   };
 
   const getNotificationTitle = (notification: AppNotification) => {
@@ -420,11 +620,22 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
               <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white">
                 Notifications
               </h3>
-              {notifications.filter((n) => !n.read).length > 0 && (
-                <span className="rounded-full bg-kipepeo-pink/20 px-2 py-0.5 text-[9px] font-bold text-kipepeo-pink">
-                  {notifications.filter((n) => !n.read).length} New
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <span className="rounded-full bg-kipepeo-pink/20 px-2 py-0.5 text-[9px] font-bold text-kipepeo-pink">
+                    {notifications.filter((n) => !n.read).length} New
+                  </span>
+                )}
+                {notifications.length > 0 && (
+                  <button
+                    onClick={handleClearNotifications}
+                    disabled={isUpdating}
+                    className="rounded-full border border-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-gray-300 hover:bg-white/10 disabled:opacity-60"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
             <div className="max-h-[350px] overflow-y-auto overflow-x-hidden scroll-smooth py-2">
               {notifications.length === 0 ? (
@@ -453,10 +664,22 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                     <button
                       key={notification.id}
                       onClick={() => handleNotificationClick(notification)}
+                      onContextMenu={(event) =>
+                        handleNotificationContextMenu(event, notification)
+                      }
+                      onTouchStart={(event) =>
+                        handleNotificationTouchStart(event, notification)
+                      }
+                      onTouchMove={handleNotificationTouchMove}
+                      onTouchEnd={handleNotificationTouchEnd}
                       className={`group relative w-full rounded-xl border p-3 text-left transition-all duration-200 hover:scale-[0.98] ${
                         notification.read
                           ? "border-transparent bg-transparent opacity-60 hover:bg-white/5 hover:opacity-100"
                           : "border-kipepeo-pink/20 bg-gradient-to-r from-kipepeo-pink/10 to-transparent hover:border-kipepeo-pink/40"
+                      } ${
+                        freshNotificationIds.has(notification.id)
+                          ? "ring-2 ring-kipepeo-pink/60 animate-pulse"
+                          : ""
                       }`}
                     >
                       {!notification.read && (
@@ -502,6 +725,50 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
               )}
             </div>
             <div className="pointer-events-none absolute bottom-0 left-0 h-8 w-full bg-gradient-to-t from-[#121212] to-transparent"></div>
+          </div>
+        </div>
+      )}
+
+      {notificationMenu && (
+        <div className="fixed inset-0 z-50" onClick={closeNotificationMenu}>
+          <div
+            ref={notificationMenuRef}
+            onClick={(event) => event.stopPropagation()}
+            className="absolute w-56 overflow-hidden rounded-2xl border border-white/10 bg-[#141414]/95 shadow-2xl backdrop-blur-xl"
+            style={{ top: notificationMenu.y, left: notificationMenu.x }}
+          >
+            <div className="border-b border-white/5 px-4 py-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-300">
+                Notification
+              </p>
+              <p className="mt-1 text-[10px] text-gray-500 line-clamp-1">
+                {notificationMenu.notification.body}
+              </p>
+            </div>
+            <div className="py-1">
+              <button
+                onClick={() =>
+                  handleToggleNotificationRead(notificationMenu.notification)
+                }
+                disabled={isUpdating}
+                className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5 disabled:opacity-60"
+              >
+                {notificationMenu.notification.read
+                  ? "Mark Unread"
+                  : "Mark Read"}
+                <span className="text-[9px] text-gray-500">Status</span>
+              </button>
+              <button
+                onClick={() =>
+                  handleDeleteNotification(notificationMenu.notification)
+                }
+                disabled={isUpdating}
+                className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-red-300 hover:bg-white/5 disabled:opacity-60"
+              >
+                Delete
+                <span className="text-[9px] text-red-300">Remove</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

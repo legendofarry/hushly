@@ -367,13 +367,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     };
   }, []);
   const unreadNotifications = notifications.filter((n) => !n.read);
-  const unreadMessageCount = useMemo(
-    () =>
-      notifications.filter(
-        (notification) => !notification.read && notification.type === "message",
-      ).length,
-    [notifications],
-  );
+  const unreadConversationCount = useMemo(() => {
+    const ids = new Set<string>();
+    notifications.forEach((notification) => {
+      if (!notification.read && notification.conversationId) {
+        ids.add(notification.conversationId);
+      }
+    });
+    return ids.size;
+  }, [notifications]);
   const isOwner = user.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
   const latestPaymentRequest = paymentRequests[0] ?? null;
   const paymentStatus = latestPaymentRequest?.status ?? null;
@@ -913,9 +915,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               to="/chats"
               className="w-10 h-10 flex items-center justify-center text-lg active:scale-90 transition-transform relative"
             >
-              {unreadMessageCount > 0 && (
+              {unreadConversationCount > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-5 px-1.5 rounded-full bg-kipepeo-pink text-[10px] font-black flex items-center justify-center shadow-[0_0_10px_rgba(236,72,153,0.6)]">
-                  {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                  {unreadConversationCount > 9 ? "9+" : unreadConversationCount}
                 </span>
               )}
               <svg
