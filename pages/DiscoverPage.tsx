@@ -1438,12 +1438,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         </div>
                       ) : null}
 
-                      <div className="relative mb-6">
-                        <p className="text-sm text-gray-300/90 leading-relaxed font-medium line-clamp-3">
-                          "{current.bio}"
-                        </p>
-                      </div>
-
                       {/* Action Bar (Redesigned) */}
                       <div className="flex items-center justify-center gap-5 sm:gap-8 w-full max-w-md mx-auto mt-auto pt-4 pb-2 z-10">
                         {/* --- PASS BUTTON --- */}

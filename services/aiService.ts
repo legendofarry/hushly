@@ -295,26 +295,10 @@ export const getMatchReasons = (
   profile: UserProfile,
   signals: AiSignals,
 ) => {
-  const reasons: string[] = [];
-  const shared = profile.intents?.filter((intent) =>
-    user.intents.includes(intent),
-  );
-  if (shared?.length) {
-    reasons.push(`Shared intents: ${shared.slice(0, 2).join(", ")}`);
-  }
   if (profile.area && profile.area === user.area) {
-    reasons.push("Same area");
+    return [`Both in ${profile.area}`];
   }
-  const favoriteIntent = (profile.intents ?? []).find(
-    (intent) => (signals.likedIntents[intent] || 0) >= 2,
-  );
-  if (favoriteIntent) {
-    reasons.push(`You often like ${favoriteIntent} vibes`);
-  }
-  if (profile.isOnline) {
-    reasons.push("Online now");
-  }
-  return reasons.slice(0, 3);
+  return [];
 };
 
 export const getIceBreakers = (payload: { otherProfile?: UserProfile }) => {
