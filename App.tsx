@@ -342,16 +342,29 @@ const App: React.FC = () => {
     };
     const handleBlur = () => setFocusShield(true);
     const handleFocus = () => setFocusShield(false);
+    const isEditableTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      if (target.isContentEditable) return true;
+      const tag = target.tagName.toLowerCase();
+      if (tag === "input" || tag === "textarea") return true;
+      return Boolean(
+        target.closest('input, textarea, [contenteditable="true"]'),
+      );
+    };
     const handleContextMenu = (event: Event) => {
+      if (isEditableTarget(event.target)) return;
       event.preventDefault();
     };
     const handleCopy = (event: Event) => {
+      if (isEditableTarget(event.target)) return;
       event.preventDefault();
     };
     const handleCut = (event: Event) => {
+      if (isEditableTarget(event.target)) return;
       event.preventDefault();
     };
     const handlePaste = (event: Event) => {
+      if (isEditableTarget(event.target)) return;
       event.preventDefault();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -363,6 +376,7 @@ const App: React.FC = () => {
         (event.ctrlKey || event.metaKey) &&
         ["c", "x", "v", "s", "p"].includes(key)
       ) {
+        if (isEditableTarget(event.target)) return;
         event.preventDefault();
       }
     };

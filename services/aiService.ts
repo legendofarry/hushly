@@ -301,6 +301,42 @@ export const getMatchReasons = (
   return [];
 };
 
+export type KenyanMatchSuggestion = {
+  title: string;
+  detail: string;
+  tag: string;
+};
+
+export const getKenyanMatchSuggestions = (payload: {
+  user: UserProfile;
+  match: UserProfile;
+  now?: Date;
+}): KenyanMatchSuggestion[] => {
+  const { user, match } = payload;
+  const now = payload.now ?? new Date();
+  const hour = now.getHours();
+  const rushHour = hour >= 16 && hour <= 19;
+  const area =
+    match.area && match.area === user.area
+      ? match.area
+      : match.area || user.area || "town";
+
+  return [
+    {
+      title: "Matatu-smart meetup",
+      tag: "Matatu-aware",
+      detail: rushHour
+        ? `Pick a spot within a short walk of ${area} stage or mall and avoid the 4–7pm rush.`
+        : `Meet near ${area} stage or mall for easy matatu access and quick exits.`,
+    },
+    {
+      title: "Weather-ready plan",
+      tag: "Weather-aware",
+      detail: `Choose a covered cafe or food court in ${area}, with a quick indoor fallback if rain hits.`,
+    },
+  ];
+};
+
 export const getIceBreakers = (payload: { otherProfile?: UserProfile }) => {
   const other = payload.otherProfile;
   if (!other) return [];

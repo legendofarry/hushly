@@ -16,12 +16,17 @@ import {
   UserProfile,
   WeekendPlan,
 } from "../types";
-import { getAllUsers, getAllUserSettings } from "../services/userService";
+import {
+  getAllUsers,
+  getAllUserSettings,
+  getUserProfile,
+} from "../services/userService";
 import AppImage from "../components/AppImage";
 import { ensureConversation } from "../services/chatService";
 import LottiePlayer from "../components/LottiePlayer";
 import {
   createLikeNotification,
+  createNotification,
   listenToNotifications,
   markNotificationsRead,
 } from "../services/notificationService";
@@ -44,6 +49,7 @@ import {
 import {
   createLike,
   deleteLike,
+  listenToLikesReceived,
   listenToLikesSent,
 } from "../services/likeService";
 import {
@@ -52,9 +58,11 @@ import {
   listenToDislikesSent,
 } from "../services/dislikeService";
 import {
+  getKenyanMatchSuggestions,
   getMatchReasons,
   rankProfiles,
   semanticSearchProfiles,
+  type KenyanMatchSuggestion,
 } from "../services/aiService";
 import {
   loadAiSignals,
@@ -63,6 +71,9 @@ import {
   recordLikeSignal,
   recordSkipSignal,
 } from "../services/aiSignals";
+
+const MPESA_FORMAT_REGEX =
+  /[A-Z0-9]{8,12}\s+Confirmed\.\s+Ksh\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s+sent\s+to\s+.+?\s+on\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s?(?:AM|PM)\./i;
 
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
@@ -89,11 +100,19 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [planCategory, setPlanCategory] = useState("Hangout");
   const [planSubmitting, setPlanSubmitting] = useState(false);
   const [planActionError, setPlanActionError] = useState<string | null>(null);
+  const [premiumCheckUser, setPremiumCheckUser] = useState<UserProfile | null>(
+    null,
+  );
+  const [premiumChecking, setPremiumChecking] = useState(false);
+  const [premiumCheckError, setPremiumCheckError] = useState<string | null>(
+    null,
+  );
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [paymentProof, setPaymentProof] = useState("");
   const [showPaymentProof, setShowPaymentProof] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentInvalidAttempts, setPaymentInvalidAttempts] = useState(0);
   const [rsvpTarget, setRsvpTarget] = useState<WeekendPlan | null>(null);
   const [rsvpName, setRsvpName] = useState("");
   const [rsvpContact, setRsvpContact] = useState("");
@@ -111,7 +130,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [escortError, setEscortError] = useState<string | null>(null);
   const [, startAiTransition] = useTransition();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [likedMeIds, setLikedMeIds] = useState<Set<string>>(new Set());
   const [dislikedIds, setDislikedIds] = useState<Set<string>>(new Set());
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  const [matchProfile, setMatchProfile] = useState<UserProfile | null>(null);
+  const [matchSuggestions, setMatchSuggestions] = useState<
+    KenyanMatchSuggestion[]
+  >([]);
   const lastProfileRef = useRef<UserProfile | null>(null);
   const lastViewStartRef = useRef<number>(Date.now());
   const deferredSignals = useDeferredValue(aiSignals);
@@ -217,11 +242,49 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, [user.id]);
 
   useEffect(() => {
+    if (view !== "plans") return;
+    let active = true;
+    setPremiumChecking(true);
+    setPremiumCheckError(null);
+    setPremiumCheckUser(null);
+    getUserProfile(user.id)
+      .then((profile) => {
+        if (!active) return;
+        setPremiumCheckUser(profile ?? null);
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!active) return;
+        setPremiumCheckError("Unable to confirm premium status.");
+      })
+      .finally(() => {
+        if (active) setPremiumChecking(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [view, user.id]);
+
+  useEffect(() => {
     const unsubscribe = listenToLikesSent(
       user.id,
       (items) => {
         const next = new Set(items.map((like) => like.toUserId));
         setLikedIds(next);
+      },
+      (error) => {
+        console.error(error);
+      },
+    );
+    return () => unsubscribe();
+  }, [user.id]);
+
+  useEffect(() => {
+    const unsubscribe = listenToLikesReceived(
+      user.id,
+      (items) => {
+        const next = new Set(items.map((like) => like.fromUserId));
+        setLikedMeIds(next);
       },
       (error) => {
         console.error(error);
@@ -379,9 +442,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const isOwner = user.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
   const latestPaymentRequest = paymentRequests[0] ?? null;
   const paymentStatus = latestPaymentRequest?.status ?? null;
+  const premiumUser = premiumCheckUser ?? user;
   const premiumActive =
-    Boolean(user.isPremium) &&
-    (!user.premiumExpiresAt || user.premiumExpiresAt > Date.now());
+    Boolean(premiumUser.isPremium) &&
+    (!premiumUser.premiumExpiresAt ||
+      premiumUser.premiumExpiresAt > Date.now());
   const premiumUnlocked =
     isOwner || premiumActive || latestPaymentRequest?.status === "approved";
   const paymentPending = paymentStatus === "pending";
@@ -393,6 +458,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const parsedMpesa = useMemo(
     () => (paymentProof ? parseMpesaMessage(paymentProof) : null),
     [paymentProof],
+  );
+  const isMpesaFormatValid = useMemo(() => {
+    const text = paymentProof.replace(/\s+/g, " ").trim();
+    if (!text) return false;
+    const hasBalance = /New\s+M-PESA\s+balance\s+is\s+Ksh/i.test(text);
+    return MPESA_FORMAT_REGEX.test(text) && hasBalance;
+  }, [paymentProof]);
+  const showMpesaFormatWarning = Boolean(
+    paymentProof.trim() && !isMpesaFormatValid,
   );
 
   const handleStartChat = async (target: UserProfile) => {
@@ -424,6 +498,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handlePlanSubmit = async () => {
+    if (premiumChecking) {
+      setPlanActionError("Confirming premium status...");
+      return;
+    }
     if (!premiumUnlocked || isOwner) return;
     if (
       !planTitle.trim() ||
@@ -460,6 +538,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const handleRsvpOpen = (plan: WeekendPlan) => {
     if (isOwner) {
       setPlanActionError("Owner accounts cannot RSVP to plans.");
+      return;
+    }
+    if (premiumChecking) {
+      setPlanActionError("Confirming premium status...");
       return;
     }
     setPlanActionError(null);
@@ -523,8 +605,19 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handlePaymentSubmit = async () => {
+    if (premiumChecking) {
+      setPaymentError("Confirming premium status...");
+      return;
+    }
     if (!paymentProof.trim()) {
       setPaymentError("Paste the full M-Pesa confirmation message.");
+      return;
+    }
+    if (!isMpesaFormatValid) {
+      setPaymentInvalidAttempts((prev) => prev + 1);
+      setPaymentError(
+        "The M-Pesa message format doesn't look right. Paste the full confirmation message.",
+      );
       return;
     }
     setPaymentSubmitting(true);
@@ -540,6 +633,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       const encoded = encodeURIComponent(message);
       window.open(`https://wa.me/${WHATSAPP_OWNER}?text=${encoded}`, "_blank");
       setPaymentProof("");
+      setPaymentInvalidAttempts(0);
       setShowPaymentProof(false);
     } catch (error) {
       console.error(error);
@@ -602,6 +696,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       handleNextProfile();
       return;
     }
+    const isMatch = likedMeIds.has(current.id);
     if (dislikedIds.has(current.id)) {
       clearDislike(current.id);
     }
@@ -632,29 +727,36 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       });
     }
 
-    // --- CONFETTI ANIMATION ---
-    // We use the app's brand colors for the confetti
-    const brandColors = ["#ec4899", "#a855f7", "#ffffff"]; // Pink-500, Purple-600, White
-
-    // Fire confetti from the bottom center (where the button is)
-    requestAnimationFrame(() => {
-      confetti({
-        particleCount: 100,
-        spread: 90,
-        origin: { y: 0.8 }, // Start from bottom 80% of screen
-        colors: brandColors,
-        disableForReducedMotion: true,
-        zIndex: 9999, // Ensure it sits on top of everything
-        gravity: 1.2,
-        scalar: 1.1,
-        ticks: 260, // Slightly shorter
+    if (isMatch) {
+      setMatchProfile(current);
+      setMatchSuggestions(getKenyanMatchSuggestions({ user, match: current }));
+      setShowMatchModal(true);
+      void createNotification({
+        toUserId: current.id,
+        fromUserId: user.id,
+        fromNickname: user.nickname,
+        type: "system",
+        body: `${user.nickname} liked you back. It's a match!`,
       });
-    });
 
-    // Short delay before switching to next profile to let user see the pop
-    setTimeout(() => {
-      handleNextProfile();
-    }, 200);
+      const brandColors = ["#ec4899", "#a855f7", "#ffffff"];
+      requestAnimationFrame(() => {
+        confetti({
+          particleCount: 140,
+          spread: 90,
+          origin: { y: 0.7 },
+          colors: brandColors,
+          disableForReducedMotion: true,
+          zIndex: 9999,
+          gravity: 1.1,
+          scalar: 1.1,
+          ticks: 280,
+        });
+      });
+      return;
+    }
+
+    handleNextProfile();
   };
 
   const handleChat = (e: React.MouseEvent) => {
@@ -1209,6 +1311,72 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         )}
       </header>
 
+      {showMatchModal && matchProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#141414] p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 h-20 w-20 overflow-hidden rounded-full border border-white/10">
+              <AppImage
+                src={matchProfile.photoUrl ?? user.photoUrl}
+                alt={matchProfile.nickname}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <div className="flex items-center justify-center gap-3 text-2xl">
+              <span className="text-white font-black tracking-tight">
+                It's a match!
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              You and {matchProfile.nickname} liked each other.
+            </p>
+
+            <div className="mt-5 space-y-3 text-left">
+              {matchSuggestions.map((suggestion) => (
+                <div
+                  key={suggestion.title}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-black uppercase tracking-widest text-white">
+                      {suggestion.title}
+                    </p>
+                    <span className="text-[9px] uppercase tracking-widest text-kipepeo-pink">
+                      {suggestion.tag}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-300">
+                    {suggestion.detail}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <button
+                onClick={() => {
+                  setShowMatchModal(false);
+                  setMatchProfile(null);
+                  handleNextProfile();
+                }}
+                className="rounded-full border border-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-gray-300 hover:bg-white/5"
+              >
+                Keep Swiping
+              </button>
+              <button
+                onClick={() => {
+                  setShowMatchModal(false);
+                  setMatchProfile(null);
+                  void handleStartChat(matchProfile);
+                }}
+                className="rounded-full bg-gradient-to-r from-kipepeo-pink to-purple-600 px-5 py-2 text-xs font-semibold uppercase tracking-widest text-white shadow-lg"
+              >
+                Start Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <div className="flex-1 px-4 pb-4 overflow-hidden relative flex flex-col z-10 max-w-2xl mx-auto w-full">
         {showNotifications && (
@@ -1580,6 +1748,20 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               </div>
 
+              {premiumChecking && (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-gray-300">
+                  <div className="flex items-center gap-3">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-kipepeo-pink border-t-transparent"></div>
+                    Confirming premium status...
+                  </div>
+                </div>
+              )}
+              {premiumCheckError && (
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-xs text-red-200">
+                  {premiumCheckError}
+                </div>
+              )}
+
               {!premiumUnlocked && (
                 <div className="space-y-4">
                   {paymentPending ? (
@@ -1591,22 +1773,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         Your payment is under review. Approval usually takes
                         5-15 minutes.
                       </p>
-                    </div>
-                  ) : paymentRejected ? (
-                    <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-200">
-                      <p className="font-bold uppercase tracking-widest text-xs mb-2">
-                        Payment rejected
-                      </p>
-                      <p>
-                        Please re-submit your M-Pesa confirmation or contact
-                        support.
-                      </p>
-                      <button
-                        onClick={() => setShowPaymentProof(true)}
-                        className="mt-3 px-4 py-2 rounded-full bg-red-500/20 text-red-200 text-xs font-black uppercase tracking-widest border border-red-500/30 active:scale-95 transition-transform"
-                      >
-                        Try Again
-                      </button>
                     </div>
                   ) : showPaymentProof ? (
                     <div className="space-y-3">
@@ -1665,6 +1831,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                       {paymentError && (
                         <p className="text-xs text-red-400">{paymentError}</p>
                       )}
+                      {paymentInvalidAttempts >= 2 && (
+                        <a
+                          href="tel:+254762634893"
+                          className="inline-flex items-center justify-center rounded-full border border-white/10 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-gray-200 hover:bg-white/10"
+                        >
+                          Call Support +254762634893
+                        </a>
+                      )}
                       <div className="flex items-center gap-3">
                         <button
                           onClick={handlePaymentSubmit}
@@ -1680,6 +1854,32 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                           Cancel
                         </button>
                       </div>
+                    </div>
+                  ) : paymentRejected ? (
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-200">
+                      <p className="font-bold uppercase tracking-widest text-xs mb-2">
+                        Payment rejected
+                      </p>
+                      <p>
+                        Please re-submit your M-Pesa confirmation or contact
+                        support.
+                      </p>
+                      <button
+                        onClick={() => {
+                          if (premiumChecking) {
+                            setPaymentError("Confirming premium status...");
+                            return;
+                          }
+                          setPaymentProof("");
+                          setPaymentError(null);
+                          setPaymentInvalidAttempts(0);
+                          setShowPaymentProof(true);
+                        }}
+                        disabled={premiumChecking}
+                        className="mt-3 px-4 py-2 rounded-full bg-red-500/20 text-red-200 text-xs font-black uppercase tracking-widest border border-red-500/30 active:scale-95 transition-transform disabled:opacity-60"
+                      >
+                        Try Again
+                      </button>
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
@@ -1699,8 +1899,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         </span>
                       </div>
                       <button
-                        onClick={() => setShowPaymentProof(true)}
-                        className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+                        onClick={() => {
+                          if (premiumChecking) {
+                            setPaymentError("Confirming premium status...");
+                            return;
+                          }
+                          setShowPaymentProof(true);
+                        }}
+                        disabled={premiumChecking}
+                        className="w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
                       >
                         I Have Paid
                       </button>
