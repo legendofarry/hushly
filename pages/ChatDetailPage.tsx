@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { UserProfile } from "../types";
 import AppImage from "../components/AppImage";
 import {
@@ -27,6 +28,10 @@ import {
   getSmartReplies,
   summarizeConversation,
 } from "../services/aiService";
+import maskNeon from "../assets/masks/mask-neon.svg";
+import maskPixel from "../assets/masks/mask-pixel.svg";
+import maskHolo from "../assets/masks/mask-holo.svg";
+import maskNoir from "../assets/masks/mask-noir.svg";
 
 interface Props {
   user: UserProfile;
@@ -40,6 +45,18 @@ const MASK_OPTIONS: { id: MaskStyle; label: string }[] = [
   { id: "holo", label: "Holo" },
   { id: "noir", label: "Noir" },
 ];
+
+const MASK_ASSETS: Record<MaskStyle, string> = {
+  visor: maskNeon,
+  pixel: maskPixel,
+  holo: maskHolo,
+  noir: maskNoir,
+};
+
+const FACE_LANDMARKER_WASM =
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
+const FACE_LANDMARKER_MODEL =
+  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
 const VIDEO_CALL_ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -112,7 +129,14 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const maskModeRef = useRef<"mask" | "blur">("mask");
   const facesRef = useRef<any[]>([]);
   const maskMissCountRef = useRef(0);
-  const faceDetectorRef = useRef<any>(null);
+  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
+  const faceLandmarkerPromiseRef = useRef<Promise<FaceLandmarker> | null>(null);
+  const maskImagesRef = useRef<Record<MaskStyle, HTMLImageElement | null>>({
+    visor: null,
+    pixel: null,
+    holo: null,
+    noir: null,
+  });
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -220,75 +244,101 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     }
   };
 
-  const drawMaskOverlay = (
-    ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; width: number; height: number },
-    style: MaskStyle,
-  ) => {
-    const x = box.x;
-    const y = box.y;
-    const w = box.width;
-    const h = box.height;
+  const loadMaskImages = async () => {
+    const entries = Object.entries(MASK_ASSETS) as [MaskStyle, string][];
+    await Promise.all(
+      entries.map(
+        ([style, src]) =>
+          new Promise<void>((resolve) => {
+            if (maskImagesRef.current[style]) {
+              resolve();
+              return;
+            }
+            const image = new Image();
+            image.crossOrigin = "anonymous";
+            image.onload = () => {
+              maskImagesRef.current[style] = image;
+              resolve();
+            };
+            image.onerror = () => {
+              resolve();
+            };
+            image.src = src;
+          }),
+      ),
+    );
+  };
 
-    switch (style) {
-      case "visor": {
-        const visorHeight = h * 0.32;
-        const visorY = y + h * 0.28;
-        const gradient = ctx.createLinearGradient(x, visorY, x + w, visorY);
-        gradient.addColorStop(0, "rgba(255, 0, 128, 0.7)");
-        gradient.addColorStop(1, "rgba(157, 0, 255, 0.7)");
-        ctx.save();
-        ctx.shadowColor = "rgba(255, 0, 128, 0.8)";
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        if ("roundRect" in ctx) {
-          (ctx as any).roundRect(x, visorY, w, visorHeight, visorHeight * 0.45);
-        } else {
-          ctx.rect(x, visorY, w, visorHeight);
-        }
-        ctx.fill();
-        ctx.restore();
-        break;
-      }
-      case "pixel": {
-        ctx.save();
-        ctx.globalAlpha = 0.8;
-        const block = Math.max(6, Math.round(w / 8));
-        for (let px = x; px < x + w; px += block) {
-          for (let py = y; py < y + h; py += block) {
-            const shade = ((px + py) % 3) * 50;
-            ctx.fillStyle = `rgba(${80 + shade}, ${20 + shade}, 160, 0.6)`;
-            ctx.fillRect(px, py, block - 1, block - 1);
-          }
-        }
-        ctx.restore();
-        break;
-      }
-      case "holo": {
-        ctx.save();
-        ctx.strokeStyle = "rgba(0, 255, 255, 0.7)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.ellipse(x + w / 2, y + h / 2, w * 0.55, h * 0.7, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.strokeStyle = "rgba(255, 0, 128, 0.7)";
-        ctx.beginPath();
-        ctx.arc(x + w / 2, y + h * 0.2, w * 0.25, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-        break;
-      }
-      case "noir":
-      default: {
-        ctx.save();
-        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-        ctx.fillRect(x, y + h * 0.25, w, h * 0.3);
-        ctx.fillRect(x, y + h * 0.6, w, h * 0.18);
-        ctx.restore();
-        break;
-      }
+  const ensureFaceLandmarker = async () => {
+    if (faceLandmarkerRef.current) return faceLandmarkerRef.current;
+    if (faceLandmarkerPromiseRef.current) {
+      return await faceLandmarkerPromiseRef.current;
     }
+
+    faceLandmarkerPromiseRef.current = (async () => {
+      const vision = await FilesetResolver.forVisionTasks(
+        FACE_LANDMARKER_WASM,
+      );
+      const create = async (delegate: "GPU" | "CPU") =>
+        FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: FACE_LANDMARKER_MODEL,
+            delegate,
+          },
+          runningMode: "VIDEO",
+          numFaces: 1,
+        });
+
+      try {
+        return await create("GPU");
+      } catch (error) {
+        console.warn("GPU delegate failed, falling back to CPU.", error);
+        return await create("CPU");
+      }
+    })();
+
+    try {
+      const landmarker = await faceLandmarkerPromiseRef.current;
+      faceLandmarkerRef.current = landmarker;
+      faceLandmarkerPromiseRef.current = null;
+      return landmarker;
+    } catch (error) {
+      faceLandmarkerPromiseRef.current = null;
+      throw error;
+    }
+  };
+
+  const getFaceBoxFromLandmarks = (
+    landmarks: Array<{ x: number; y: number }>,
+    width: number,
+    height: number,
+  ) => {
+    let minX = 1;
+    let minY = 1;
+    let maxX = 0;
+    let maxY = 0;
+    landmarks.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+    if (maxX <= minX || maxY <= minY) return null;
+    const padX = (maxX - minX) * 0.2;
+    const padY = (maxY - minY) * 0.28;
+    const x = Math.max(0, (minX - padX) * width);
+    const y = Math.max(0, (minY - padY) * height);
+    const w = Math.min(width, (maxX - minX + padX * 2) * width);
+    const h = Math.min(height, (maxY - minY + padY * 2) * height);
+    return { x, y, width: w, height: h };
+  };
+
+  const drawMaskImage = (
+    ctx: CanvasRenderingContext2D,
+    image: HTMLImageElement,
+    box: { x: number; y: number; width: number; height: number },
+  ) => {
+    ctx.drawImage(image, box.x, box.y, box.width, box.height);
   };
 
   const startMaskPipeline = async () => {
@@ -351,21 +401,23 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     }
 
     let nextMode: "mask" | "blur" = "mask";
-    const FaceDetectorImpl = (window as any).FaceDetector;
-    if (!FaceDetectorImpl) {
+    let landmarker: FaceLandmarker | null = null;
+    try {
+      await loadMaskImages();
+      if (!maskImagesRef.current[maskStyleRef.current]) {
+        nextMode = "blur";
+        setMaskNotice("Mask assets unavailable. Using blur.");
+      }
+      landmarker = await ensureFaceLandmarker();
+    } catch (error) {
+      console.error(error);
       nextMode = "blur";
       setMaskNotice("Face masks unavailable. Using blur.");
-    } else if (!faceDetectorRef.current) {
-      try {
-        faceDetectorRef.current = new FaceDetectorImpl({
-          fastMode: true,
-          maxDetectedFaces: 1,
-        });
-      } catch (error) {
-        console.error(error);
-        nextMode = "blur";
-        setMaskNotice("Face masks unavailable. Using blur.");
-      }
+    }
+
+    if (!landmarker) {
+      nextMode = "blur";
+      setMaskNotice("Face masks unavailable. Using blur.");
     }
 
     setMaskMode(nextMode);
@@ -393,12 +445,15 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       );
     }
 
-    if (faceDetectorRef.current) {
+    if (landmarker) {
       maskDetectIntervalRef.current = window.setInterval(async () => {
         if (!maskVideoRef.current) return;
         try {
-          const faces = await faceDetectorRef.current.detect(maskVideoRef.current);
-          facesRef.current = faces ?? [];
+          const result = landmarker.detectForVideo(
+            maskVideoRef.current,
+            performance.now(),
+          );
+          facesRef.current = result.faceLandmarks ?? [];
           if (facesRef.current.length === 0) {
             maskMissCountRef.current += 1;
             if (maskModeRef.current === "mask" && maskMissCountRef.current >= 8) {
@@ -436,30 +491,42 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
           ctx.save();
           ctx.filter = "blur(16px)";
-          faces.forEach((face: any) => {
-            const box = face.boundingBox ?? face;
-            const fx = Math.max(0, box.x ?? box.left ?? 0);
-            const fy = Math.max(0, box.y ?? box.top ?? 0);
-            const fw = Math.min(canvas.width, box.width ?? 0);
-            const fh = Math.min(canvas.height, box.height ?? 0);
-            if (fw > 0 && fh > 0) {
-              ctx.drawImage(source, fx, fy, fw, fh, fx, fy, fw, fh);
-            }
+          faces.forEach((faceLandmarks: any) => {
+            const box = getFaceBoxFromLandmarks(
+              faceLandmarks,
+              canvas.width,
+              canvas.height,
+            );
+            if (!box) return;
+            ctx.drawImage(
+              source,
+              box.x,
+              box.y,
+              box.width,
+              box.height,
+              box.x,
+              box.y,
+              box.width,
+              box.height,
+            );
           });
           ctx.restore();
         }
       } else {
         ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-        facesRef.current.forEach((face: any) => {
-          const box = face.boundingBox ?? face;
-          const fx = Math.max(0, box.x ?? box.left ?? 0);
-          const fy = Math.max(0, box.y ?? box.top ?? 0);
-          const fw = Math.min(canvas.width, box.width ?? 0);
-          const fh = Math.min(canvas.height, box.height ?? 0);
-          if (fw > 0 && fh > 0) {
-            drawMaskOverlay(ctx, { x: fx, y: fy, width: fw, height: fh }, maskStyleRef.current);
-          }
-        });
+        const maskImage = maskImagesRef.current[maskStyleRef.current];
+        if (maskImage) {
+          facesRef.current.forEach((faceLandmarks: any) => {
+            const box = getFaceBoxFromLandmarks(
+              faceLandmarks,
+              canvas.width,
+              canvas.height,
+            );
+            if (box) {
+              drawMaskImage(ctx, maskImage, box);
+            }
+          });
+        }
       }
 
       maskAnimationRef.current = window.requestAnimationFrame(drawFrame);
