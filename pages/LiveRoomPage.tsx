@@ -296,6 +296,18 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   }, [room?.status, navigate, room]);
 
   useEffect(() => {
+    if (!roomId || !isHost) return;
+    const handleUnload = () => {
+      void endLiveRoom(roomId);
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleUnload);
+      void endLiveRoom(roomId);
+    };
+  }, [roomId, isHost]);
+
+  useEffect(() => {
     if (!roomId) return;
     if (!isOnStage) {
       if (localStreamRef.current) {
