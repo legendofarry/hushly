@@ -21,6 +21,7 @@ import LikesAnalyticsPage from "./pages/LikesAnalyticsPage";
 import UserProfileViewPage from "./pages/UserProfileViewPage";
 import ManagePaymentsPage from "./pages/ManagePaymentsPage";
 import EscortHomePage from "./pages/EscortHomePage";
+import LiveRoomPage from "./pages/LiveRoomPage";
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
@@ -173,6 +174,16 @@ const AppRoutes: React.FC<{
             <EscortHomePage user={user} />
           ) : (
             <Navigate to="/discover" />
+          )
+        }
+      />
+      <Route
+        path="/live/:id"
+        element={
+          user && isVerified ? (
+            <LiveRoomPage user={user} />
+          ) : (
+            <Navigate to="/" />
           )
         }
       />

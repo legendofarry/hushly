@@ -12,6 +12,11 @@ import {
   AppNotification,
   AGE_RANGES,
   IntentType,
+  LiveChatAccess,
+  LiveJoinAccess,
+  LivePrivacy,
+  LiveRoom,
+  LiveType,
   PaymentRequest,
   UserProfile,
   WeekendPlan,
@@ -71,6 +76,7 @@ import {
   recordLikeSignal,
   recordSkipSignal,
 } from "../services/aiSignals";
+import { createLiveRoom, listenToLiveRooms } from "../services/liveService";
 
 const MPESA_FORMAT_REGEX =
   /[A-Z0-9]{8,12}\s+Confirmed\.\s+Ksh\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s+sent\s+to\s+.+?\s+on\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s?(?:AM|PM)\./i;
@@ -87,12 +93,32 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [aiSignals, setAiSignals] = useState(() => loadAiSignals());
-  const [view, setView] = useState<"discover" | "plans" | "portal">("discover");
+  const [view, setView] = useState<"discover" | "live" | "plans" | "portal">(
+    "discover",
+  );
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [plans, setPlans] = useState<WeekendPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState<string | null>(null);
+  const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
+  const [liveLoading, setLiveLoading] = useState(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [showGoLive, setShowGoLive] = useState(false);
+  const [liveTitle, setLiveTitle] = useState("");
+  const [liveType, setLiveType] = useState<LiveType>("solo");
+  const [liveAllowGuests, setLiveAllowGuests] = useState(true);
+  const [liveChatAccess, setLiveChatAccess] =
+    useState<LiveChatAccess>("everyone");
+  const [liveJoinAccess, setLiveJoinAccess] =
+    useState<LiveJoinAccess>("everyone");
+  const [livePrivacy, setLivePrivacy] = useState<LivePrivacy>("public");
+  const [liveTags, setLiveTags] = useState("");
+  const [liveModerationFilter, setLiveModerationFilter] = useState(true);
+  const [liveModerationMuteNew, setLiveModerationMuteNew] = useState(false);
+  const [liveMaxGuests, setLiveMaxGuests] = useState("4");
+  const [liveStarting, setLiveStarting] = useState(false);
+  const [liveStartError, setLiveStartError] = useState<string | null>(null);
   const [planTitle, setPlanTitle] = useState("");
   const [planDescription, setPlanDescription] = useState("");
   const [planLocation, setPlanLocation] = useState("");
@@ -222,6 +248,21 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             : "Unable to load weekend plans.",
         );
         setPlansLoading(false);
+      },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = listenToLiveRooms(
+      (rooms) => {
+        setLiveRooms(rooms);
+        setLiveLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        setLiveError("Unable to load live sessions right now.");
+        setLiveLoading(false);
       },
     );
     return () => unsubscribe();
@@ -468,6 +509,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const showMpesaFormatWarning = Boolean(
     paymentProof.trim() && !isMpesaFormatValid,
   );
+  const tabIndex =
+    view === "discover" ? 0 : view === "live" ? 1 : view === "plans" ? 2 : 0;
 
   const handleStartChat = async (target: UserProfile) => {
     try {
@@ -602,6 +645,63 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     setTimeout(() => {
       navigate("/escort");
     }, 1600);
+  };
+
+  const resetLiveForm = () => {
+    setLiveTitle("");
+    setLiveType("solo");
+    setLiveAllowGuests(true);
+    setLiveChatAccess("everyone");
+    setLiveJoinAccess("everyone");
+    setLivePrivacy("public");
+    setLiveTags("");
+    setLiveModerationFilter(true);
+    setLiveModerationMuteNew(false);
+    setLiveMaxGuests("4");
+    setLiveStartError(null);
+  };
+
+  const handleStartLive = async () => {
+    if (!liveTitle.trim()) {
+      setLiveStartError("Live title is required.");
+      return;
+    }
+    setLiveStarting(true);
+    setLiveStartError(null);
+    const parsedMaxGuests = Number.parseInt(liveMaxGuests, 10);
+    const maxGuests = Number.isFinite(parsedMaxGuests)
+      ? Math.min(Math.max(parsedMaxGuests, 1), 9)
+      : 4;
+    const tags = liveTags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .slice(0, 5);
+    try {
+      const roomId = await createLiveRoom({
+        host: user,
+        title: liveTitle.trim(),
+        type: liveAllowGuests ? liveType : "solo",
+        allowGuests: liveAllowGuests || liveType === "group",
+        chatAccess: liveChatAccess,
+        joinAccess: liveAllowGuests ? liveJoinAccess : "invite",
+        moderation: {
+          filterBadWords: liveModerationFilter,
+          muteNewUsers: liveModerationMuteNew,
+        },
+        privacy: livePrivacy,
+        tags,
+        maxGuests,
+      });
+      setShowGoLive(false);
+      resetLiveForm();
+      navigate(`/live/${roomId}`);
+    } catch (error) {
+      console.error(error);
+      setLiveStartError("Unable to start live right now.");
+    } finally {
+      setLiveStarting(false);
+    }
   };
 
   const handlePaymentSubmit = async () => {
@@ -1114,13 +1214,23 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
         <div className="relative p-1 bg-white/5 rounded-xl flex items-center mb-4">
           <div
-            className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white/10 rounded-lg shadow-sm transition-all duration-300 ease-out ${view === "plans" ? "translate-x-[calc(100%+4px)]" : "translate-x-0"}`}
+            className="absolute top-1 bottom-1 rounded-lg bg-white/10 shadow-sm transition-all duration-300 ease-out"
+            style={{
+              width: "calc(33.333% - 8px)",
+              transform: `translateX(calc(${tabIndex * 100}% + ${tabIndex * 4}px))`,
+            }}
           />
           <button
             onClick={() => setView("discover")}
             className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "discover" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
           >
             Discovery
+          </button>
+          <button
+            onClick={() => setView("live")}
+            className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "live" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
+          >
+            Live
           </button>
           <button
             onClick={() => setView("plans")}
@@ -1725,6 +1835,316 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               </div>
             )}
           </>
+        ) : view === "live" ? (
+          <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">
+            {showGoLive && (
+              <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4">
+                <div className="w-full max-w-lg glass rounded-3xl border border-white/10 p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-black uppercase tracking-widest">
+                        Go Live
+                      </h3>
+                      <p className="text-xs text-gray-400">
+                        Settings are locked once the live starts.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowGoLive(false);
+                        setLiveStartError(null);
+                      }}
+                      className="text-xs uppercase tracking-widest text-gray-400"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-gray-400">
+                        Live Title
+                      </label>
+                      <input
+                        value={liveTitle}
+                        onChange={(e) => setLiveTitle(e.target.value)}
+                        placeholder="Late night rooftop vibes"
+                        className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
+                          Live Type
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setLiveType("solo")}
+                            className={`flex-1 rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                              liveType === "solo"
+                                ? "border-kipepeo-pink text-white bg-kipepeo-pink/20"
+                                : "border-white/10 text-gray-300 hover:bg-white/10"
+                            }`}
+                          >
+                            Solo
+                          </button>
+                          <button
+                            onClick={() => {
+                              setLiveType("group");
+                              setLiveAllowGuests(true);
+                            }}
+                            className={`flex-1 rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
+                              liveType === "group"
+                                ? "border-kipepeo-pink text-white bg-kipepeo-pink/20"
+                                : "border-white/10 text-gray-300 hover:bg-white/10"
+                            }`}
+                          >
+                            Group
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
+                          Allow Guests
+                        </p>
+                        <label className="flex items-center gap-2 text-xs text-gray-300">
+                          <input
+                            type="checkbox"
+                            checked={liveAllowGuests}
+                            onChange={(e) => {
+                              if (liveType === "group") return;
+                              setLiveAllowGuests(e.target.checked);
+                            }}
+                            className="accent-kipepeo-pink"
+                          />
+                          Allow viewers to request to join
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest text-gray-400">
+                          Who Can Chat
+                        </label>
+                        <select
+                          value={liveChatAccess}
+                          onChange={(e) =>
+                            setLiveChatAccess(e.target.value as LiveChatAccess)
+                          }
+                          className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
+                        >
+                          <option value="everyone">Everyone</option>
+                          <option value="followers">Followers only</option>
+                          <option value="noone">No one</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest text-gray-400">
+                          Who Can Request to Join
+                        </label>
+                        <select
+                          value={liveJoinAccess}
+                          onChange={(e) =>
+                            setLiveJoinAccess(e.target.value as LiveJoinAccess)
+                          }
+                          disabled={!liveAllowGuests}
+                          className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none disabled:opacity-60"
+                        >
+                          <option value="everyone">Everyone</option>
+                          <option value="followers">Followers only</option>
+                          <option value="invite">Invite only</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest text-gray-400">
+                          Privacy
+                        </label>
+                        <select
+                          value={livePrivacy}
+                          onChange={(e) =>
+                            setLivePrivacy(e.target.value as LivePrivacy)
+                          }
+                          className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
+                        >
+                          <option value="public">Public</option>
+                          <option value="friends">Friends</option>
+                          <option value="private">Private</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase tracking-widest text-gray-400">
+                          Max Guests
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={9}
+                          value={liveMaxGuests}
+                          onChange={(e) => setLiveMaxGuests(e.target.value)}
+                          className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] uppercase tracking-widest text-gray-400">
+                        Tags (comma separated)
+                      </label>
+                      <input
+                        value={liveTags}
+                        onChange={(e) => setLiveTags(e.target.value)}
+                        placeholder="Chat, Music, Q&A"
+                        className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="flex items-center gap-2 text-xs text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={liveModerationFilter}
+                          onChange={(e) =>
+                            setLiveModerationFilter(e.target.checked)
+                          }
+                          className="accent-kipepeo-pink"
+                        />
+                        Auto-filter bad words
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={liveModerationMuteNew}
+                          onChange={(e) =>
+                            setLiveModerationMuteNew(e.target.checked)
+                          }
+                          className="accent-kipepeo-pink"
+                        />
+                        Mute new users (30s)
+                      </label>
+                    </div>
+
+                    {liveStartError && (
+                      <p className="text-xs text-red-400">{liveStartError}</p>
+                    )}
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleStartLive}
+                        disabled={liveStarting}
+                        className="flex-1 py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+                      >
+                        {liveStarting ? "Starting..." : "Start Live"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowGoLive(false);
+                          setLiveStartError(null);
+                        }}
+                        className="px-4 py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="glass rounded-3xl border border-white/5 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-black uppercase tracking-widest">
+                    Live Now
+                  </h2>
+                  <p className="text-xs text-gray-500 uppercase tracking-[0.3em]">
+                    {liveRooms.length} sessions
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowGoLive(true)}
+                  className="px-4 py-2 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+                >
+                  Go Live
+                </button>
+              </div>
+              <p className="text-xs text-gray-400">
+                Tap a live card to join the room.
+              </p>
+            </div>
+
+            {liveLoading ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-sm">
+                Loading live sessions...
+              </div>
+            ) : liveError ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-red-400 text-sm">
+                {liveError}
+              </div>
+            ) : liveRooms.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center text-gray-500 text-sm">
+                No one is live right now. Be the first to go live.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {liveRooms.map((room) => (
+                  <button
+                    key={room.id}
+                    onClick={() => navigate(`/live/${room.id}`)}
+                    className="w-full rounded-3xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10 transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="relative h-14 w-14 overflow-hidden rounded-2xl border border-white/10">
+                        <AppImage
+                          src={room.hostPhotoUrl ?? user.photoUrl}
+                          alt={room.hostNickname}
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute left-1 top-1 rounded-full bg-red-500/90 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-white">
+                          Live
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-gray-400">
+                          <span>{room.viewerCount} viewers</span>
+                          <span>-</span>
+                          <span>
+                            {room.type === "group" ? "Group" : "Solo"}
+                          </span>
+                        </div>
+                        <h3 className="text-lg font-black text-white">
+                          {room.title}
+                        </h3>
+                        <p className="text-xs text-gray-400">
+                          Host: {room.hostNickname}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {room.tags.slice(0, 4).map((tag) => (
+                        <span
+                          key={`${room.id}-${tag}`}
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[9px] uppercase tracking-widest text-gray-300"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {room.allowGuests && (
+                        <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[9px] uppercase tracking-widest text-emerald-200">
+                          Guests allowed
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">
             <div className="glass rounded-3xl border border-white/5 p-5 space-y-4">

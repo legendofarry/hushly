@@ -113,6 +113,89 @@ service cloud.firestore {
       }
     }
 
+    match /live_rooms/{roomId} {
+      function liveRoom() {
+        return get(/databases/$(database)/documents/live_rooms/$(roomId)).data;
+      }
+
+      function isLiveHost() {
+        return signedIn() && liveRoom().hostId == request.auth.uid;
+      }
+
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.hostId == request.auth.uid;
+      allow update: if signedIn()
+        && (
+          isLiveHost()
+          || request.resource.data.diff(resource.data).changedKeys().hasOnly(["viewerCount"])
+        );
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && (
+            request.resource.data.senderId == request.auth.uid
+            || (request.resource.data.senderId == "system" && isLiveHost())
+          );
+        allow update: if false;
+        allow delete: if signedIn() && isLiveHost();
+      }
+
+      match /viewers/{viewerId} {
+        allow read: if signedIn();
+        allow create, update, delete: if signedIn() && viewerId == request.auth.uid;
+      }
+
+      match /guests/{guestId} {
+        allow read: if signedIn();
+        allow create, delete: if signedIn()
+          && (guestId == request.auth.uid || isLiveHost());
+        allow update: if false;
+      }
+
+      match /join_requests/{requestId} {
+        allow read: if signedIn()
+          && (requestId == request.auth.uid || isLiveHost());
+        allow create: if signedIn() && requestId == request.auth.uid;
+        allow update, delete: if signedIn()
+          && (isLiveHost() || requestId == request.auth.uid);
+      }
+
+      match /connections/{connectionId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && (
+            request.resource.data.offererId == request.auth.uid
+            || request.resource.data.answererId == request.auth.uid
+            || resource.data.offererId == request.auth.uid
+            || resource.data.answererId == request.auth.uid
+          );
+        allow delete: if false;
+
+        match /offerCandidates/{candidateId} {
+          allow read: if signedIn();
+          allow create: if signedIn()
+            && get(/databases/$(database)/documents/live_rooms/$(roomId)/connections/$(connectionId)).data.offererId == request.auth.uid;
+          allow update, delete: if false;
+        }
+
+        match /answerCandidates/{candidateId} {
+          allow read: if signedIn();
+          allow create: if signedIn()
+            && get(/databases/$(database)/documents/live_rooms/$(roomId)/connections/$(connectionId)).data.answererId == request.auth.uid;
+          allow update, delete: if false;
+        }
+      }
+
+      match /muted/{userId} {
+        allow read: if signedIn() && userId == request.auth.uid;
+        allow create, delete: if signedIn() && isLiveHost();
+        allow update: if false;
+      }
+    }
+
     match /blocks/{blockId} {
       allow read: if signedIn()
         && (resource.data.fromUserId == request.auth.uid

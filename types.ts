@@ -105,6 +105,62 @@ export interface DislikeRecord {
   createdAt: number;
 }
 
+export type LiveType = "solo" | "group";
+export type LiveChatAccess = "everyone" | "followers" | "noone";
+export type LiveJoinAccess = "everyone" | "followers" | "invite";
+export type LivePrivacy = "public" | "friends" | "private";
+export type LiveMessageType = "message" | "reaction" | "system";
+
+export interface LiveRoom {
+  id: string;
+  hostId: string;
+  hostNickname: string;
+  hostPhotoUrl?: string;
+  title: string;
+  type: LiveType;
+  allowGuests: boolean;
+  chatAccess: LiveChatAccess;
+  joinAccess: LiveJoinAccess;
+  moderation: {
+    filterBadWords: boolean;
+    muteNewUsers: boolean;
+  };
+  privacy: LivePrivacy;
+  tags: string[];
+  viewerCount: number;
+  maxGuests: number;
+  status: "live" | "ended";
+  createdAt: number;
+  startedAt?: number | null;
+  endedAt?: number | null;
+}
+
+export interface LiveMessage {
+  id: string;
+  senderId: string;
+  senderNickname: string;
+  type: LiveMessageType;
+  text: string;
+  createdAt: number;
+}
+
+export interface LiveGuest {
+  id: string;
+  userId: string;
+  nickname: string;
+  photoUrl?: string;
+  joinedAt: number;
+}
+
+export interface LiveJoinRequest {
+  id: string;
+  requesterId: string;
+  nickname: string;
+  photoUrl?: string;
+  status: "pending" | "approved" | "declined";
+  createdAt: number;
+}
+
 export type PaymentStatus = "pending" | "approved" | "rejected";
 
 export interface PaymentRequest {
