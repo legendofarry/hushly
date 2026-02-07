@@ -83,6 +83,9 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const navigate = useNavigate();
   const [conversation, setConversation] = useState<any | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showNewMessageIndicator, setShowNewMessageIndicator] =
+    useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -147,6 +150,8 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const reactionTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const reactionFocusHandledRef = useRef<string | null>(null);
   const initialScrollDoneRef = useRef<string | null>(null);
+  const focusJumpRef = useRef(false);
+  const lastMessageIdRef = useRef<string | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -236,6 +241,24 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       top: container.scrollHeight,
       behavior,
     });
+  };
+
+  const getIsAtBottom = () => {
+    const container = scrollRef.current;
+    if (!container) return true;
+    const threshold = 24;
+    return (
+      container.scrollHeight - container.scrollTop - container.clientHeight <=
+      threshold
+    );
+  };
+
+  const updateIsAtBottom = () => {
+    const atBottom = getIsAtBottom();
+    setIsAtBottom(atBottom);
+    if (atBottom) {
+      setShowNewMessageIndicator(false);
+    }
   };
 
   const getTimestampMs = (value: any) => {
@@ -664,6 +687,14 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   }, [conversationId]);
 
   useEffect(() => {
+    focusJumpRef.current = false;
+    initialScrollDoneRef.current = null;
+    lastMessageIdRef.current = null;
+    setShowNewMessageIndicator(false);
+    setIsAtBottom(true);
+  }, [conversationId]);
+
+  useEffect(() => {
     if (!conversationId) return;
     void markNotificationsReadByConversation(user.id, conversationId);
   }, [conversationId, user.id]);
@@ -775,15 +806,64 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     if (!conversationId) return;
+    if (focusJumpRef.current) return;
     if (reactionFocusMessageId) return;
     if (initialScrollDoneRef.current === conversationId) return;
     if (visibleMessages.length === 0) return;
     initialScrollDoneRef.current = conversationId;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        scrollToLastMessage("auto");
+      });
+    });
+    return () => {
+      if (raf1) window.cancelAnimationFrame(raf1);
+      if (raf2) window.cancelAnimationFrame(raf2);
+    };
+  }, [conversationId, reactionFocusMessageId, visibleMessages.length]);
+
+  useEffect(() => {
     const raf = window.requestAnimationFrame(() => {
-      scrollToLastMessage("auto");
+      updateIsAtBottom();
     });
     return () => window.cancelAnimationFrame(raf);
-  }, [conversationId, reactionFocusMessageId, visibleMessages.length]);
+  }, [visibleMessages.length]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    if (visibleMessages.length === 0) {
+      lastMessageIdRef.current = null;
+      setShowNewMessageIndicator(false);
+      return;
+    }
+    const lastMessage = visibleMessages[visibleMessages.length - 1];
+    if (lastMessageIdRef.current === lastMessage.id) return;
+    lastMessageIdRef.current = lastMessage.id;
+    if (reactionFocusMessageId) return;
+    if (!isAtBottom && lastMessage.senderId !== user.id) {
+      setShowNewMessageIndicator(true);
+      return;
+    }
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        scrollToLastMessage("auto");
+      });
+    });
+    return () => {
+      if (raf1) window.cancelAnimationFrame(raf1);
+      if (raf2) window.cancelAnimationFrame(raf2);
+    };
+  }, [
+    conversationId,
+    visibleMessages.length,
+    isAtBottom,
+    reactionFocusMessageId,
+    user.id,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1387,12 +1467,14 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
 
   const scrollToMessage = (messageId: string) => {
     const target = messageRefs.current[messageId];
-    if (!target) return;
+    if (!target) return false;
+    focusJumpRef.current = true;
     target.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlightMessageId(messageId);
     window.setTimeout(() => {
       setHighlightMessageId((prev) => (prev === messageId ? null : prev));
     }, 1800);
+    return true;
   };
 
   const sendMessage = async () => {
@@ -2045,6 +2127,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       {/* --- Messages Area --- */}
       <div
         ref={scrollRef}
+        onScroll={updateIsAtBottom}
         className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth"
       >
         {visibleMessages.length === 0 ? (
@@ -2239,6 +2322,19 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
               </div>
             );
           })
+        )}
+        {showNewMessageIndicator && (
+          <div className="sticky bottom-4 flex justify-center">
+            <button
+              onClick={() => {
+                scrollToLastMessage("smooth");
+                setShowNewMessageIndicator(false);
+              }}
+              className="rounded-full bg-white/10 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-white shadow-lg backdrop-blur hover:bg-white/20"
+            >
+              New messages
+            </button>
+          </div>
         )}
       </div>
 
