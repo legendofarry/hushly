@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   EscortListing,
+  EscortListingDraft,
   EscortSocialLink,
   UserProfile,
   VerificationStatus,
@@ -19,40 +20,15 @@ import { uploadToCloudinary } from "../services/cloudinaryService";
 import { OWNER_EMAIL } from "../services/paymentService";
 import AppImage from "../components/AppImage";
 import LottiePlayer from "../components/LottiePlayer";
+import { buildEscortListingDraftAi, detectEscortListingRisk } from "../services/aiService";
 
 interface Props {
   user: UserProfile;
 }
 
-type ListingDraft = {
-  displayName: string;
-  age: string;
-  gender: string;
-  bio: string;
-  languages: string[];
-  offers: string[];
-  offerNotes: string;
-  servicePricing: Record<string, string>;
-  mainService: string;
-  availability: string;
-  phone: string;
-  contactNote: string;
-  publicPhotos: string[];
-  xPhotos: string[];
-  primaryLocation: string;
-  extraLocations: string[];
-  travelOk: boolean;
-  locationLat: number | null;
-  locationLng: number | null;
-  videoCallEnabled: boolean;
-  videoCallVisibility: VideoCallVisibility;
-  socials: EscortSocialLink[];
-  verificationStatus: VerificationStatus;
-};
-
 const createId = () => Math.random().toString(36).slice(2, 10);
 
-const buildListingDraft = (profile: UserProfile): ListingDraft => ({
+const buildListingDraft = (profile: UserProfile): EscortListingDraft => ({
   displayName: profile.nickname,
   age: "",
   gender: "",
@@ -81,7 +57,7 @@ const buildListingDraft = (profile: UserProfile): ListingDraft => ({
 const buildListingDraftFromListing = (
   listing: EscortListing,
   profile: UserProfile,
-): ListingDraft => {
+): EscortListingDraft => {
   const offers = listing.offers ?? [];
   const servicePricing = { ...(listing.servicePricing ?? {}) };
   offers.forEach((offer) => {
@@ -201,7 +177,7 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
   const [showListingModal, setShowListingModal] = useState(false);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const [listingStep, setListingStep] = useState(1);
-  const [listingDraft, setListingDraft] = useState<ListingDraft>(() =>
+  const [listingDraft, setListingDraft] = useState<EscortListingDraft>(() =>
     buildListingDraft(user),
   );
   const [userListing, setUserListing] = useState<EscortListing | null>(null);
@@ -215,6 +191,8 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
   const [pinningLocation, setPinningLocation] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [listingSubmitting, setListingSubmitting] = useState(false);
+  const [aiListingPrompt, setAiListingPrompt] = useState("");
+  const [aiListingBusy, setAiListingBusy] = useState(false);
   const hearts = useMemo(
     () =>
       Array.from({ length: 40 }, (_, index) => ({
@@ -359,6 +337,16 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
     }
   }, [listingDraft, listingStep, uploadingPublic]);
 
+  const listingRisk = useMemo(
+    () =>
+      detectEscortListingRisk({
+        bio: listingDraft.bio,
+        offers: listingDraft.offers,
+        contactNote: listingDraft.contactNote,
+      }),
+    [listingDraft.bio, listingDraft.offers, listingDraft.contactNote],
+  );
+
   useEffect(() => {
     if (!listingNotice) return;
     const timer = setTimeout(() => setListingNotice(null), 4000);
@@ -385,9 +373,36 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
     setShowListingModal(true);
   };
 
+  const handleAiListingDraft = () => {
+    setAiListingBusy(true);
+    const aiDraft = buildEscortListingDraftAi({
+      profile: user,
+      prompt: aiListingPrompt,
+    });
+    setListingDraft((prev) => ({
+      ...prev,
+      ...aiDraft,
+      languages: aiDraft.languages?.length ? aiDraft.languages : prev.languages,
+      offers: aiDraft.offers?.length ? aiDraft.offers : prev.offers,
+      servicePricing: {
+        ...prev.servicePricing,
+        ...(aiDraft.servicePricing ?? {}),
+      },
+      socials: prev.socials.length ? prev.socials : aiDraft.socials ?? prev.socials,
+    }));
+    setListingNotice("AI filled your listing. Review and adjust before publishing.");
+    setAiListingBusy(false);
+  };
+
   const handleListingPublish = async () => {
     if (!isPremiumUser) {
       setShowUpgradePrompt(true);
+      return;
+    }
+    if (listingRisk.level === "high") {
+      setListingNotice(
+        "High-risk wording detected. Remove unsafe language before publishing.",
+      );
       return;
     }
     const mainService =
@@ -1054,9 +1069,56 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
 
               {/* --- SCROLLABLE CONTENT --- */}
               <div className="flex-1 overflow-y-auto p-6 scroll-smooth custom-scrollbar">
+                {listingRisk.level !== "low" && (
+                  <div
+                    className={`mb-6 rounded-2xl border p-4 ${
+                      listingRisk.level === "high"
+                        ? "border-red-500/30 bg-red-500/10 text-red-200"
+                        : "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                    }`}
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-widest">
+                      AI Safety Check
+                    </p>
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {listingRisk.issues.map((issue) => (
+                        <li key={issue}>• {issue}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {/* Step 1: Identity */}
                 {listingStep === 1 && (
                   <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-widest text-gray-300">
+                            AI Listing Builder
+                          </p>
+                          <p className="text-[10px] uppercase tracking-[0.3em] text-gray-500">
+                            Describe your vibe
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleAiListingDraft}
+                          disabled={aiListingBusy}
+                          className="px-3 py-2 rounded-full bg-kipepeo-pink/20 text-kipepeo-pink text-[10px] font-black uppercase tracking-widest border border-kipepeo-pink/40 active:scale-95 disabled:opacity-60"
+                        >
+                          {aiListingBusy ? "Generating..." : "Generate Draft"}
+                        </button>
+                      </div>
+                      <textarea
+                        value={aiListingPrompt}
+                        onChange={(e) => setAiListingPrompt(e.target.value)}
+                        rows={2}
+                        placeholder="Luxury companion, travel-friendly, bilingual, soft-spoken."
+                        className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 p-3 text-xs text-gray-200 placeholder:text-gray-600 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-gray-500">
+                        AI will prefill your listing. Review before publishing.
+                      </p>
+                    </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
                         Display Name{" "}

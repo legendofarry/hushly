@@ -2,7 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { deleteUser } from "firebase/auth";
 import type { User } from "firebase/auth";
 import { IntentType, KENYAN_AREAS, AGE_RANGES, UserProfile } from "../types";
-import { uploadToCloudinary } from "../services/cloudinaryService";
+import {
+  analyzePhotoForAi,
+  storePhotoAiHash,
+  uploadToCloudinary,
+  type PhotoAiReport,
+} from "../services/cloudinaryService";
 import {
   clearSession,
   registerWithEmail,
@@ -16,6 +21,7 @@ import {
 } from "../services/userService";
 import { getFriendlyAuthError } from "../firebaseErrors";
 import AppImage from "../components/AppImage";
+import { generateBio, rewriteBio, suggestIntents } from "../services/aiService";
 
 interface Props {
   onComplete: (user: UserProfile) => void;
@@ -32,6 +38,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
   const [bio, setBio] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [photoAiReport, setPhotoAiReport] = useState<PhotoAiReport | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -44,6 +51,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [aiTone, setAiTone] = useState("playful");
+  const [aiBusy, setAiBusy] = useState(false);
   const [showAgeGate, setShowAgeGate] = useState(false);
   const [ageGateChecked, setAgeGateChecked] = useState(false);
   const [ageGateProfile, setAgeGateProfile] = useState<UserProfile | null>(null);
@@ -117,6 +126,39 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     );
   };
 
+  const handleAiSuggestIntents = () => {
+    const suggestions = suggestIntents({
+      bio,
+      intents: selectedIntents,
+      ageRange,
+      area,
+    });
+    setSelectedIntents(suggestions);
+    setToastMessage("AI intents applied.");
+  };
+
+  const handleAiDraftBio = () => {
+    setAiBusy(true);
+    const draft = generateBio({
+      nickname: nickname || "I",
+      intents: selectedIntents,
+      area,
+      ageRange,
+      tone: aiTone,
+    });
+    setBio(draft);
+    setToastMessage("AI drafted your bio.");
+    setAiBusy(false);
+  };
+
+  const handleAiRewriteBio = () => {
+    setAiBusy(true);
+    const next = rewriteBio({ bio, tone: aiTone });
+    setBio(next);
+    setToastMessage("AI rewrote your bio.");
+    setAiBusy(false);
+  };
+
   const openSelfieCamera = () => {
     if (!selfieInputRef.current) return;
     selfieInputRef.current.value = "";
@@ -135,12 +177,23 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     }
 
     setErrorMessage(null);
+    setPhotoAiReport(null);
     const previewUrl = URL.createObjectURL(file);
     setPhotoPreview(previewUrl);
     setIsUploading(true);
 
     try {
+      const report = await analyzePhotoForAi(file);
+      setPhotoAiReport(report);
+      if (report.duplicate) {
+        setErrorMessage(
+          "This selfie looks very similar to a previous upload. Try a fresh photo.",
+        );
+      }
       const uploadedUrl = await uploadToCloudinary(file);
+      if (report.hash) {
+        storePhotoAiHash(report.hash);
+      }
       setCapturedPhoto(uploadedUrl);
       setPhotoPreview(null);
     } catch (error) {
@@ -505,6 +558,17 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
             <p className="text-gray-500 mb-8 italic">
               What are you looking for?
             </p>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                AI Copilot
+              </span>
+              <button
+                onClick={handleAiSuggestIntents}
+                className="px-3 py-2 rounded-full bg-kipepeo-pink/20 text-kipepeo-pink text-[10px] font-black uppercase tracking-widest border border-kipepeo-pink/40 active:scale-95"
+              >
+                Suggest Intents
+              </button>
+            </div>
             <div className="grid grid-cols-1 gap-2">
               {Object.values(IntentType).map((intent) => (
                 <button
@@ -555,6 +619,30 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
               )}
             </div>
 
+            {photoAiReport && (
+              <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] uppercase tracking-widest text-gray-400">
+                    AI Photo Check
+                  </p>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-kipepeo-pink">
+                    Score {photoAiReport.score}
+                  </span>
+                </div>
+                {photoAiReport.issues.length === 0 ? (
+                  <p className="mt-2 text-xs text-emerald-300">
+                    Looks good. Face visibility appears solid.
+                  </p>
+                ) : (
+                  <ul className="mt-2 space-y-1 text-xs text-gray-400">
+                    {photoAiReport.issues.map((issue) => (
+                      <li key={issue}>• {issue}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
             <input
               ref={selfieInputRef}
               type="file"
@@ -582,6 +670,40 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
           <div className="animate-in fade-in slide-in-from-right-4">
             <h2 className="text-4xl font-black mb-2">Final Vibe.</h2>
             <p className="text-gray-500 mb-8 italic">Write your bio.</p>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[10px] uppercase tracking-widest text-gray-400">
+                  AI Copilot
+                </span>
+                <select
+                  value={aiTone}
+                  onChange={(e) => setAiTone(e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] uppercase tracking-widest text-gray-200"
+                >
+                  <option value="playful">Playful</option>
+                  <option value="mysterious">Mysterious</option>
+                  <option value="romantic">Romantic</option>
+                  <option value="direct">Direct</option>
+                  <option value="confident">Confident</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAiDraftBio}
+                  disabled={aiBusy}
+                  className="flex-1 py-2 rounded-full bg-kipepeo-pink/20 text-kipepeo-pink text-[10px] font-black uppercase tracking-widest border border-kipepeo-pink/40 active:scale-95 disabled:opacity-60"
+                >
+                  Draft Bio
+                </button>
+                <button
+                  onClick={handleAiRewriteBio}
+                  disabled={aiBusy || !bio.trim()}
+                  className="flex-1 py-2 rounded-full bg-white/5 text-gray-300 text-[10px] font-black uppercase tracking-widest border border-white/10 active:scale-95 disabled:opacity-60"
+                >
+                  Rewrite Bio
+                </button>
+              </div>
+            </div>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}

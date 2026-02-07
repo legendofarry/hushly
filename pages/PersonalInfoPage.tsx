@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { uploadToCloudinary } from "../services/cloudinaryService";
+import {
+  analyzePhotoForAi,
+  storePhotoAiHash,
+  uploadToCloudinary,
+  type PhotoAiReport,
+} from "../services/cloudinaryService";
 import { nicknameExists, updateUserProfile } from "../services/userService";
 import { AGE_RANGES, IntentType, KENYAN_AREAS, UserProfile } from "../types";
 import AppImage from "../components/AppImage";
@@ -19,6 +24,7 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
   const [intents, setIntents] = useState<IntentType[]>(user.intents);
   const [photoUrl, setPhotoUrl] = useState(user.photoUrl);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoAiReport, setPhotoAiReport] = useState<PhotoAiReport | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -95,9 +101,18 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
     const preview = URL.createObjectURL(file);
     setPhotoPreview(preview);
     setIsUploading(true);
+    setPhotoAiReport(null);
     setErrorMessage(null);
     try {
+      const report = await analyzePhotoForAi(file);
+      setPhotoAiReport(report);
+      if (report.duplicate) {
+        setErrorMessage("This selfie looks too similar to a previous one.");
+      }
       const uploadedUrl = await uploadToCloudinary(file);
+      if (report.hash) {
+        storePhotoAiHash(report.hash);
+      }
       setPhotoUrl(uploadedUrl);
       setPhotoPreview(null);
       setMessage("Selfie updated. Save to apply changes.");
@@ -187,6 +202,29 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
           >
             {isUploading ? "Uploading..." : "Update Selfie"}
           </button>
+          {photoAiReport && (
+            <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] uppercase tracking-widest text-gray-400">
+                  AI Photo Check
+                </p>
+                <span className="text-[10px] font-black uppercase tracking-widest text-kipepeo-pink">
+                  Score {photoAiReport.score}
+                </span>
+              </div>
+              {photoAiReport.issues.length === 0 ? (
+                <p className="mt-2 text-xs text-emerald-300">
+                  Looks solid. Face visibility appears clear.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-1 text-xs text-gray-400">
+                  {photoAiReport.issues.map((issue) => (
+                    <li key={issue}>• {issue}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="glass rounded-[2rem] p-6 border border-white/5 space-y-4">

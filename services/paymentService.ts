@@ -14,7 +14,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { PaymentRequest } from "../types";
+import { MpesaParseResult, PaymentRequest } from "../types";
 import { createNotification } from "./notificationService";
 import { updateUserProfile } from "./userService";
 
@@ -24,6 +24,38 @@ export const OWNER_EMAIL =
   import.meta.env.VITE_OWNER_EMAIL || "legendofarrie@gmail.com";
 export const MPESA_TILL_NUMBER = import.meta.env.VITE_MPESA_TILL_NUMBER;
 export const WHATSAPP_OWNER = import.meta.env.VITE_MPESA_WHATSAPP;
+
+export const parseMpesaMessage = (raw: string): MpesaParseResult => {
+  const text = raw.replace(/\s+/g, " ").trim();
+  const amountMatch = text.match(/ksh\.?\s*([\d,]+(?:\.\d{1,2})?)/i);
+  const tillMatch = text.match(/till\s*(?:no\.?|number)?\s*[:#]?\s*(\d{4,8})/i);
+  const paybillMatch = text.match(/paybill\s*[:#]?\s*(\d{4,8})/i);
+  const dateMatch = text.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b/);
+  const timeMatch = text.match(/\b(\d{1,2}:\d{2}\s?(?:am|pm)?)\b/i);
+  const codeMatch = text.match(/\b[A-Z0-9]{8,12}\b/);
+  const senderMatch = text.match(/from\s+([a-z\s]+)/i);
+
+  const amount = amountMatch?.[1];
+  const till = tillMatch?.[1] || paybillMatch?.[1];
+  const transactionId = codeMatch?.[0];
+  const date = dateMatch?.[1];
+  const time = timeMatch?.[1];
+  const sender = senderMatch?.[1]?.trim();
+
+  const found = [amount, till, transactionId, date, time].filter(Boolean)
+    .length;
+  const confidence = Math.min(0.95, 0.2 + found * 0.15);
+
+  return {
+    amount,
+    till,
+    transactionId,
+    date,
+    time,
+    sender,
+    confidence,
+  };
+};
 
 const PAYMENT_COLLECTION = "payment_requests";
 const paymentRef = collection(db, PAYMENT_COLLECTION);

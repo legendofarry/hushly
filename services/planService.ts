@@ -10,10 +10,74 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase";
-import { UserProfile, WeekendPlan } from "../types";
+import { PlanTemplate, UserProfile, WeekendPlan } from "../types";
 
 const PLANS_COLLECTION = "weekend_plans";
 const plansRef = collection(db, PLANS_COLLECTION);
+
+const PLAN_TEMPLATES: PlanTemplate[] = [
+  {
+    id: "rooftop-friday",
+    title: "Friday Rooftop Vibes",
+    description:
+      "Golden hour drinks, soft music, and low-key conversation. Come for the skyline, stay for the vibe.",
+    category: "Hangout",
+    timeHint: "Friday 7:30 PM",
+    locationHint: "Rooftop lounge near town",
+    vibeTags: ["chill", "city", "music"],
+  },
+  {
+    id: "saturday-brunch",
+    title: "Saturday Brunch & Stroll",
+    description:
+      "Brunch first, slow walk after. Casual, friendly, and easy to dip if needed.",
+    category: "Dinner",
+    timeHint: "Saturday 11:30 AM",
+    locationHint: "Cozy cafe",
+    vibeTags: ["daytime", "easy", "food"],
+  },
+  {
+    id: "adventure-drive",
+    title: "Weekend Adventure Drive",
+    description:
+      "A short escape with a good playlist, scenic views, and a clean reset.",
+    category: "Adventure",
+    timeHint: "Saturday 3:00 PM",
+    locationHint: "Scenic drive",
+    vibeTags: ["outdoors", "roadtrip", "fresh-air"],
+  },
+  {
+    id: "night-market",
+    title: "Night Market Link-Up",
+    description:
+      "Street food, laughs, and exploring stalls together. Zero pressure, all vibe.",
+    category: "Party",
+    timeHint: "Saturday 8:00 PM",
+    locationHint: "Night market",
+    vibeTags: ["food", "night", "fun"],
+  },
+];
+
+export const getPlanTemplates = (category?: string) => {
+  if (!category || category === "All") return PLAN_TEMPLATES;
+  return PLAN_TEMPLATES.filter((template) => template.category === category);
+};
+
+export const buildPlanFromTemplate = (
+  template: PlanTemplate,
+  user: UserProfile,
+) => {
+  const locationHint = template.locationHint
+    ? `${template.locationHint}${user.area ? `, ${user.area}` : ""}`
+    : user.area;
+  return {
+    title: template.title,
+    description: template.description,
+    location: locationHint,
+    time: template.timeHint,
+    category: template.category,
+  };
+};
 
 const mapPlan = (id: string, data: any): WeekendPlan => {
   const timestamp =

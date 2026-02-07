@@ -9,6 +9,11 @@ import {
   sendMessage as sendChatMessage,
 } from "../services/chatService";
 import { markNotificationsReadByConversation } from "../services/notificationService";
+import {
+  getIceBreakers,
+  getSmartReplies,
+  summarizeConversation,
+} from "../services/aiService";
 
 interface Props {
   user: UserProfile;
@@ -20,6 +25,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const [conversation, setConversation] = useState<any | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [aiTone, setAiTone] = useState("warm");
+  const [aiReplies, setAiReplies] = useState<string[]>([]);
+  const [aiIceBreakers, setAiIceBreakers] = useState<string[]>([]);
+  const [aiSummary, setAiSummary] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,6 +74,28 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       photoUrl: profile?.photoUrl ?? user.photoUrl,
     };
   }, [conversation, user.id, user.photoUrl]);
+
+  const aiSuggestions = aiReplies.length > 0 ? aiReplies : aiIceBreakers;
+
+  useEffect(() => {
+    if (!otherParticipant) return;
+    if (messages.length === 0) {
+      setAiIceBreakers(getIceBreakers({ otherProfile: otherParticipant }));
+      setAiReplies([]);
+      setAiSummary("");
+      return;
+    }
+    const lastMessage = messages[messages.length - 1]?.text ?? "";
+    setAiReplies(
+      getSmartReplies({
+        lastMessage,
+        otherProfile: otherParticipant,
+        tone: aiTone,
+      }),
+    );
+    setAiIceBreakers([]);
+    setAiSummary(summarizeConversation(messages));
+  }, [messages, otherParticipant, aiTone]);
 
   const sendMessage = async () => {
     if (!inputValue.trim() || !conversationId || !otherParticipant) return;
@@ -156,6 +187,41 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
           </svg>
         </button>
       </header>
+
+      {/* --- AI Copilot --- */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] uppercase tracking-widest text-gray-400">
+              AI Copilot
+            </span>
+            <select
+              value={aiTone}
+              onChange={(e) => setAiTone(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] uppercase tracking-widest text-gray-200"
+            >
+              <option value="warm">Warm</option>
+              <option value="direct">Direct</option>
+              <option value="playful">Playful</option>
+              <option value="confident">Confident</option>
+            </select>
+          </div>
+          {aiSummary && (
+            <p className="text-xs text-gray-300 mb-3">{aiSummary}</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {aiSuggestions.map((suggestion) => (
+              <button
+                key={suggestion}
+                onClick={() => setInputValue(suggestion)}
+                className="px-3 py-2 rounded-full bg-white/5 border border-white/10 text-[10px] uppercase tracking-widest text-gray-300 hover:bg-white/10 active:scale-95"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* --- Messages Area --- */}
       <div

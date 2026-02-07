@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { auth } from "../firebase";
 import { getFriendlyAuthError } from "../firebaseErrors";
@@ -17,6 +17,7 @@ import {
   updateUserSettings,
 } from "../services/userService";
 import { DEFAULT_USER_SETTINGS, UserProfile, UserSettings } from "../types";
+import { detectSafetySignals } from "../services/aiService";
 
 interface Props {
   user: UserProfile;
@@ -232,6 +233,16 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
     }
   };
 
+  const safetyScan = useMemo(
+    () =>
+      detectSafetySignals({
+        nickname: user.nickname,
+        bio: user.bio,
+        email: user.email,
+      }),
+    [user.nickname, user.bio, user.email],
+  );
+
   const ToggleRow = ({
     label,
     description,
@@ -422,6 +433,51 @@ const SecurityPrivacyPage: React.FC<Props> = ({ user, onUserUpdated }) => {
                   You will be logged out and asked to verify the new email.
                 </p>
               </div>
+            </section>
+
+            <section className="glass rounded-[2rem] p-6 border border-white/5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500">
+                  AI Safety Scan
+                </h2>
+                <span
+                  className={`text-[10px] font-black uppercase tracking-widest ${
+                    safetyScan.level === "medium"
+                      ? "text-amber-300"
+                      : "text-emerald-300"
+                  }`}
+                >
+                  {safetyScan.level === "medium" ? "Attention" : "Clear"}
+                </span>
+              </div>
+              {safetyScan.issues.length === 0 ? (
+                <p className="text-sm text-emerald-200">
+                  No major safety signals detected. You look authentic.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-amber-200">
+                    We noticed a few signals that could affect trust:
+                  </p>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    {safetyScan.issues.map((issue) => (
+                      <li key={issue}>• {issue}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {safetyScan.tips.length > 0 && (
+                <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                  <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
+                    AI Tips
+                  </p>
+                  <ul className="text-xs text-gray-400 space-y-1">
+                    {safetyScan.tips.map((tip) => (
+                      <li key={tip}>• {tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </section>
 
             <section className="space-y-3">

@@ -5,6 +5,7 @@ import {
   listenToLikesReceived,
   listenToLikesSent,
 } from "../services/likeService";
+import { getAnalyticsInsights, rewriteBio } from "../services/aiService";
 
 interface Props {
   user: UserProfile;
@@ -88,6 +89,21 @@ const LikesAnalyticsPage: React.FC<Props> = ({ user }) => {
       mutualCount: mutual.length,
     };
   }, [receivedLikes, sentLikes, startOfToday, startOfWeek]);
+
+  const aiInsights = useMemo(
+    () =>
+      getAnalyticsInsights({
+        user,
+        receivedLikes,
+        sentLikes,
+      }),
+    [receivedLikes, sentLikes, user],
+  );
+
+  const aiSuggestedBio = useMemo(
+    () => rewriteBio({ bio: user.bio, tone: "confident" }),
+    [user.bio],
+  );
 
   const formatTime = (timestamp: number) => {
     const diff = Date.now() - timestamp;
@@ -177,6 +193,28 @@ const LikesAnalyticsPage: React.FC<Props> = ({ user }) => {
                 <p className="text-xs text-gray-500 mt-1">
                   People who liked you back
                 </p>
+              </div>
+            </div>
+
+            <div className="glass rounded-2xl border border-white/5 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">
+                  AI Insights
+                </h2>
+                <span className="text-[10px] uppercase tracking-[0.3em] text-kipepeo-pink">
+                  Live
+                </span>
+              </div>
+              <ul className="space-y-2 text-sm text-gray-300">
+                {aiInsights.map((insight) => (
+                  <li key={insight}>• {insight}</li>
+                ))}
+              </ul>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
+                  AI Suggested Bio
+                </p>
+                <p className="text-sm text-gray-300 italic">"{aiSuggestedBio}"</p>
               </div>
             </div>
 

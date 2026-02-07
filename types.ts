@@ -17,6 +17,8 @@ export interface UserProfile {
   emailVerified: boolean;
   isPremium?: boolean;
   premiumExpiresAt?: number | null;
+  occupation?: string;
+  occupationVisibility?: "public" | "private";
   ageRange: string; // e.g. "20-25"
   bio: string;
   area: string; // Area/City only
@@ -149,6 +151,52 @@ export interface EscortListing {
   isActive: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface EscortListingDraft {
+  displayName: string;
+  age: string;
+  gender: string;
+  bio: string;
+  languages: string[];
+  offers: string[];
+  offerNotes: string;
+  servicePricing: Record<string, string>;
+  mainService: string;
+  availability: string;
+  phone: string;
+  contactNote: string;
+  publicPhotos: string[];
+  xPhotos: string[];
+  primaryLocation: string;
+  extraLocations: string[];
+  travelOk: boolean;
+  locationLat: number | null;
+  locationLng: number | null;
+  videoCallEnabled: boolean;
+  videoCallVisibility: VideoCallVisibility;
+  socials: EscortSocialLink[];
+  verificationStatus: VerificationStatus;
+}
+
+export interface PlanTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  timeHint: string;
+  locationHint: string;
+  vibeTags: string[];
+}
+
+export interface MpesaParseResult {
+  amount?: string;
+  transactionId?: string;
+  till?: string;
+  date?: string;
+  time?: string;
+  sender?: string;
+  confidence: number;
 }
 
 export const KENYAN_AREAS = [

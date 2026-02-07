@@ -1,4 +1,12 @@
 
+import {
+  analyzeImageFile,
+  computePhotoHash,
+  isDuplicatePhotoHash,
+  storePhotoHash,
+  type PhotoQualityReport,
+} from "./photoAiService";
+
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
 
@@ -29,4 +37,23 @@ export const uploadToCloudinary = async (file: File): Promise<string> => {
   }
 
   return data.secure_url as string;
+};
+
+export type PhotoAiReport = PhotoQualityReport & {
+  duplicate: boolean;
+  hash?: string;
+};
+
+export const analyzePhotoForAi = async (file: File): Promise<PhotoAiReport> => {
+  const [quality, hash] = await Promise.all([
+    analyzeImageFile(file),
+    computePhotoHash(file),
+  ]);
+  const duplicate = isDuplicatePhotoHash(hash);
+  return { ...quality, hash, duplicate };
+};
+
+export const storePhotoAiHash = (hash?: string) => {
+  if (!hash) return;
+  storePhotoHash(hash);
 };

@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti"; // Import the confetti library
 import {
   AppNotification,
+  AGE_RANGES,
   IntentType,
   PaymentRequest,
   UserProfile,
@@ -24,21 +25,41 @@ import {
   OWNER_EMAIL,
   PREMIUM_PRICE_KES,
   WHATSAPP_OWNER,
+  parseMpesaMessage,
 } from "../services/paymentService";
 import {
+  buildPlanFromTemplate,
   createWeekendPlan,
+  getPlanTemplates,
   listenToWeekendPlans,
   rsvpToPlan,
 } from "../services/planService";
 import { createLike } from "../services/likeService";
+import {
+  getMatchReasons,
+  rankProfiles,
+  semanticSearchProfiles,
+} from "../services/aiService";
+import {
+  loadAiSignals,
+  recordChatSignal,
+  recordDwellSignal,
+  recordLikeSignal,
+  recordSkipSignal,
+} from "../services/aiSignals";
 
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
   const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedAgeRange, setSelectedAgeRange] = useState("All");
+  const [selectedArea, setSelectedArea] = useState("All");
+  const [aiQuery, setAiQuery] = useState("");
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [aiSignals, setAiSignals] = useState(() => loadAiSignals());
   const [view, setView] = useState<"discover" | "plans" | "portal">("discover");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -72,6 +93,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   >("intro");
   const [escortLoading, setEscortLoading] = useState(false);
   const [escortError, setEscortError] = useState<string | null>(null);
+  const lastProfileRef = useRef<UserProfile | null>(null);
+  const lastViewStartRef = useRef<number>(Date.now());
   const hearts = useMemo(
     () =>
       Array.from({ length: 40 }, (_, index) => ({
@@ -181,20 +204,60 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const filteredProfiles = useMemo(() => {
-    const matchesFilter =
-      selectedIntents.length === 0
-        ? profiles
-        : profiles.filter((profile) =>
-            profile.intents?.some((intent) => selectedIntents.includes(intent)),
-          );
+    const matchesFilter = profiles.filter((profile) => {
+      const matchesIntent =
+        selectedIntents.length === 0 ||
+        profile.intents?.some((intent) => selectedIntents.includes(intent));
+      const matchesAge =
+        selectedAgeRange === "All" || profile.ageRange === selectedAgeRange;
+      const matchesArea =
+        selectedArea === "All" || profile.area === selectedArea;
+      return matchesIntent && matchesAge && matchesArea;
+    });
 
-    const sharedIntent = (profile: UserProfile) =>
-      profile.intents?.some((intent) => user.intents.includes(intent));
+    const semanticMatches = aiQuery
+      ? semanticSearchProfiles(aiQuery, matchesFilter)
+      : [];
+    const semanticIds = new Set(semanticMatches.map((item) => item.profile.id));
+    const candidates =
+      aiQuery && semanticIds.size > 0
+        ? matchesFilter.filter((profile) => semanticIds.has(profile.id))
+        : matchesFilter;
 
-    const priority = matchesFilter.filter(sharedIntent);
-    const secondary = matchesFilter.filter((profile) => !sharedIntent(profile));
-    return [...priority, ...secondary];
-  }, [profiles, selectedIntents, user.intents]);
+    const ranked = rankProfiles({
+      user,
+      profiles: candidates,
+      signals: aiSignals,
+      semanticQuery: aiQuery,
+    });
+
+    return ranked.map((item) => item.profile);
+  }, [
+    profiles,
+    selectedIntents,
+    selectedAgeRange,
+    selectedArea,
+    user,
+    aiSignals,
+    aiQuery,
+  ]);
+
+  const matchReasons = useMemo(() => {
+    const map = new Map<string, string[]>();
+    filteredProfiles.forEach((profile) => {
+      map.set(profile.id, getMatchReasons(user, profile, aiSignals));
+    });
+    return map;
+  }, [filteredProfiles, aiSignals, user]);
+
+  const areaOptions = useMemo(() => {
+    const areas = new Set<string>();
+    profiles.forEach((profile) => {
+      if (profile.area) areas.add(profile.area);
+    });
+    if (user.area) areas.add(user.area);
+    return Array.from(areas).sort();
+  }, [profiles, user.area]);
 
   useEffect(() => {
     if (currentIndex >= filteredProfiles.length) {
@@ -204,9 +267,33 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   useEffect(() => {
     setCurrentIndex(0);
-  }, [selectedIntents]);
+  }, [selectedIntents, selectedAgeRange, selectedArea, aiQuery]);
 
   const current = filteredProfiles[currentIndex];
+
+  useEffect(() => {
+    const now = Date.now();
+    if (lastProfileRef.current && lastProfileRef.current.id !== current?.id) {
+      const dwellMs = now - lastViewStartRef.current;
+      const updated = recordDwellSignal(lastProfileRef.current, dwellMs);
+      setAiSignals(updated);
+    }
+    if (current) {
+      lastProfileRef.current = current;
+      lastViewStartRef.current = now;
+    }
+  }, [current?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (lastProfileRef.current) {
+        recordDwellSignal(
+          lastProfileRef.current,
+          Date.now() - lastViewStartRef.current,
+        );
+      }
+    };
+  }, []);
   const unreadNotifications = notifications.filter((n) => !n.read);
   const unreadMessageCount = useMemo(
     () =>
@@ -225,10 +312,20 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     isOwner || premiumActive || latestPaymentRequest?.status === "approved";
   const paymentPending = paymentStatus === "pending";
   const paymentRejected = paymentStatus === "rejected";
+  const planTemplates = useMemo(
+    () => getPlanTemplates(planCategory),
+    [planCategory],
+  );
+  const parsedMpesa = useMemo(
+    () => (paymentProof ? parseMpesaMessage(paymentProof) : null),
+    [paymentProof],
+  );
 
   const handleStartChat = async (target: UserProfile) => {
     try {
       const conversationId = await ensureConversation(user, target);
+      const updated = recordChatSignal(target);
+      setAiSignals(updated);
       navigate(`/chats/${conversationId}`);
     } catch (error) {
       console.error(error);
@@ -403,6 +500,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const handleSkip = (e: React.MouseEvent) => {
     e.stopPropagation();
     // Logic to record skip would go here
+    if (current) {
+      const updated = recordSkipSignal(current);
+      setAiSignals(updated);
+    }
     handleNextProfile();
   };
 
@@ -420,6 +521,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         fromUserId: user.id,
         fromNickname: user.nickname,
       });
+      const updated = recordLikeSignal(current);
+      setAiSignals(updated);
     }
 
     // --- CONFETTI ANIMATION ---
@@ -807,26 +910,114 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         </div>
 
         {view === "discover" && (
-          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar mask-fade-right">
-            {Object.values(IntentType).map((intent) => {
-              const isActive = selectedIntents.includes(intent);
-              return (
-                <button
-                  key={intent}
-                  onClick={() => toggleIntentFilter(intent)}
-                  className={`
-                    px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider whitespace-nowrap border transition-all duration-300
-                    ${
-                      isActive
-                        ? "bg-gradient-to-r from-pink-600 to-purple-600 border-transparent text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]"
-                        : "bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:border-white/10"
-                    }
-                  `}
-                >
-                  {intent}
-                </button>
-              );
-            })}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setShowFilters((prev) => !prev)}
+                className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-300 hover:bg-white/10 transition-colors"
+              >
+                {showFilters ? "Hide Filters" : "Filter & Sort"}
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedIntents([]);
+                  setSelectedAgeRange("All");
+                  setSelectedArea("All");
+                  setAiQuery("");
+                }}
+                className="text-[10px] uppercase tracking-widest text-gray-500 hover:text-gray-300"
+              >
+                Clear Filters
+              </button>
+            </div>
+
+            {showFilters && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
+                    AI Search
+                  </p>
+                  <input
+                    value={aiQuery}
+                    onChange={(event) => setAiQuery(event.target.value)}
+                    placeholder="low-key weekend vibe near Westlands"
+                    className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-gray-200 focus:outline-none"
+                  />
+                  <p className="mt-2 text-[10px] text-gray-500">
+                    Semantic search across bio, intents, and area.
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
+                    Intent
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.values(IntentType).map((intent) => {
+                      const isActive = selectedIntents.includes(intent);
+                      return (
+                        <button
+                          key={intent}
+                          onClick={() => toggleIntentFilter(intent)}
+                          className={`px-3 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-all duration-300 ${
+                            isActive
+                              ? "bg-gradient-to-r from-pink-600 to-purple-600 border-transparent text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]"
+                              : "bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:border-white/10"
+                          }`}
+                        >
+                          {intent}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-gray-400">
+                      Age Range
+                    </label>
+                    <select
+                      value={selectedAgeRange}
+                      onChange={(event) =>
+                        setSelectedAgeRange(event.target.value)
+                      }
+                      className="mt-2 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
+                    >
+                      <option value="All">All</option>
+                      {AGE_RANGES.map((range) => (
+                        <option key={range} value={range}>
+                          {range}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-widest text-gray-400">
+                      Area
+                    </label>
+                    <select
+                      value={selectedArea}
+                      onChange={(event) =>
+                        setSelectedArea(event.target.value)
+                      }
+                      className="mt-2 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
+                    >
+                      <option value="All">All</option>
+                      {areaOptions.map((area) => (
+                        <option key={area} value={area}>
+                          {area}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === "discover" && (
+          <>
             {rsvpTarget && (
               <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
                 <div className="w-full max-w-md glass rounded-2xl border border-white/10 p-5 space-y-4">
@@ -897,7 +1088,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               </div>
             )}
-          </div>
+          </>
         )}
       </header>
 
@@ -916,12 +1107,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                   <button
                     key={notification.id}
                     onClick={() => handleNotificationClick(notification)}
-                    className={`w-full text-left p-3 rounded-xl border ${
+                    className={`relative w-full text-left p-3 rounded-xl border transition-all ${
                       notification.read
-                        ? "border-white/5 text-gray-400"
-                        : "border-kipepeo-pink/40 text-white"
+                        ? "border-white/5 text-gray-400 bg-transparent"
+                        : "border-kipepeo-pink/40 text-white bg-gradient-to-r from-kipepeo-pink/15 to-transparent shadow-[0_0_18px_rgba(236,72,153,0.2)]"
                     }`}
                   >
+                    {!notification.read && (
+                      <span className="absolute right-3 top-3 h-2 w-2 rounded-full bg-kipepeo-pink shadow-[0_0_8px_rgba(236,72,153,0.8)]"></span>
+                    )}
                     <p className="text-xs font-bold uppercase tracking-widest text-kipepeo-pink">
                       {getNotificationTitle(notification)}
                     </p>
@@ -1106,6 +1300,24 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         ))}
                       </div>
 
+                      {matchReasons.get(current.id)?.length ? (
+                        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
+                            Why this match
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {matchReasons.get(current.id)?.map((reason) => (
+                              <span
+                                key={reason}
+                                className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-300"
+                              >
+                                {reason}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div className="relative mb-6">
                         <p className="text-sm text-gray-300/90 leading-relaxed font-medium line-clamp-3">
                           "{current.bio}"
@@ -1267,6 +1479,44 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         className="w-full rounded-2xl bg-white/5 border border-white/10 p-3 text-sm focus:outline-none"
                         placeholder="Paste full M-Pesa message here..."
                       />
+                      {parsedMpesa && (
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                              AI Parse
+                            </p>
+                            <span className="text-[10px] uppercase tracking-widest text-kipepeo-pink">
+                              {Math.round(parsedMpesa.confidence * 100)}% confidence
+                            </span>
+                          </div>
+                          <div className="mt-2 grid gap-2 text-xs text-gray-300">
+                            <div className="flex items-center justify-between">
+                              <span>Amount</span>
+                              <span className="text-white">
+                                {parsedMpesa.amount ? `KES ${parsedMpesa.amount}` : "-"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Till/Paybill</span>
+                              <span className="text-white">
+                                {parsedMpesa.till ?? "-"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Transaction</span>
+                              <span className="text-white">
+                                {parsedMpesa.transactionId ?? "-"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span>Date/Time</span>
+                              <span className="text-white">
+                                {parsedMpesa.date ?? "-"} {parsedMpesa.time ?? ""}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       {paymentError && (
                         <p className="text-xs text-red-400">{paymentError}</p>
                       )}
@@ -1325,6 +1575,39 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                       RSVP to plans.
                     </div>
                   )}
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-widest text-gray-400">
+                          AI Plan Templates
+                        </p>
+                        <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em]">
+                          Tap to autofill
+                        </p>
+                      </div>
+                      <span className="text-[10px] uppercase tracking-widest text-kipepeo-pink">
+                        Smart
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {planTemplates.map((template) => (
+                        <button
+                          key={template.id}
+                          onClick={() => {
+                            const next = buildPlanFromTemplate(template, user);
+                            setPlanTitle(next.title);
+                            setPlanDescription(next.description);
+                            setPlanLocation(next.location);
+                            setPlanTime(next.time);
+                            setPlanCategory(next.category);
+                          }}
+                          className="px-3 py-2 rounded-full bg-white/5 border border-white/10 text-[10px] uppercase tracking-widest text-gray-300 hover:bg-white/10 active:scale-95"
+                        >
+                          {template.title}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <input
                       value={planTitle}
