@@ -32,6 +32,15 @@ interface Props {
   user: UserProfile;
 }
 
+type MaskStyle = "visor" | "pixel" | "holo" | "noir";
+
+const MASK_OPTIONS: { id: MaskStyle; label: string }[] = [
+  { id: "visor", label: "Neon" },
+  { id: "pixel", label: "Pixel" },
+  { id: "holo", label: "Holo" },
+  { id: "noir", label: "Noir" },
+];
+
 const VIDEO_CALL_ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
@@ -62,6 +71,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const [callError, setCallError] = useState<string | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [maskEnabled, setMaskEnabled] = useState(false);
+  const [maskMode, setMaskMode] = useState<"mask" | "blur">("mask");
+  const [maskStyle, setMaskStyle] = useState<MaskStyle>("visor");
+  const [maskNotice, setMaskNotice] = useState<string | null>(null);
   const [audioDurations, setAudioDurations] = useState<Record<string, string>>(
     {},
   );
@@ -85,8 +98,21 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const videoSenderRef = useRef<RTCRtpSender | null>(null);
   const callUnsubscribeRef = useRef<(() => void) | null>(null);
   const candidatesUnsubscribeRef = useRef<(() => void) | null>(null);
+  const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const maskVideoRef = useRef<HTMLVideoElement | null>(null);
+  const maskStreamRef = useRef<MediaStream | null>(null);
+  const maskAnimationRef = useRef<number | null>(null);
+  const maskDetectIntervalRef = useRef<number | null>(null);
+  const maskPipelineActiveRef = useRef(false);
+  const maskStartLockRef = useRef(false);
+  const maskStyleRef = useRef<MaskStyle>("visor");
+  const maskModeRef = useRef<"mask" | "blur">("mask");
+  const facesRef = useRef<any[]>([]);
+  const maskMissCountRef = useRef(0);
+  const faceDetectorRef = useRef<any>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -106,6 +132,14 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
+
+  useEffect(() => {
+    maskStyleRef.current = maskStyle;
+  }, [maskStyle]);
+
+  useEffect(() => {
+    maskModeRef.current = maskMode;
+  }, [maskMode]);
 
   const formatDuration = (rawSeconds: number) => {
     if (!Number.isFinite(rawSeconds) || rawSeconds <= 0) return "0:00";
@@ -144,6 +178,331 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             [messageId]: formatDuration(duration),
           },
     );
+  };
+
+  const getVideoSender = () => {
+    if (videoSenderRef.current) return videoSenderRef.current;
+    const sender =
+      peerConnectionRef.current?.getSenders().find((s) => s.track?.kind === "video") ??
+      null;
+    videoSenderRef.current = sender;
+    return sender;
+  };
+
+  const stopMaskPipeline = (resetState = false) => {
+    if (maskAnimationRef.current) {
+      window.cancelAnimationFrame(maskAnimationRef.current);
+      maskAnimationRef.current = null;
+    }
+    if (maskDetectIntervalRef.current) {
+      window.clearInterval(maskDetectIntervalRef.current);
+      maskDetectIntervalRef.current = null;
+    }
+    maskPipelineActiveRef.current = false;
+    maskMissCountRef.current = 0;
+    facesRef.current = [];
+
+    const stream = maskStreamRef.current;
+    if (stream) {
+      stream.getVideoTracks().forEach((track) => track.stop());
+    }
+    maskStreamRef.current = null;
+
+    if (maskVideoRef.current) {
+      maskVideoRef.current.pause();
+      maskVideoRef.current.srcObject = null;
+    }
+
+    if (resetState) {
+      setMaskEnabled(false);
+      setMaskMode("mask");
+      setMaskNotice(null);
+    }
+  };
+
+  const drawMaskOverlay = (
+    ctx: CanvasRenderingContext2D,
+    box: { x: number; y: number; width: number; height: number },
+    style: MaskStyle,
+  ) => {
+    const x = box.x;
+    const y = box.y;
+    const w = box.width;
+    const h = box.height;
+
+    switch (style) {
+      case "visor": {
+        const visorHeight = h * 0.32;
+        const visorY = y + h * 0.28;
+        const gradient = ctx.createLinearGradient(x, visorY, x + w, visorY);
+        gradient.addColorStop(0, "rgba(255, 0, 128, 0.7)");
+        gradient.addColorStop(1, "rgba(157, 0, 255, 0.7)");
+        ctx.save();
+        ctx.shadowColor = "rgba(255, 0, 128, 0.8)";
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        if ("roundRect" in ctx) {
+          (ctx as any).roundRect(x, visorY, w, visorHeight, visorHeight * 0.45);
+        } else {
+          ctx.rect(x, visorY, w, visorHeight);
+        }
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case "pixel": {
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        const block = Math.max(6, Math.round(w / 8));
+        for (let px = x; px < x + w; px += block) {
+          for (let py = y; py < y + h; py += block) {
+            const shade = ((px + py) % 3) * 50;
+            ctx.fillStyle = `rgba(${80 + shade}, ${20 + shade}, 160, 0.6)`;
+            ctx.fillRect(px, py, block - 1, block - 1);
+          }
+        }
+        ctx.restore();
+        break;
+      }
+      case "holo": {
+        ctx.save();
+        ctx.strokeStyle = "rgba(0, 255, 255, 0.7)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(x + w / 2, y + h / 2, w * 0.55, h * 0.7, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(255, 0, 128, 0.7)";
+        ctx.beginPath();
+        ctx.arc(x + w / 2, y + h * 0.2, w * 0.25, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        break;
+      }
+      case "noir":
+      default: {
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(x, y + h * 0.25, w, h * 0.3);
+        ctx.fillRect(x, y + h * 0.6, w, h * 0.18);
+        ctx.restore();
+        break;
+      }
+    }
+  };
+
+  const startMaskPipeline = async () => {
+    if (maskPipelineActiveRef.current || maskStartLockRef.current) return;
+    maskStartLockRef.current = true;
+    setMaskNotice(null);
+
+    const rawStream = localStreamRef.current;
+    if (!rawStream) {
+      setMaskNotice("Camera is not ready.");
+      setMaskEnabled(false);
+      maskStartLockRef.current = false;
+      return;
+    }
+    const rawVideoTrack = rawStream.getVideoTracks()[0];
+    if (!rawVideoTrack) {
+      setMaskNotice("Camera is not ready.");
+      setMaskEnabled(false);
+      maskStartLockRef.current = false;
+      return;
+    }
+
+    const video = maskVideoRef.current ?? document.createElement("video");
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = rawStream;
+    maskVideoRef.current = video;
+
+    try {
+      await video.play();
+    } catch (error) {
+      console.error(error);
+    }
+
+    if (video.readyState < 2) {
+      await new Promise((resolve) => {
+        const handler = () => {
+          video.removeEventListener("loadedmetadata", handler);
+          resolve(true);
+        };
+        video.addEventListener("loadedmetadata", handler);
+        window.setTimeout(resolve, 500);
+      });
+    }
+
+    const width = video.videoWidth || rawVideoTrack.getSettings().width || 640;
+    const height = video.videoHeight || rawVideoTrack.getSettings().height || 480;
+
+    const canvas = maskCanvasRef.current ?? document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    maskCanvasRef.current = canvas;
+
+    if (!canvas.captureStream) {
+      setMaskNotice("Face masks are not supported on this device.");
+      setMaskEnabled(false);
+      maskStartLockRef.current = false;
+      return;
+    }
+
+    let nextMode: "mask" | "blur" = "mask";
+    const FaceDetectorImpl = (window as any).FaceDetector;
+    if (!FaceDetectorImpl) {
+      nextMode = "blur";
+      setMaskNotice("Face masks unavailable. Using blur.");
+    } else if (!faceDetectorRef.current) {
+      try {
+        faceDetectorRef.current = new FaceDetectorImpl({
+          fastMode: true,
+          maxDetectedFaces: 1,
+        });
+      } catch (error) {
+        console.error(error);
+        nextMode = "blur";
+        setMaskNotice("Face masks unavailable. Using blur.");
+      }
+    }
+
+    setMaskMode(nextMode);
+    maskModeRef.current = nextMode;
+
+    const outputStream = canvas.captureStream(30);
+    rawStream.getAudioTracks().forEach((track) => outputStream.addTrack(track));
+    maskStreamRef.current = outputStream;
+
+    maskPipelineActiveRef.current = true;
+    setLocalStream(outputStream);
+
+    const sender = getVideoSender();
+    const maskedTrack = outputStream.getVideoTracks()[0];
+    if (sender && maskedTrack) {
+      try {
+        await sender.replaceTrack(maskedTrack);
+      } catch (error) {
+        console.error(error);
+      }
+    } else if (peerConnectionRef.current && maskedTrack) {
+      videoSenderRef.current = peerConnectionRef.current.addTrack(
+        maskedTrack,
+        outputStream,
+      );
+    }
+
+    if (faceDetectorRef.current) {
+      maskDetectIntervalRef.current = window.setInterval(async () => {
+        if (!maskVideoRef.current) return;
+        try {
+          const faces = await faceDetectorRef.current.detect(maskVideoRef.current);
+          facesRef.current = faces ?? [];
+          if (facesRef.current.length === 0) {
+            maskMissCountRef.current += 1;
+            if (maskModeRef.current === "mask" && maskMissCountRef.current >= 8) {
+              maskModeRef.current = "blur";
+              setMaskMode("blur");
+              setMaskNotice("Face not detected. Using blur.");
+            }
+          } else {
+            maskMissCountRef.current = 0;
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      }, 180);
+    }
+
+    const drawFrame = () => {
+      if (!maskPipelineActiveRef.current || !maskCanvasRef.current) return;
+      const ctx = maskCanvasRef.current.getContext("2d");
+      const source = maskVideoRef.current;
+      if (!ctx || !source) {
+        maskAnimationRef.current = window.requestAnimationFrame(drawFrame);
+        return;
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (maskModeRef.current === "blur") {
+        const faces = facesRef.current;
+        if (faces.length === 0) {
+          ctx.save();
+          ctx.filter = "blur(14px)";
+          ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
+        } else {
+          ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+          ctx.save();
+          ctx.filter = "blur(16px)";
+          faces.forEach((face: any) => {
+            const box = face.boundingBox ?? face;
+            const fx = Math.max(0, box.x ?? box.left ?? 0);
+            const fy = Math.max(0, box.y ?? box.top ?? 0);
+            const fw = Math.min(canvas.width, box.width ?? 0);
+            const fh = Math.min(canvas.height, box.height ?? 0);
+            if (fw > 0 && fh > 0) {
+              ctx.drawImage(source, fx, fy, fw, fh, fx, fy, fw, fh);
+            }
+          });
+          ctx.restore();
+        }
+      } else {
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        facesRef.current.forEach((face: any) => {
+          const box = face.boundingBox ?? face;
+          const fx = Math.max(0, box.x ?? box.left ?? 0);
+          const fy = Math.max(0, box.y ?? box.top ?? 0);
+          const fw = Math.min(canvas.width, box.width ?? 0);
+          const fh = Math.min(canvas.height, box.height ?? 0);
+          if (fw > 0 && fh > 0) {
+            drawMaskOverlay(ctx, { x: fx, y: fy, width: fw, height: fh }, maskStyleRef.current);
+          }
+        });
+      }
+
+      maskAnimationRef.current = window.requestAnimationFrame(drawFrame);
+    };
+
+    drawFrame();
+    maskStartLockRef.current = false;
+  };
+
+  const disableMask = async () => {
+    stopMaskPipeline();
+    const rawStream = localStreamRef.current;
+    if (rawStream) {
+      setLocalStream(rawStream);
+      const sender = getVideoSender();
+      const rawTrack = rawStream.getVideoTracks()[0];
+      if (sender && rawTrack) {
+        try {
+          await sender.replaceTrack(rawTrack);
+        } catch (error) {
+          console.error(error);
+        }
+      } else if (peerConnectionRef.current && rawTrack) {
+        videoSenderRef.current = peerConnectionRef.current.addTrack(
+          rawTrack,
+          rawStream,
+        );
+      }
+    }
+    setMaskEnabled(false);
+    setMaskMode("mask");
+    setMaskNotice(null);
+  };
+
+  const toggleMask = async () => {
+    if (callState === "idle") return;
+    if (maskEnabled) {
+      await disableMask();
+      return;
+    }
+    setMaskEnabled(true);
+    setMaskMode("mask");
+    await startMaskPipeline();
   };
 
   useEffect(() => {
@@ -287,6 +646,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   };
 
   const stopCallMedia = () => {
+    stopMaskPipeline(true);
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
@@ -302,6 +662,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       peerConnectionRef.current.close();
     }
     peerConnectionRef.current = null;
+    videoSenderRef.current = null;
   };
 
   const endVideoCall = async (
@@ -374,9 +735,12 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       remoteStreamRef.current = inboundStream;
       setRemoteStream(inboundStream);
 
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
-      });
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTracks = stream.getAudioTracks();
+      if (videoTrack) {
+        videoSenderRef.current = pc.addTrack(videoTrack, stream);
+      }
+      audioTracks.forEach((track) => pc.addTrack(track, stream));
 
       pc.ontrack = (event) => {
         event.streams[0]?.getTracks().forEach((track) => {
@@ -471,9 +835,12 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
       remoteStreamRef.current = inboundStream;
       setRemoteStream(inboundStream);
 
-      stream.getTracks().forEach((track) => {
-        pc.addTrack(track, stream);
-      });
+      const videoTrack = stream.getVideoTracks()[0];
+      const audioTracks = stream.getAudioTracks();
+      if (videoTrack) {
+        videoSenderRef.current = pc.addTrack(videoTrack, stream);
+      }
+      audioTracks.forEach((track) => pc.addTrack(track, stream));
 
       pc.ontrack = (event) => {
         event.streams[0]?.getTracks().forEach((track) => {
@@ -859,6 +1226,39 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             playsInline
             className="absolute bottom-24 right-4 h-36 w-24 rounded-2xl border border-white/10 object-cover shadow-lg"
           />
+          <div className="absolute bottom-24 left-0 right-0 flex flex-col items-center gap-2">
+            <button
+              onClick={toggleMask}
+              className={`rounded-full px-4 py-2 text-[10px] font-semibold uppercase tracking-widest shadow-lg transition-all ${
+                maskEnabled
+                  ? "bg-white text-black"
+                  : "bg-white/10 text-white hover:bg-white/20"
+              }`}
+            >
+              {maskEnabled ? "Mask On" : "Mask Off"}
+            </button>
+            {maskEnabled && (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {MASK_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => setMaskStyle(option.id)}
+                    disabled={maskMode === "blur"}
+                    className={`rounded-full border px-3 py-1 text-[9px] uppercase tracking-widest transition-all ${
+                      maskStyle === option.id
+                        ? "border-kipepeo-pink text-white bg-kipepeo-pink/20"
+                        : "border-white/10 text-gray-300 hover:border-white/30"
+                    } ${maskMode === "blur" ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {maskNotice && (
+              <div className="text-[10px] text-gray-300">{maskNotice}</div>
+            )}
+          </div>
           <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center">
             <button
               onClick={() => endVideoCall("ended", true)}
