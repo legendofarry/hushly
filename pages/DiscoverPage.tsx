@@ -666,6 +666,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       setLiveStartError("Live title is required.");
       return;
     }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setLiveStartError("Camera and microphone are not available.");
+      return;
+    }
     setLiveStarting(true);
     setLiveStartError(null);
     const parsedMaxGuests = Number.parseInt(liveMaxGuests, 10);
@@ -677,7 +681,22 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       .map((tag) => tag.trim())
       .filter(Boolean)
       .slice(0, 5);
+    let preflightStream: MediaStream | null = null;
     try {
+      preflightStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      const videoTrack = preflightStream
+        .getVideoTracks()
+        .find((track) => track.readyState === "live");
+      const audioTrack = preflightStream
+        .getAudioTracks()
+        .find((track) => track.readyState === "live");
+      if (!videoTrack || !audioTrack || !videoTrack.enabled || !audioTrack.enabled) {
+        setLiveStartError("Turn on your camera and microphone to start live.");
+        return;
+      }
       const roomId = await createLiveRoom({
         host: user,
         title: liveTitle.trim(),
@@ -698,8 +717,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       navigate(`/live/${roomId}`);
     } catch (error) {
       console.error(error);
-      setLiveStartError("Unable to start live right now.");
+      setLiveStartError("Enable camera and microphone access to start live.");
     } finally {
+      if (preflightStream) {
+        preflightStream.getTracks().forEach((track) => track.stop());
+      }
       setLiveStarting(false);
     }
   };
@@ -2148,11 +2170,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                       <h3 className="text-sm font-black uppercase tracking-wide text-white">
                         {room.title}
                       </h3>
-                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-gray-400">
-                        <span>{room.type === "group" ? "Group" : "Solo"}</span>
-                        <span>-</span>
-                        <span>{room.allowGuests ? "Guests" : "Invite only"}</span>
-                      </div>
                       <div className="flex items-center gap-2 text-xs text-gray-400">
                         <div className="h-6 w-6 overflow-hidden rounded-full border border-white/10">
                           <AppImage

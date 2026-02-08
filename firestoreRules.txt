@@ -14,9 +14,34 @@ service cloud.firestore {
     }
 
     match /user/{userId} {
+      function followerCount() {
+        return ("followerCount" in resource.data) ? resource.data.followerCount : 0;
+      }
+
+      function followDocAfter() {
+        return existsAfter(/databases/$(database)/documents/follows/$(request.auth.uid + "_" + userId));
+      }
+
+      function isFollowerCountUpdate() {
+        return signedIn()
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(["followerCount"])
+          && request.resource.data.followerCount is int
+          && request.resource.data.followerCount >= 0
+          && (
+            (
+              request.resource.data.followerCount == followerCount() + 1
+              && followDocAfter()
+            )
+            || (
+              request.resource.data.followerCount == followerCount() - 1
+              && !followDocAfter()
+            )
+          );
+      }
+
       allow read: if signedIn();
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isOwnerEmail();
+      allow update: if isOwner(userId) || isOwnerEmail() || isFollowerCountUpdate();
       allow delete: if false;
     }
 
@@ -122,13 +147,28 @@ service cloud.firestore {
         return signedIn() && liveRoom().hostId == request.auth.uid;
       }
 
+      function currentLikeCount() {
+        return ("likeCount" in resource.data) ? resource.data.likeCount : 0;
+      }
+
+      function isViewerCountUpdate() {
+        return request.resource.data.diff(resource.data).changedKeys().hasOnly(["viewerCount"]);
+      }
+
+      function isLikeCountUpdate() {
+        return request.resource.data.diff(resource.data).changedKeys().hasOnly(["likeCount"])
+          && request.resource.data.likeCount is int
+          && request.resource.data.likeCount == currentLikeCount() + 1;
+      }
+
       allow read: if signedIn();
       allow create: if signedIn()
         && request.resource.data.hostId == request.auth.uid;
       allow update: if signedIn()
         && (
           isLiveHost()
-          || request.resource.data.diff(resource.data).changedKeys().hasOnly(["viewerCount"])
+          || isViewerCountUpdate()
+          || isLikeCountUpdate()
         );
       allow delete: if false;
 
@@ -196,6 +236,18 @@ service cloud.firestore {
       }
     }
 
+    match /live_achievements/{achievementId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.roomId is string
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.hostId == get(/databases/$(database)/documents/live_rooms/$(request.resource.data.roomId)).data.hostId
+        && request.resource.data.threshold is int
+        && request.resource.data.likeCount is int
+        && request.resource.data.metric == "likes";
+      allow update, delete: if false;
+    }
+
     match /blocks/{blockId} {
       allow read: if signedIn()
         && (resource.data.fromUserId == request.auth.uid
@@ -214,6 +266,17 @@ service cloud.firestore {
       allow create, update: if signedIn()
         && request.resource.data.fromUserId == request.auth.uid;
       allow delete: if signedIn() && resource.data.fromUserId == request.auth.uid;
+    }
+
+    match /follows/{followId} {
+      allow get: if signedIn()
+        && followId.matches("^" + request.auth.uid + "_.*");
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.followerId == request.auth.uid
+        && followId == request.resource.data.followerId + "_" + request.resource.data.followingId;
+      allow delete: if signedIn() && resource.data.followerId == request.auth.uid;
+      allow update: if false;
     }
 
     match /dislikes/{dislikeId} {

@@ -43,6 +43,7 @@ const mapRoom = (id: string, data: any): LiveRoom => {
     privacy: data.privacy,
     tags: data.tags ?? [],
     viewerCount: data.viewerCount ?? 0,
+    likeCount: data.likeCount ?? 0,
     maxGuests: data.maxGuests ?? 4,
     status: data.status ?? "live",
     createdAt,
@@ -138,6 +139,7 @@ export const createLiveRoom = async (payload: {
     privacy: payload.privacy,
     tags: payload.tags,
     viewerCount: 0,
+    likeCount: 0,
     maxGuests: payload.maxGuests,
     status: "live",
     createdAt: serverTimestamp(),
@@ -190,6 +192,13 @@ export const removeViewer = async (roomId: string, userId: string) => {
     transaction.update(roomRef, {
       viewerCount: increment(-1),
     });
+  });
+};
+
+export const incrementLiveLike = async (roomId: string) => {
+  const roomRef = doc(liveRoomsRef, roomId);
+  await updateDoc(roomRef, {
+    likeCount: increment(1),
   });
 };
 

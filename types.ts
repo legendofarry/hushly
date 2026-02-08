@@ -17,6 +17,7 @@ export interface UserProfile {
   emailVerified: boolean;
   isPremium?: boolean;
   premiumExpiresAt?: number | null;
+  followerCount?: number;
   occupation?: string;
   occupationVisibility?: "public" | "private";
   ageRange: string; // e.g. "20-25"
@@ -128,6 +129,7 @@ export interface LiveRoom {
   privacy: LivePrivacy;
   tags: string[];
   viewerCount: number;
+  likeCount: number;
   maxGuests: number;
   status: "live" | "ended";
   createdAt: number;
@@ -158,6 +160,23 @@ export interface LiveJoinRequest {
   nickname: string;
   photoUrl?: string;
   status: "pending" | "approved" | "declined";
+  createdAt: number;
+}
+
+export type LiveAchievementType = "likes_milestone";
+
+export interface LiveAchievement {
+  id: string;
+  roomId: string;
+  hostId: string;
+  hostNickname: string;
+  type: LiveAchievementType;
+  key: string;
+  label: string;
+  metric: "likes";
+  likeCount: number;
+  threshold: number;
+  liveTitle: string;
   createdAt: number;
 }
 
