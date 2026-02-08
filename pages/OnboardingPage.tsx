@@ -100,6 +100,13 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       return true;
     } catch (error) {
       console.error(error);
+      const message = String((error as any)?.message ?? "").toLowerCase();
+      if (message.includes("offline") || message.includes("unavailable")) {
+        setNicknameError(
+          "Can't verify right now. You can continue and we'll re-check later.",
+        );
+        return true;
+      }
       setNicknameError("Unable to verify nickname. Try again.");
       return false;
     } finally {
@@ -245,7 +252,25 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         return;
       }
       const newUser = buildUserProfile(authUser.uid);
-      await createUserProfile(newUser);
+      try {
+        await createUserProfile(newUser);
+      } catch (profileError) {
+        console.error(profileError);
+        if (authUser) {
+          try {
+            await deleteUser(authUser);
+          } catch (deleteError) {
+            console.error(deleteError);
+          }
+          try {
+            await clearSession();
+          } catch (signOutError) {
+            console.error(signOutError);
+          }
+          authUser = null;
+        }
+        throw profileError;
+      }
       await sendVerificationEmail(authUser);
       setPendingProfile(newUser);
       setVerificationUser(authUser);

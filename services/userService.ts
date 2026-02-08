@@ -43,6 +43,29 @@ const buildPublicNicknamePayload = (
   updatedAt: serverTimestamp(),
 });
 
+const isPlainObject = (value: unknown) =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  Object.getPrototypeOf(value) === Object.prototype;
+
+const stripUndefined = (value: any): any => {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    return value.map(stripUndefined).filter((item) => item !== undefined);
+  }
+  if (isPlainObject(value)) {
+    const cleaned: Record<string, any> = {};
+    Object.entries(value).forEach(([key, val]) => {
+      const nextVal = stripUndefined(val);
+      if (nextVal !== undefined) {
+        cleaned[key] = nextVal;
+      }
+    });
+    return cleaned;
+  }
+  return value;
+};
+
 export const createUserProfile = async (user: UserProfile) => {
   const userRef = doc(db, USERS_COLLECTION, user.id);
   const nicknameLower = user.nicknameLower ?? normalizeNickname(user.nickname);
@@ -67,11 +90,12 @@ export const createUserProfile = async (user: UserProfile) => {
     );
     tx.set(
       userRef,
-      {
+      stripUndefined({
         ...user,
         nicknameLower,
         createdAt: serverTimestamp(),
-      },
+        updatedAt: serverTimestamp(),
+      }),
       { merge: true },
     );
   });
@@ -130,7 +154,7 @@ export const updateUserProfile = async (
   updates: Partial<UserProfile>,
 ) => {
   const userRef = doc(db, USERS_COLLECTION, userId);
-  const sanitizedUpdates = { ...updates };
+  const sanitizedUpdates: Partial<UserProfile> = { ...updates };
   const hasNicknameUpdate = typeof updates.nickname === "string";
   if (typeof updates.nickname === "string") {
     sanitizedUpdates.nicknameLower = normalizeNickname(updates.nickname);
@@ -177,10 +201,10 @@ export const updateUserProfile = async (
       }
       tx.set(
         userRef,
-        {
+        stripUndefined({
           ...sanitizedUpdates,
           updatedAt: serverTimestamp(),
-        },
+        }),
         { merge: true },
       );
     });
@@ -189,10 +213,10 @@ export const updateUserProfile = async (
 
   await setDoc(
     userRef,
-    {
+    stripUndefined({
       ...sanitizedUpdates,
       updatedAt: serverTimestamp(),
-    },
+    }),
     { merge: true },
   );
 };

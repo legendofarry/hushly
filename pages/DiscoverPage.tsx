@@ -693,7 +693,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       const audioTrack = preflightStream
         .getAudioTracks()
         .find((track) => track.readyState === "live");
-      if (!videoTrack || !audioTrack || !videoTrack.enabled || !audioTrack.enabled) {
+      if (
+        !videoTrack ||
+        !audioTrack ||
+        !videoTrack.enabled ||
+        !audioTrack.enabled
+      ) {
         setLiveStartError("Turn on your camera and microphone to start live.");
         return;
       }
@@ -1159,9 +1164,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 viewBox="0 0 24 24"
                 fill="#fff"
                 stroke="#ec4899"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
                 class="feather feather-send"
               >
                 <line x1="22" y1="2" x2="11" y2="13" />
@@ -1176,16 +1178,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               <span className="text-lg filter drop-shadow-[0_0_5px_rgba(220,38,38,0.5)]">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  xmlns:xlink="http://www.w3.org/1999/xlink"
                   height="24px"
                   width="24px"
                   fill="#fff"
                   stroke="#ec4899"
-                  stroke-width="2"
                   version="1.1"
                   id="_x32_"
                   viewBox="0 0 512 512"
-                  xml:space="preserve"
                 >
                   <g>
                     <path
