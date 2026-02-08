@@ -12,11 +12,7 @@ import {
   AppNotification,
   AGE_RANGES,
   IntentType,
-  LiveChatAccess,
-  LiveJoinAccess,
-  LivePrivacy,
-  LiveRoom,
-  LiveType,
+  DailyDrop,
   PaymentRequest,
   UserProfile,
   WeekendPlan,
@@ -76,10 +72,17 @@ import {
   recordLikeSignal,
   recordSkipSignal,
 } from "../services/aiSignals";
-import { createLiveRoom, listenToLiveRooms } from "../services/liveService";
+import {
+  createDailyDrop,
+  listenToDailyDrop,
+  markDailyDropAction,
+} from "../services/dailyDropService";
 
 const MPESA_FORMAT_REGEX =
   /[A-Z0-9]{8,12}\s+Confirmed\.\s+Ksh\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s+sent\s+to\s+.+?\s+on\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s?(?:AM|PM)\./i;
+
+const DAILY_DROP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_DAILY_DROP_SIZE = 12;
 
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
@@ -101,24 +104,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [plans, setPlans] = useState<WeekendPlan[]>([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState<string | null>(null);
-  const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
-  const [liveLoading, setLiveLoading] = useState(true);
-  const [liveError, setLiveError] = useState<string | null>(null);
-  const [showGoLive, setShowGoLive] = useState(false);
-  const [liveTitle, setLiveTitle] = useState("");
-  const [liveType, setLiveType] = useState<LiveType>("solo");
-  const [liveAllowGuests, setLiveAllowGuests] = useState(true);
-  const [liveChatAccess, setLiveChatAccess] =
-    useState<LiveChatAccess>("everyone");
-  const [liveJoinAccess, setLiveJoinAccess] =
-    useState<LiveJoinAccess>("everyone");
-  const [livePrivacy, setLivePrivacy] = useState<LivePrivacy>("public");
-  const [liveTags, setLiveTags] = useState("");
-  const [liveModerationFilter, setLiveModerationFilter] = useState(true);
-  const [liveModerationMuteNew, setLiveModerationMuteNew] = useState(false);
-  const [liveMaxGuests, setLiveMaxGuests] = useState("4");
-  const [liveStarting, setLiveStarting] = useState(false);
-  const [liveStartError, setLiveStartError] = useState<string | null>(null);
+  const [dailyDrop, setDailyDrop] = useState<DailyDrop | null>(null);
+  const [dailyDropLoading, setDailyDropLoading] = useState(true);
+  const [showDailyDropIntro, setShowDailyDropIntro] = useState(false);
+  const [dropGenerating, setDropGenerating] = useState(false);
+  const [likesReady, setLikesReady] = useState(false);
+  const [dislikesReady, setDislikesReady] = useState(false);
+  const dropGenerationLockRef = useRef(false);
+  const [now, setNow] = useState(Date.now());
   const [planTitle, setPlanTitle] = useState("");
   const [planDescription, setPlanDescription] = useState("");
   const [planLocation, setPlanLocation] = useState("");
@@ -235,6 +228,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, []);
 
   useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = listenToWeekendPlans(
       (items) => {
         setPlans(items);
@@ -254,19 +254,18 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = listenToLiveRooms(
-      (rooms) => {
-        setLiveRooms(rooms);
-        setLiveLoading(false);
+    const unsubscribe = listenToDailyDrop(
+      user.id,
+      (drop) => {
+        setDailyDrop(drop);
+        setDailyDropLoading(false);
       },
-      (error) => {
-        console.error(error);
-        setLiveError("Unable to load live sessions right now.");
-        setLiveLoading(false);
+      () => {
+        setDailyDropLoading(false);
       },
     );
     return () => unsubscribe();
-  }, []);
+  }, [user.id]);
 
   useEffect(() => {
     const unsubscribe = listenToUserPaymentRequests(
@@ -312,9 +311,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       (items) => {
         const next = new Set(items.map((like) => like.toUserId));
         setLikedIds(next);
+        setLikesReady(true);
       },
       (error) => {
         console.error(error);
+        setLikesReady(true);
       },
     );
     return () => unsubscribe();
@@ -340,9 +341,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       (items) => {
         const next = new Set(items.map((dislike) => dislike.toUserId));
         setDislikedIds(next);
+        setDislikesReady(true);
       },
       (error) => {
         console.error(error);
+        setDislikesReady(true);
       },
     );
     return () => unsubscribe();
@@ -356,8 +359,24 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     );
   };
 
-  const filteredProfiles = useMemo(() => {
-    const matchesFilter = profiles.filter((profile) => {
+  const seenIds = useMemo(
+    () => new Set([...likedIds, ...dislikedIds]),
+    [likedIds, dislikedIds],
+  );
+
+  const eligibleProfiles = useMemo(() => {
+    const preferredGenders =
+      user.interestedIn && user.interestedIn.length > 0
+        ? user.interestedIn
+        : ["everyone"];
+    const allowAllGenders = preferredGenders.includes("everyone");
+
+    return profiles.filter((profile) => {
+      if (seenIds.has(profile.id)) return false;
+      if (!allowAllGenders) {
+        if (!profile.gender) return false;
+        if (!preferredGenders.includes(profile.gender)) return false;
+      }
       const matchesIntent =
         selectedIntents.length === 0 ||
         profile.intents?.some((intent) => selectedIntents.includes(intent));
@@ -367,33 +386,60 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         selectedArea === "All" || profile.area === selectedArea;
       return matchesIntent && matchesAge && matchesArea;
     });
+  }, [
+    profiles,
+    seenIds,
+    user.interestedIn,
+    selectedIntents,
+    selectedAgeRange,
+    selectedArea,
+  ]);
 
-    const semanticMatches = deferredQuery
-      ? semanticSearchProfiles(deferredQuery, matchesFilter)
-      : [];
+  const profileMap = useMemo(() => {
+    const map = new Map<string, UserProfile>();
+    profiles.forEach((profile) => {
+      map.set(profile.id, profile);
+    });
+    return map;
+  }, [profiles]);
+
+  const dropProfiles = useMemo(() => {
+    if (!dailyDrop) return [];
+    return dailyDrop.profileIds
+      .map((id) => profileMap.get(id))
+      .filter((profile): profile is UserProfile => Boolean(profile));
+  }, [dailyDrop, profileMap]);
+
+  const actionedSet = useMemo(
+    () => new Set(dailyDrop?.actionedIds ?? []),
+    [dailyDrop?.actionedIds],
+  );
+
+  const remainingDropProfiles = useMemo(
+    () => dropProfiles.filter((profile) => !actionedSet.has(profile.id)),
+    [dropProfiles, actionedSet],
+  );
+
+  const filteredProfiles = useMemo(() => {
+    if (!remainingDropProfiles.length) return [];
+    if (!deferredQuery) return remainingDropProfiles;
+    const semanticMatches = semanticSearchProfiles(
+      deferredQuery,
+      remainingDropProfiles,
+    );
     const semanticIds = new Set(semanticMatches.map((item) => item.profile.id));
     const candidates =
-      deferredQuery && semanticIds.size > 0
-        ? matchesFilter.filter((profile) => semanticIds.has(profile.id))
-        : matchesFilter;
-
+      semanticIds.size > 0
+        ? remainingDropProfiles.filter((profile) => semanticIds.has(profile.id))
+        : remainingDropProfiles;
     const ranked = rankProfiles({
       user,
       profiles: candidates,
       signals: deferredSignals,
       semanticQuery: deferredQuery,
     });
-
     return ranked.map((item) => item.profile);
-  }, [
-    profiles,
-    selectedIntents,
-    selectedAgeRange,
-    selectedArea,
-    user,
-    deferredSignals,
-    deferredQuery,
-  ]);
+  }, [remainingDropProfiles, deferredQuery, deferredSignals, user]);
 
   const matchReasons = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -412,6 +458,109 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     return Array.from(areas).sort();
   }, [profiles, user.area]);
 
+  const dropTotal = dailyDrop?.profileIds.length ?? 0;
+  const dropRemaining = remainingDropProfiles.length;
+  const dropCompleted =
+    Boolean(dailyDrop) && dropTotal > 0 && dropRemaining === 0;
+  const nextDropAt = dailyDrop
+    ? dailyDrop.lastDropAt + DAILY_DROP_INTERVAL_MS
+    : 0;
+  const timeRemainingMs = Math.max(nextDropAt - now, 0);
+  const timeRemainingHours = Math.floor(timeRemainingMs / (60 * 60 * 1000));
+  const timeRemainingMinutes = Math.floor(
+    (timeRemainingMs % (60 * 60 * 1000)) / (60 * 1000),
+  );
+
+  useEffect(() => {
+    if (loading || dailyDropLoading || !likesReady || !dislikesReady) return;
+    const shouldRefresh =
+      !dailyDrop ||
+      now - dailyDrop.lastDropAt >= DAILY_DROP_INTERVAL_MS;
+    if (!shouldRefresh) return;
+    if (dropGenerationLockRef.current) return;
+
+    dropGenerationLockRef.current = true;
+    setDropGenerating(true);
+    const dropSize = Math.max(1, DEFAULT_DAILY_DROP_SIZE);
+    const candidates = [...eligibleProfiles];
+    for (let i = candidates.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    const selected = candidates.slice(0, dropSize);
+    const selectedIds = selected.map((profile) => profile.id);
+
+    void createDailyDrop({
+      userId: user.id,
+      profileIds: selectedIds,
+      dropSize,
+      filters: {
+        intents: selectedIntents,
+        ageRange: selectedAgeRange,
+        area: selectedArea,
+        genders: user.interestedIn ?? [],
+      },
+    })
+      .then(() => {
+        if (!selectedIds.length) return;
+        return createNotification({
+          toUserId: user.id,
+          fromUserId: user.id,
+          fromNickname: user.nickname,
+          type: "system",
+          body: "Your new matches are waiting.",
+        });
+      })
+      .catch((error) => {
+        console.error(error);
+      })
+      .finally(() => {
+        dropGenerationLockRef.current = false;
+        setDropGenerating(false);
+      });
+  }, [
+    loading,
+    dailyDropLoading,
+    likesReady,
+    dislikesReady,
+    dailyDrop,
+    now,
+    eligibleProfiles,
+    selectedIntents,
+    selectedAgeRange,
+    selectedArea,
+    user.id,
+    user.nickname,
+    user.interestedIn,
+  ]);
+
+  useEffect(() => {
+    if (!dailyDrop) return;
+    const key = `hushly_daily_drop_seen_${user.id}`;
+    const lastSeen = Number(localStorage.getItem(key) || "0");
+    if (dailyDrop.lastDropAt > lastSeen) {
+      setShowDailyDropIntro(true);
+    }
+  }, [dailyDrop, user.id]);
+
+  useEffect(() => {
+    if (!showDailyDropIntro) return;
+    const brandColors = ["#ec4899", "#a855f7", "#ffffff", "#22c55e"];
+    requestAnimationFrame(() => {
+      confetti({
+        particleCount: 220,
+        spread: 110,
+        origin: { y: 0.6 },
+        colors: brandColors,
+        disableForReducedMotion: true,
+        zIndex: 9999,
+        gravity: 1.1,
+        scalar: 1.1,
+        ticks: 320,
+      });
+    });
+  }, [showDailyDropIntro]);
+
   useEffect(() => {
     if (currentIndex >= filteredProfiles.length) {
       setCurrentIndex(0);
@@ -420,7 +569,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   useEffect(() => {
     setCurrentIndex(0);
-  }, [selectedIntents, selectedAgeRange, selectedArea, aiQuery]);
+  }, [dailyDrop?.lastDropAt, aiQuery]);
 
   const current = filteredProfiles[currentIndex];
   const isCurrentLiked = Boolean(current && likedIds.has(current.id));
@@ -540,6 +689,16 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     setShowNotifications(false);
   };
 
+  const handleCloseDailyDropIntro = () => {
+    if (dailyDrop) {
+      localStorage.setItem(
+        `hushly_daily_drop_seen_${user.id}`,
+        String(dailyDrop.lastDropAt),
+      );
+    }
+    setShowDailyDropIntro(false);
+  };
+
   const handlePlanSubmit = async () => {
     if (premiumChecking) {
       setPlanActionError("Confirming premium status...");
@@ -647,98 +806,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     }, 1600);
   };
 
-  const resetLiveForm = () => {
-    setLiveTitle("");
-    setLiveType("solo");
-    setLiveAllowGuests(true);
-    setLiveChatAccess("everyone");
-    setLiveJoinAccess("everyone");
-    setLivePrivacy("public");
-    setLiveTags("");
-    setLiveModerationFilter(true);
-    setLiveModerationMuteNew(false);
-    setLiveMaxGuests("4");
-    setLiveStartError(null);
-  };
-
-  const handleStartLive = async () => {
-    if (!liveTitle.trim()) {
-      setLiveStartError("Live title is required.");
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setLiveStartError("Camera and microphone are not available.");
-      return;
-    }
-    setLiveStarting(true);
-    setLiveStartError(null);
-    const parsedMaxGuests = Number.parseInt(liveMaxGuests, 10);
-    const maxGuests = Number.isFinite(parsedMaxGuests)
-      ? Math.min(Math.max(parsedMaxGuests, 1), 9)
-      : 4;
-    const tags = liveTags
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean)
-      .slice(0, 5);
-    let preflightStream: MediaStream | null = null;
-    try {
-      preflightStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-      const videoTrack = preflightStream
-        .getVideoTracks()
-        .find((track) => track.readyState === "live");
-      const audioTrack = preflightStream
-        .getAudioTracks()
-        .find((track) => track.readyState === "live");
-      if (
-        !videoTrack ||
-        !audioTrack ||
-        !videoTrack.enabled ||
-        !audioTrack.enabled
-      ) {
-        setLiveStartError("Turn on your camera and microphone to start live.");
-        return;
-      }
-      const roomId = await createLiveRoom({
-        host: user,
-        title: liveTitle.trim(),
-        type: liveAllowGuests ? liveType : "solo",
-        allowGuests: liveAllowGuests || liveType === "group",
-        chatAccess: liveChatAccess,
-        joinAccess: liveAllowGuests ? liveJoinAccess : "invite",
-        moderation: {
-          filterBadWords: liveModerationFilter,
-          muteNewUsers: liveModerationMuteNew,
-        },
-        privacy: livePrivacy,
-        tags,
-        maxGuests,
-      });
-      setShowGoLive(false);
-      resetLiveForm();
-      navigate(`/live/${roomId}`);
-    } catch (error) {
-      console.error(error);
-      setLiveStartError("Enable camera and microphone access to start live.");
-    } finally {
-      if (preflightStream) {
-        preflightStream.getTracks().forEach((track) => track.stop());
-      }
-      setLiveStarting(false);
-    }
-  };
-
-  const formatViewerCount = (count: number) => {
-    if (!Number.isFinite(count)) return "0";
-    if (count >= 1000) {
-      return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}K`;
-    }
-    return `${count}`;
-  };
-
   const handlePaymentSubmit = async () => {
     if (premiumChecking) {
       setPaymentError("Confirming premium status...");
@@ -797,6 +864,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   // --- ACTIONS ---
   const handleNextProfile = () => {
     if (filteredProfiles.length === 0) return;
+    if (dailyDrop) {
+      setCurrentIndex(0);
+      return;
+    }
     setCurrentIndex((prev) => (prev + 1) % filteredProfiles.length);
   };
 
@@ -813,6 +884,17 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         fromNickname: user.nickname,
         toNickname: current.nickname,
       });
+      if (dailyDrop) {
+        void markDailyDropAction(user.id, current.id);
+        setDailyDrop((prev) => {
+          if (!prev) return prev;
+          if (prev.actionedIds.includes(current.id)) return prev;
+          return {
+            ...prev,
+            actionedIds: [...prev.actionedIds, current.id],
+          };
+        });
+      }
       setDislikedIds((prev) => {
         const next = new Set(prev);
         next.add(current.id);
@@ -847,6 +929,17 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         fromUserId: user.id,
         fromNickname: user.nickname,
       });
+      if (dailyDrop) {
+        void markDailyDropAction(user.id, current.id);
+        setDailyDrop((prev) => {
+          if (!prev) return prev;
+          if (prev.actionedIds.includes(current.id)) return prev;
+          return {
+            ...prev,
+            actionedIds: [...prev.actionedIds, current.id],
+          };
+        });
+      }
       const updated = recordLikeSignal(current);
       startAiTransition(() => setAiSignals(updated));
       setLikedIds((prev) => {
@@ -989,8 +1082,30 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           50% { opacity: 0; transform: translateY(-18%) scale(1.02); }
           100% { opacity: 0; transform: translateY(-18%) scale(1.02); }
         }
+        @keyframes dropPulse {
+          0%, 100% { transform: scale(1); opacity: 0.9; }
+          50% { transform: scale(1.04); opacity: 1; }
+        }
+        @keyframes dropSweep {
+          0% { transform: translateX(-30%); opacity: 0; }
+          50% { opacity: 0.7; }
+          100% { transform: translateX(30%); opacity: 0; }
+        }
+        @keyframes dropFloat {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-12px); }
+        }
         .card-swipe-in {
           animation: cardSwipeIn 220ms ease-out;
+        }
+        .drop-pulse {
+          animation: dropPulse 2.4s ease-in-out infinite;
+        }
+        .drop-float {
+          animation: dropFloat 3.2s ease-in-out infinite;
+        }
+        .drop-sweep {
+          animation: dropSweep 3.6s ease-in-out infinite;
         }
         .brand-cycler {
           position: relative;
@@ -1044,6 +1159,84 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           </div>
         ))}
       </div>
+
+      {showDailyDropIntro && dailyDrop && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6">
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute -top-24 left-10 h-72 w-72 rounded-full bg-pink-500/20 blur-[140px] drop-pulse"></div>
+            <div className="absolute top-1/2 right-[-10%] h-96 w-96 rounded-full bg-purple-500/20 blur-[160px] drop-pulse"></div>
+            <div className="absolute bottom-[-20%] left-1/3 h-80 w-80 rounded-full bg-emerald-500/10 blur-[160px] drop-pulse"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(236,72,153,0.25),_transparent_60%)] drop-sweep"></div>
+          </div>
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-[2.5rem] border border-white/10 bg-[#0b0b0b]/95 p-8 text-center shadow-2xl">
+            <button
+              onClick={handleCloseDailyDropIntro}
+              className="absolute right-6 top-6 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs text-gray-300 hover:bg-white/10"
+            >
+              ✕
+            </button>
+
+            <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border border-white/10 bg-white/5 drop-pulse">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-10 w-10 text-kipepeo-pink drop-float"
+              >
+                <path d="M3 17l2-8 5 5 2-6 2 6 5-5 2 8" />
+                <path d="M3 17h18" />
+                <circle cx="5" cy="7" r="1.5" />
+                <circle cx="12" cy="5" r="1.5" />
+                <circle cx="19" cy="7" r="1.5" />
+              </svg>
+            </div>
+
+            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-kipepeo-pink to-purple-400">
+              Today&apos;s Matches
+            </h2>
+            <p className="mt-3 text-sm text-gray-400">
+              A fresh drop just landed. {dropTotal} new profiles curated for
+              you.
+            </p>
+
+            {dropProfiles.length > 0 && (
+              <div className="mt-6 grid grid-cols-4 gap-3 sm:grid-cols-6">
+                {dropProfiles.slice(0, 12).map((profile) => (
+                  <div
+                    key={`drop-preview-${profile.id}`}
+                    className="aspect-square overflow-hidden rounded-2xl border border-white/10 bg-white/5"
+                  >
+                    <AppImage
+                      src={profile.photoUrl}
+                      alt={profile.nickname}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+              <button
+                onClick={handleCloseDailyDropIntro}
+                className="w-full sm:w-auto px-6 py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest shadow-[0_0_24px_rgba(236,72,153,0.5)] active:scale-95 transition-transform"
+              >
+                Start Exploring
+              </button>
+              <button
+                onClick={handleCloseDailyDropIntro}
+                className="w-full sm:w-auto px-6 py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+              >
+                Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showInstallPrompt && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 px-6">
@@ -1348,6 +1541,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                   <p className="mt-2 text-[10px] text-gray-500">
                     Semantic search across bio, intents, and area.
                   </p>
+                  {dailyDrop && (
+                    <p className="mt-2 text-[10px] text-gray-600">
+                      Filter changes apply to your next drop.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
@@ -1410,6 +1608,27 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                       ))}
                     </select>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {dailyDrop && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-400">
+                    Today&apos;s Matches
+                  </p>
+                  <p className="text-sm font-semibold text-white">
+                    {dropRemaining} left of {dropTotal}
+                  </p>
+                  {dropCompleted && (
+                    <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
+                      Next drop in {timeRemainingHours}h {timeRemainingMinutes}m
+                    </p>
+                  )}
+                </div>
+                <div className="h-12 w-12 rounded-2xl bg-kipepeo-pink/20 border border-kipepeo-pink/40 flex items-center justify-center text-xs font-black uppercase tracking-widest text-kipepeo-pink">
+                  Drop
                 </div>
               </div>
             )}
@@ -1887,345 +2106,65 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border border-white/5 my-2 mx-[5px]">
-                <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center text-4xl mb-4 shadow-inner">
-                  🌙
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">
-                  All Caught Up
-                </h3>
-                <p className="text-gray-500 text-sm text-center max-w-[200px]">
-                  Adjust your filters or check back later for new profiles.
-                </p>
-                <button
-                  onClick={() => setSelectedIntents([])}
-                  className="mt-6 text-pink-500 text-xs font-bold uppercase tracking-widest hover:text-pink-400"
-                >
-                  Clear Filters
-                </button>
+              <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border border-white/5 my-2 mx-[5px] px-6">
+                {loading || dailyDropLoading || dropGenerating ? (
+                  <>
+                    <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center text-2xl mb-4 shadow-inner">
+                      *
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">
+                      Loading Today&apos;s Matches
+                    </h3>
+                    <p className="text-gray-500 text-sm text-center max-w-[240px]">
+                      Curating your daily drop...
+                    </p>
+                  </>
+                ) : dropCompleted ? (
+                  <>
+                    <div className="w-20 h-20 bg-gray-900 rounded-full flex items-center justify-center text-xs font-black uppercase tracking-widest mb-4 shadow-inner">
+                      Lock
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">
+                      Daily Drop Locked
+                    </h3>
+                    <p className="text-gray-500 text-sm text-center max-w-[240px]">
+                      Next drop in {timeRemainingHours}h {timeRemainingMinutes}m
+                    </p>
+                    <p className="mt-3 text-[10px] uppercase tracking-widest text-gray-600">
+                      Come back for fresh matches
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center text-xs font-black uppercase tracking-widest mb-4 shadow-inner">
+                      Moon
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">
+                      No Matches Yet
+                    </h3>
+                    <p className="text-gray-500 text-sm text-center max-w-[200px]">
+                      Check back later as your drop refreshes.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </>
         ) : view === "live" ? (
-          <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">
-            {showGoLive && (
-              <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4">
-                <div className="w-full max-w-lg glass rounded-3xl border border-white/10 p-6 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-base font-black uppercase tracking-widest">
-                        Go Live
-                      </h3>
-                      <p className="text-xs text-gray-400">
-                        Settings are locked once the live starts.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setShowGoLive(false);
-                        setLiveStartError(null);
-                      }}
-                      className="text-xs uppercase tracking-widest text-gray-400"
-                    >
-                      Close
-                    </button>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-gray-400">
-                        Live Title
-                      </label>
-                      <input
-                        value={liveTitle}
-                        onChange={(e) => setLiveTitle(e.target.value)}
-                        placeholder="Late night rooftop vibes"
-                        className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-sm focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
-                          Live Type
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setLiveType("solo")}
-                            className={`flex-1 rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
-                              liveType === "solo"
-                                ? "border-kipepeo-pink text-white bg-kipepeo-pink/20"
-                                : "border-white/10 text-gray-300 hover:bg-white/10"
-                            }`}
-                          >
-                            Solo
-                          </button>
-                          <button
-                            onClick={() => {
-                              setLiveType("group");
-                              setLiveAllowGuests(true);
-                            }}
-                            className={`flex-1 rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
-                              liveType === "group"
-                                ? "border-kipepeo-pink text-white bg-kipepeo-pink/20"
-                                : "border-white/10 text-gray-300 hover:bg-white/10"
-                            }`}
-                          >
-                            Group
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
-                          Allow Guests
-                        </p>
-                        <label className="flex items-center gap-2 text-xs text-gray-300">
-                          <input
-                            type="checkbox"
-                            checked={liveAllowGuests}
-                            onChange={(e) => {
-                              if (liveType === "group") return;
-                              setLiveAllowGuests(e.target.checked);
-                            }}
-                            className="accent-kipepeo-pink"
-                          />
-                          Allow viewers to request to join
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest text-gray-400">
-                          Who Can Chat
-                        </label>
-                        <select
-                          value={liveChatAccess}
-                          onChange={(e) =>
-                            setLiveChatAccess(e.target.value as LiveChatAccess)
-                          }
-                          className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
-                        >
-                          <option value="everyone">Everyone</option>
-                          <option value="followers">Followers only</option>
-                          <option value="noone">No one</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest text-gray-400">
-                          Who Can Request to Join
-                        </label>
-                        <select
-                          value={liveJoinAccess}
-                          onChange={(e) =>
-                            setLiveJoinAccess(e.target.value as LiveJoinAccess)
-                          }
-                          disabled={!liveAllowGuests}
-                          className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none disabled:opacity-60"
-                        >
-                          <option value="everyone">Everyone</option>
-                          <option value="followers">Followers only</option>
-                          <option value="invite">Invite only</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest text-gray-400">
-                          Privacy
-                        </label>
-                        <select
-                          value={livePrivacy}
-                          onChange={(e) =>
-                            setLivePrivacy(e.target.value as LivePrivacy)
-                          }
-                          className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
-                        >
-                          <option value="public">Public</option>
-                          <option value="friends">Friends</option>
-                          <option value="private">Private</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] uppercase tracking-widest text-gray-400">
-                          Max Guests
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={9}
-                          value={liveMaxGuests}
-                          onChange={(e) => setLiveMaxGuests(e.target.value)}
-                          className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] uppercase tracking-widest text-gray-400">
-                        Tags (comma separated)
-                      </label>
-                      <input
-                        value={liveTags}
-                        onChange={(e) => setLiveTags(e.target.value)}
-                        placeholder="Chat, Music, Q&A"
-                        className="mt-2 w-full rounded-2xl bg-white/5 border border-white/10 px-4 py-3 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="flex items-center gap-2 text-xs text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={liveModerationFilter}
-                          onChange={(e) =>
-                            setLiveModerationFilter(e.target.checked)
-                          }
-                          className="accent-kipepeo-pink"
-                        />
-                        Auto-filter bad words
-                      </label>
-                      <label className="flex items-center gap-2 text-xs text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={liveModerationMuteNew}
-                          onChange={(e) =>
-                            setLiveModerationMuteNew(e.target.checked)
-                          }
-                          className="accent-kipepeo-pink"
-                        />
-                        Mute new users (30s)
-                      </label>
-                    </div>
-
-                    {liveStartError && (
-                      <p className="text-xs text-red-400">{liveStartError}</p>
-                    )}
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={handleStartLive}
-                        disabled={liveStarting}
-                        className="flex-1 py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
-                      >
-                        {liveStarting ? "Starting..." : "Start Live"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowGoLive(false);
-                          setLiveStartError(null);
-                        }}
-                        className="px-4 py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="glass rounded-3xl border border-white/5 p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-[0.3em]">
-                    {liveRooms.length} sessions
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowGoLive(true)}
-                  className="px-4 py-2 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
-                >
-                  Go Live
-                </button>
-              </div>
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
+            <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-3xl mb-4">
+              📡
             </div>
-
-            {liveLoading ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-sm">
-                Loading live sessions...
-              </div>
-            ) : liveError ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-red-400 text-sm">
-                {liveError}
-              </div>
-            ) : liveRooms.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center text-gray-500 text-sm">
-                No one is live right now. Be the first to go live.
-              </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {liveRooms.map((room) => (
-                  <button
-                    key={room.id}
-                    onClick={() => navigate(`/live/${room.id}`)}
-                    className="group overflow-hidden rounded-3xl border border-white/10 bg-white/5 text-left shadow-xl transition-all hover:-translate-y-1 hover:border-white/20 hover:bg-white/10"
-                  >
-                    <div className="relative aspect-[4/5] overflow-hidden">
-                      <AppImage
-                        src={room.hostPhotoUrl ?? user.photoUrl}
-                        alt={room.hostNickname}
-                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
-                      <div className="absolute left-3 top-3 flex items-center gap-2">
-                        <span className="rounded-md bg-kipepeo-pink px-2 py-1 text-[10px] font-black uppercase tracking-widest text-white">
-                          Live
-                        </span>
-                        <span className="flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-white">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                          </svg>
-                          {formatViewerCount(room.viewerCount)}
-                        </span>
-                      </div>
-                      <div className="absolute bottom-4 left-4 right-4">
-                        <div className="flex flex-wrap gap-2">
-                          {room.tags.slice(0, 3).map((tag) => (
-                            <span
-                              key={`${room.id}-${tag}`}
-                              className="rounded-full bg-black/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-widest text-white/90"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-2 px-4 py-3">
-                      <h3 className="text-sm font-black uppercase tracking-wide text-white">
-                        {room.title}
-                      </h3>
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <div className="h-6 w-6 overflow-hidden rounded-full border border-white/10">
-                          <AppImage
-                            src={room.hostPhotoUrl ?? user.photoUrl}
-                            alt={room.hostNickname}
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                        <span>{room.hostNickname}</span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+            <h3 className="text-xl font-bold text-white mb-2">
+              Live is being rebuilt
+            </h3>
+            <p className="text-gray-500 text-sm max-w-sm">
+              We paused live sessions to rebuild from scratch. This tab stays
+              here, but streaming is temporarily offline.
+            </p>
+            <div className="mt-6 px-4 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-widest text-gray-400">
+              Coming back soon
+            </div>
           </div>
         ) : (
           <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">

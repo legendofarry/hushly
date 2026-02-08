@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { deleteUser } from "firebase/auth";
 import type { User } from "firebase/auth";
-import { IntentType, KENYAN_AREAS, AGE_RANGES, UserProfile } from "../types";
+import {
+  IntentType,
+  KENYAN_AREAS,
+  AGE_RANGES,
+  UserProfile,
+  Gender,
+  GenderPreference,
+} from "../types";
 import {
   analyzePhotoForAi,
   storePhotoAiHash,
@@ -27,6 +34,21 @@ interface Props {
   onComplete: (user: UserProfile) => void;
 }
 
+const GENDER_OPTIONS: { value: Gender; label: string }[] = [
+  { value: "female", label: "Woman" },
+  { value: "male", label: "Man" },
+  { value: "nonbinary", label: "Non-binary" },
+  { value: "other", label: "Other" },
+];
+
+const INTEREST_OPTIONS: { value: GenderPreference; label: string }[] = [
+  { value: "female", label: "Women" },
+  { value: "male", label: "Men" },
+  { value: "nonbinary", label: "Non-binary" },
+  { value: "other", label: "Other" },
+  { value: "everyone", label: "Everyone" },
+];
+
 const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [step, setStep] = useState(1);
   const [realName, setRealName] = useState("");
@@ -36,6 +58,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [occupation, setOccupation] = useState("");
   const [occupationVisibility, setOccupationVisibility] =
     useState<"public" | "private">("private");
+  const [gender, setGender] = useState<Gender | "">("");
+  const [interestedIn, setInterestedIn] = useState<GenderPreference[]>([]);
   const [ageRange, setAgeRange] = useState(AGE_RANGES[1]);
   const [area, setArea] = useState(KENYAN_AREAS[0]);
   const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
@@ -134,6 +158,19 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         ? prev.filter((i) => i !== intent)
         : [...prev, intent],
     );
+  };
+
+  const toggleInterestedIn = (value: GenderPreference) => {
+    setInterestedIn((prev) => {
+      if (value === "everyone") {
+        return prev.includes("everyone") ? [] : ["everyone"];
+      }
+      const withoutEveryone = prev.filter((item) => item !== "everyone");
+      if (withoutEveryone.includes(value)) {
+        return withoutEveryone.filter((item) => item !== value);
+      }
+      return [...withoutEveryone, value];
+    });
   };
 
   const handleAiSuggestIntents = () => {
@@ -314,6 +351,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     premiumExpiresAt: null,
     occupation: occupation.trim() ? occupation.trim() : undefined,
     occupationVisibility,
+    gender: gender || undefined,
+    interestedIn: interestedIn.length > 0 ? interestedIn : undefined,
     ageRange,
     area,
     intents: selectedIntents,
@@ -610,6 +649,51 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  Gender
+                </label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {GENDER_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setGender(option.value)}
+                      className={`px-3 py-3 rounded-xl text-[10px] uppercase tracking-widest font-black transition-all border ${
+                        gender === option.value
+                          ? "bg-kipepeo-pink/20 text-kipepeo-pink border-kipepeo-pink/40"
+                          : "bg-white/5 text-gray-400 border-white/10"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  Interested In
+                </label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {INTEREST_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => toggleInterestedIn(option.value)}
+                      className={`px-3 py-3 rounded-xl text-[10px] uppercase tracking-widest font-black transition-all border ${
+                        interestedIn.includes(option.value)
+                          ? "bg-kipepeo-pink/20 text-kipepeo-pink border-kipepeo-pink/40"
+                          : "bg-white/5 text-gray-400 border-white/10"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-gray-500 mt-2">
+                  Used to curate your daily match drop.
+                </p>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase">
                   Area / Base
                 </label>
                 <select
@@ -824,6 +908,14 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
               }
             }
             if (step === 2) {
+              if (!gender) {
+                setErrorMessage("Please select your gender.");
+                return;
+              }
+              if (interestedIn.length === 0) {
+                setErrorMessage("Select who you want to see.");
+                return;
+              }
               const ok = await checkNicknameAvailability(nickname);
               if (!ok) {
                 return;

@@ -8,6 +8,9 @@ export enum IntentType {
   PLANS = "Plans & Hangouts",
 }
 
+export type Gender = "female" | "male" | "nonbinary" | "other";
+export type GenderPreference = Gender | "everyone";
+
 export interface UserProfile {
   id: string;
   realName: string; // Private
@@ -20,6 +23,8 @@ export interface UserProfile {
   followerCount?: number;
   occupation?: string;
   occupationVisibility?: "public" | "private";
+  gender?: Gender;
+  interestedIn?: GenderPreference[];
   ageRange: string; // e.g. "20-25"
   bio: string;
   area: string; // Area/City only
@@ -178,6 +183,16 @@ export interface LiveAchievement {
   threshold: number;
   liveTitle: string;
   createdAt: number;
+}
+
+export interface DailyDrop {
+  userId: string;
+  lastDropAt: number;
+  profileIds: string[];
+  actionedIds: string[];
+  dropSize: number;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export type PaymentStatus = "pending" | "approved" | "rejected";
