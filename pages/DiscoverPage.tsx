@@ -982,11 +982,46 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           0% { opacity: 0; transform: translateY(10px) scale(0.995); }
           100% { opacity: 1; transform: translateY(0) scale(1); }
         }
+        @keyframes brandSwap {
+          0% { opacity: 0; transform: translateY(18%) scale(0.98); }
+          6% { opacity: 1; transform: translateY(0) scale(1); }
+          44% { opacity: 1; transform: translateY(0) scale(1); }
+          50% { opacity: 0; transform: translateY(-18%) scale(1.02); }
+          100% { opacity: 0; transform: translateY(-18%) scale(1.02); }
+        }
         .card-swipe-in {
           animation: cardSwipeIn 220ms ease-out;
         }
+        .brand-cycler {
+          position: relative;
+          display: inline-block;
+          min-width: 14ch;
+          height: 1em;
+        }
+        .brand-cycler__word {
+          position: absolute;
+          left: 0;
+          top: 0;
+          white-space: nowrap;
+          opacity: 0;
+          transform: translateY(18%);
+          animation: brandSwap 8s ease-in-out infinite;
+        }
+        .brand-cycler__word--primary {
+          animation-delay: 0s;
+        }
+        .brand-cycler__word--secondary {
+          animation-delay: 4s;
+        }
         @media (prefers-reduced-motion: reduce) {
           .card-swipe-in { animation: none; }
+          .brand-cycler__word {
+            position: static;
+            opacity: 1;
+            transform: none;
+            animation: none;
+          }
+          .brand-cycler__word--secondary { display: none; }
         }
       `}</style>
       {/* Dynamic Background */}
@@ -1142,8 +1177,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-1">
             <div className="w-2 h-8 bg-gradient-to-b from-pink-500 to-purple-600 rounded-full"></div>
-            <h1 className="text-2xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">
-              <a href="#">Hushly</a>
+            <h1 className="text-2xl font-black tracking-tighter bg-clip-text text-white bg-gradient-to-r from-white to-gray-400">
+              <a href="#" className="brand-cycler">
+                <span className="brand-cycler__word brand-cycler__word--primary">
+                  Hushly
+                </span>
+                <span className="brand-cycler__word brand-cycler__word--secondary">
+                  Proudly Kenyan
+                </span>
+              </a>
             </h1>
           </div>
 
@@ -1517,7 +1559,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 px-4 pb-4 overflow-hidden relative flex flex-col z-10 max-w-2xl mx-auto w-full">
+      <div className="flex-1 px-2 pb-4 overflow-hidden relative flex flex-col z-10 max-w-[48rem] mx-auto w-full">
         {showNotifications && (
           <div className="absolute top-0 right-2 z-30 w-72 glass rounded-2xl border border-white/10 p-4 shadow-xl">
             <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">
@@ -1845,7 +1887,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border border-white/5 m-4">
+              <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border border-white/5 my-2 mx-[5px]">
                 <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center text-4xl mb-4 shadow-inner">
                   🌙
                 </div>

@@ -434,7 +434,7 @@ const LandingPage: React.FC<Props> = ({ onLogin }) => {
           HUSHLY
         </h1>
         <p className="text-gray-500 font-black tracking-[0.5em] text-[10px] uppercase">
-          After Hours • Anonymous
+          After Hours • Stay Connected
         </p>
       </div>
 
