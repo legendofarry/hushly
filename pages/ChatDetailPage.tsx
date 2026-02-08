@@ -1139,6 +1139,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         callId,
         role: "callee",
         onCandidate: (candidate) => {
+          if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
           void pc
             .addIceCandidate(new RTCIceCandidate(candidate))
             .catch((err) => {
@@ -1236,6 +1237,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         callId: incomingCall.id,
         role: "caller",
         onCandidate: (candidate) => {
+          if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
           void pc
             .addIceCandidate(new RTCIceCandidate(candidate))
             .catch((err) => {

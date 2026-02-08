@@ -48,10 +48,25 @@ interface Props {
   user: UserProfile;
 }
 
+const TURN_URL = import.meta.env.VITE_TURN_URL as string | undefined;
+const TURN_USERNAME = import.meta.env.VITE_TURN_USERNAME as string | undefined;
+const TURN_CREDENTIAL = import.meta.env.VITE_TURN_CREDENTIAL as
+  | string
+  | undefined;
+
 const LIVE_ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    ...(TURN_URL
+      ? [
+          {
+            urls: TURN_URL,
+            username: TURN_USERNAME,
+            credential: TURN_CREDENTIAL,
+          },
+        ]
+      : []),
   ],
 };
 
@@ -175,6 +190,7 @@ const VideoTile: React.FC<{
     if (!videoRef.current) return;
     if (stream) {
       videoRef.current.srcObject = stream;
+      videoRef.current.play().catch(() => {});
     } else {
       videoRef.current.srcObject = null;
     }
@@ -934,10 +950,12 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     pc: RTCPeerConnection,
   ) => {
     if (!pc.remoteDescription) return;
+    if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
     const pending = pendingCandidatesRef.current[remoteId];
     if (!pending || pending.length === 0) return;
     pendingCandidatesRef.current[remoteId] = [];
     pending.forEach((candidate) => {
+      if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
       pc.addIceCandidate(candidate).catch((error) => console.error(error));
     });
   };
@@ -1157,6 +1175,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
       connectionId,
       role: isOfferer ? "answer" : "offer",
       onCandidate: (candidate) => {
+        if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
         if (pc.remoteDescription) {
           pc.addIceCandidate(candidate).catch((error) => console.error(error));
         } else {
