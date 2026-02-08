@@ -13,6 +13,7 @@ import {
   analyzePhotoForAi,
   storePhotoAiHash,
   uploadToCloudinary,
+  uploadAudioToCloudinary,
   type PhotoAiReport,
 } from "../services/cloudinaryService";
 import {
@@ -28,6 +29,7 @@ import {
 } from "../services/userService";
 import { getFriendlyAuthError } from "../firebaseErrors";
 import AppImage from "../components/AppImage";
+import AudioWaveform from "../components/AudioWaveform";
 import { generateBio, rewriteBio, suggestIntents } from "../services/aiService";
 
 interface Props {
@@ -84,6 +86,22 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [ageGateChecked, setAgeGateChecked] = useState(false);
   const [ageGateProfile, setAgeGateProfile] = useState<UserProfile | null>(null);
   const selfieInputRef = useRef<HTMLInputElement | null>(null);
+  const [voiceIntroBlob, setVoiceIntroBlob] = useState<Blob | null>(null);
+  const [voiceIntroUrl, setVoiceIntroUrl] = useState<string | null>(null);
+  const [voiceIntroDuration, setVoiceIntroDuration] = useState<number | null>(
+    null,
+  );
+  const [voiceIntroError, setVoiceIntroError] = useState<string | null>(null);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceSeconds, setVoiceSeconds] = useState(0);
+  const voiceSecondsRef = useRef(0);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimerRef = useRef<number | null>(null);
+
+  const MIN_VOICE_SECONDS = 10;
+  const MAX_VOICE_SECONDS = 20;
 
   const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
@@ -92,8 +110,14 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       if (photoPreview) {
         URL.revokeObjectURL(photoPreview);
       }
+      if (voiceIntroUrl) {
+        URL.revokeObjectURL(voiceIntroUrl);
+      }
+      if (voiceStreamRef.current) {
+        voiceStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
     };
-  }, [photoPreview]);
+  }, [photoPreview, voiceIntroUrl]);
 
   const validatePassword = (value: string) => {
     if (!value) return "Please create a password.";
@@ -251,6 +275,110 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     }
   };
 
+  const stopVoiceRecording = () => {
+    if (!voiceRecording) return;
+    if (voiceTimerRef.current) {
+      window.clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    voiceRecorderRef.current?.stop();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+    setVoiceRecording(false);
+  };
+
+  const startVoiceRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceIntroError("Voice recording is not supported on this device.");
+      return;
+    }
+    setVoiceIntroError(null);
+    setVoiceSeconds(0);
+    voiceSecondsRef.current = 0;
+    setVoiceRecording(true);
+    voiceChunksRef.current = [];
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      const preferredType = MediaRecorder.isTypeSupported(
+        "audio/webm;codecs=opus",
+      )
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      const recorder = new MediaRecorder(
+        stream,
+        preferredType ? { mimeType: preferredType } : undefined,
+      );
+      voiceRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          voiceChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const duration = voiceSecondsRef.current;
+        const chunks = voiceChunksRef.current;
+        if (!chunks.length) {
+          setVoiceIntroError("No audio captured. Try again.");
+          return;
+        }
+        if (duration < MIN_VOICE_SECONDS) {
+          setVoiceIntroError(
+            `Please record at least ${MIN_VOICE_SECONDS} seconds.`,
+          );
+          setVoiceIntroBlob(null);
+          setVoiceIntroDuration(null);
+          if (voiceIntroUrl) {
+            URL.revokeObjectURL(voiceIntroUrl);
+            setVoiceIntroUrl(null);
+          }
+          return;
+        }
+        const blob = new Blob(chunks, { type: chunks[0].type || "audio/webm" });
+        if (voiceIntroUrl) {
+          URL.revokeObjectURL(voiceIntroUrl);
+        }
+        const previewUrl = URL.createObjectURL(blob);
+        setVoiceIntroBlob(blob);
+        setVoiceIntroUrl(previewUrl);
+        setVoiceIntroDuration(duration);
+        setVoiceIntroError(null);
+      };
+
+      recorder.start();
+      voiceTimerRef.current = window.setInterval(() => {
+        setVoiceSeconds((prev) => {
+          const next = prev + 1;
+          voiceSecondsRef.current = next;
+          if (next >= MAX_VOICE_SECONDS) {
+            stopVoiceRecording();
+          }
+          return next;
+        });
+      }, 1000);
+    } catch (error) {
+      console.error(error);
+      setVoiceIntroError("Unable to access microphone.");
+      setVoiceRecording(false);
+    }
+  };
+
+  const resetVoiceIntro = () => {
+    if (voiceIntroUrl) {
+      URL.revokeObjectURL(voiceIntroUrl);
+    }
+    setVoiceIntroBlob(null);
+    setVoiceIntroUrl(null);
+    setVoiceIntroDuration(null);
+    setVoiceIntroError(null);
+    setVoiceSeconds(0);
+    voiceSecondsRef.current = 0;
+  };
+
   const finish = async () => {
     const trimmedEmail = normalizeEmail(email);
     if (!trimmedEmail || !password) {
@@ -263,6 +391,16 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     }
     if (!capturedPhoto) {
       setErrorMessage("Please take a live selfie before finishing.");
+      return;
+    }
+    if (!voiceIntroBlob || !voiceIntroDuration) {
+      setErrorMessage("Please record your voice intro before finishing.");
+      return;
+    }
+    if (voiceIntroDuration < MIN_VOICE_SECONDS) {
+      setErrorMessage(
+        `Voice intro must be at least ${MIN_VOICE_SECONDS} seconds.`,
+      );
       return;
     }
 
@@ -288,7 +426,25 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         }
         return;
       }
-      const newUser = buildUserProfile(authUser.uid);
+      let uploadedVoiceUrl = "";
+      try {
+        const voiceFile = new File(
+          [voiceIntroBlob],
+          `voice-intro-${Date.now()}.webm`,
+          { type: voiceIntroBlob.type || "audio/webm" },
+        );
+        uploadedVoiceUrl = await uploadAudioToCloudinary(voiceFile);
+      } catch (uploadError) {
+        console.error(uploadError);
+        setErrorMessage("Voice intro upload failed. Please try again.");
+        return;
+      }
+
+      const newUser = buildUserProfile(authUser.uid, {
+        voiceIntroUrl: uploadedVoiceUrl,
+        voiceIntroDuration,
+        voiceIntroUpdatedAt: Date.now(),
+      });
       try {
         await createUserProfile(newUser);
       } catch (profileError) {
@@ -340,7 +496,10 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     }
   };
 
-  const buildUserProfile = (userId: string): UserProfile => ({
+  const buildUserProfile = (
+    userId: string,
+    overrides: Partial<UserProfile> = {},
+  ): UserProfile => ({
     id: userId,
     realName,
     nickname: nickname.trim(),
@@ -360,6 +519,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     bio: bio || "Ready for the plot.",
     isAnonymous: true,
     isOnline: true,
+    ...overrides,
   });
 
   const handleVerificationCheck = async () => {
@@ -870,6 +1030,75 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
               className="w-full h-32 bg-white/5 border border-white/10 rounded-xl p-4 outline-none mb-4 font-medium text-sm"
               placeholder="I'm here for..."
             />
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-gray-200">
+                  Voice Intro (Required)
+                </h3>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Introduce yourself in 10–20 seconds. No music.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {!voiceRecording ? (
+                  <button
+                    type="button"
+                    onClick={startVoiceRecording}
+                    className="px-4 py-2 rounded-full bg-kipepeo-pink text-white text-[10px] font-black uppercase tracking-widest active:scale-95 transition-transform"
+                  >
+                    {voiceIntroBlob ? "Record Again" : "Record Intro"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={stopVoiceRecording}
+                    className="px-4 py-2 rounded-full bg-red-500/80 text-white text-[10px] font-black uppercase tracking-widest active:scale-95 transition-transform"
+                  >
+                    Stop ({voiceSeconds}s)
+                  </button>
+                )}
+                {voiceIntroBlob && (
+                  <button
+                    type="button"
+                    onClick={resetVoiceIntro}
+                    className="px-4 py-2 rounded-full bg-white/5 text-gray-300 text-[10px] font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                  >
+                    Reset
+                  </button>
+                )}
+                <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                  {voiceSeconds}/{MAX_VOICE_SECONDS}s
+                </span>
+              </div>
+
+              {voiceIntroUrl && (
+                <>
+                  <AudioWaveform
+                    src={voiceIntroUrl}
+                    progress={voiceIntroDuration ? 1 : 0}
+                    className="w-full"
+                  />
+                  <audio
+                    src={voiceIntroUrl}
+                    controls
+                    controlsList="nodownload noplaybackrate"
+                    className="w-full mt-2"
+                  />
+                </>
+              )}
+
+              {voiceIntroDuration && (
+                <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                  Recorded {voiceIntroDuration}s
+                </p>
+              )}
+
+              {voiceIntroError && (
+                <p className="text-[10px] text-red-400">{voiceIntroError}</p>
+              )}
+            </div>
           </div>
         )}
       </div>

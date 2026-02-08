@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { UserProfile } from "../types";
-import { getUserProfile } from "../services/userService";
+import { getUserProfile, getUserProfileByEmail } from "../services/userService";
 import AppImage from "../components/AppImage";
+import { createNotification } from "../services/notificationService";
+import { OWNER_EMAIL } from "../services/paymentService";
+import AudioWaveform from "../components/AudioWaveform";
 
 interface Props {
   viewer: UserProfile;
@@ -14,6 +17,12 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [voicePlaying, setVoicePlaying] = useState(false);
+  const [voicePosition, setVoicePosition] = useState(0);
+  const [voiceDuration, setVoiceDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [reportNotice, setReportNotice] = useState<string | null>(null);
+  const [reportingVoice, setReportingVoice] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -42,6 +51,53 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
       active = false;
     };
   }, [id, viewer.id, navigate]);
+
+  useEffect(() => {
+    if (!profile?.voiceIntroUrl) return;
+    setVoicePlaying(false);
+    setVoicePosition(0);
+    setVoiceDuration(profile.voiceIntroDuration ?? 0);
+  }, [profile?.voiceIntroUrl, profile?.voiceIntroDuration]);
+
+  const formatVoiceTime = (value: number) => {
+    const minutes = Math.floor(value / 60);
+    const seconds = Math.floor(value % 60);
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  };
+
+  const toggleVoicePlayback = () => {
+    if (!audioRef.current) return;
+    if (voicePlaying) {
+      audioRef.current.pause();
+    } else {
+      void audioRef.current.play();
+    }
+  };
+
+  const handleReportVoiceIntro = async () => {
+    if (!profile?.voiceIntroUrl) return;
+    setReportingVoice(true);
+    setReportNotice(null);
+    try {
+      const owner = await getUserProfileByEmail(OWNER_EMAIL);
+      if (!owner) {
+        throw new Error("Owner not found");
+      }
+      await createNotification({
+        toUserId: owner.id,
+        fromUserId: viewer.id,
+        fromNickname: viewer.nickname,
+        type: "system",
+        body: `Voice intro reported for ${profile.nickname}.`,
+      });
+      setReportNotice("Report submitted. Thanks for keeping Hushly safe.");
+    } catch (error) {
+      console.error(error);
+      setReportNotice("Unable to submit report right now.");
+    } finally {
+      setReportingVoice(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-kipepeo-dark text-white font-sans">
@@ -130,6 +186,84 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
                   "{profile.bio}"
                 </p>
               </section>
+
+              {profile.voiceIntroUrl && (
+                <section className="glass rounded-[2rem] p-6 border border-white/5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em]">
+                      Voice Intro
+                    </h3>
+                    <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                      Hear the person
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={toggleVoicePlayback}
+                      className="h-12 w-12 rounded-2xl bg-kipepeo-pink/20 border border-kipepeo-pink/40 flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-kipepeo-pink"
+                    >
+                      {voicePlaying ? "Pause" : "Play"}
+                    </button>
+                    <div className="flex-1">
+                      <AudioWaveform
+                        src={profile.voiceIntroUrl}
+                        progress={
+                          voiceDuration
+                            ? Math.min(voicePosition / voiceDuration, 1)
+                            : 0
+                        }
+                        className="mb-2"
+                      />
+                      <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-widest text-gray-500">
+                        <span>{formatVoiceTime(voicePosition)}</span>
+                        <span>
+                          {voiceDuration
+                            ? formatVoiceTime(voiceDuration)
+                            : "0:00"}
+                        </span>
+                      </div>
+                    </div>
+                    <audio
+                      ref={audioRef}
+                      src={profile.voiceIntroUrl}
+                      preload="metadata"
+                      controlsList="nodownload noplaybackrate"
+                      onTimeUpdate={(event) => {
+                        const target = event.currentTarget;
+                        setVoicePosition(target.currentTime);
+                      }}
+                      onLoadedMetadata={(event) => {
+                        const duration = event.currentTarget.duration;
+                        if (!voiceDuration && Number.isFinite(duration)) {
+                          setVoiceDuration(Math.round(duration));
+                        }
+                      }}
+                      onPlay={() => setVoicePlaying(true)}
+                      onPause={() => setVoicePlaying(false)}
+                      onEnded={() => {
+                        setVoicePlaying(false);
+                        setVoicePosition(0);
+                      }}
+                      className="hidden"
+                    />
+                  </div>
+                  <div className="mt-4 flex items-center justify-between text-[10px] uppercase tracking-widest text-gray-500">
+                    <span>Stream only</span>
+                    <button
+                      onClick={handleReportVoiceIntro}
+                      disabled={reportingVoice}
+                      className="px-3 py-1 rounded-full border border-white/10 text-gray-400 hover:text-white hover:border-white/20 transition disabled:opacity-60"
+                    >
+                      {reportingVoice ? "Reporting..." : "Report"}
+                    </button>
+                  </div>
+                  {reportNotice && (
+                    <p className="mt-2 text-[10px] text-gray-400">
+                      {reportNotice}
+                    </p>
+                  )}
+                </section>
+              )}
             </div>
           </>
         ) : null}

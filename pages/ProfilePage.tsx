@@ -1,8 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { UserProfile } from "../types";
 import AppImage from "../components/AppImage";
 import { OWNER_EMAIL } from "../services/paymentService";
+import { uploadAudioToCloudinary } from "../services/cloudinaryService";
+import { updateUserProfile } from "../services/userService";
+import AudioWaveform from "../components/AudioWaveform";
 
 interface Props {
   user: UserProfile;
@@ -11,6 +14,198 @@ interface Props {
 
 const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [voiceIntroUrl, setVoiceIntroUrl] = useState(
+    user.voiceIntroUrl ?? "",
+  );
+  const [voiceIntroDuration, setVoiceIntroDuration] = useState(
+    user.voiceIntroDuration ?? 0,
+  );
+  const [voicePlaying, setVoicePlaying] = useState(false);
+  const [voicePosition, setVoicePosition] = useState(0);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [voiceUploading, setVoiceUploading] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceSeconds, setVoiceSeconds] = useState(0);
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
+  const [voicePreviewBlob, setVoicePreviewBlob] = useState<Blob | null>(null);
+  const voiceSecondsRef = useRef(0);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimerRef = useRef<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const MIN_VOICE_SECONDS = 10;
+  const MAX_VOICE_SECONDS = 20;
+
+  useEffect(() => {
+    setVoiceIntroUrl(user.voiceIntroUrl ?? "");
+    setVoiceIntroDuration(user.voiceIntroDuration ?? 0);
+  }, [user.voiceIntroUrl, user.voiceIntroDuration]);
+
+  useEffect(() => {
+    return () => {
+      if (voicePreviewUrl) {
+        URL.revokeObjectURL(voicePreviewUrl);
+      }
+      if (voiceStreamRef.current) {
+        voiceStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, [voicePreviewUrl]);
+
+  const formatVoiceTime = (value: number) => {
+    const minutes = Math.floor(value / 60);
+    const seconds = Math.floor(value % 60);
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  };
+
+  const toggleVoicePlayback = () => {
+    if (!audioRef.current) return;
+    if (voicePlaying) {
+      audioRef.current.pause();
+    } else {
+      void audioRef.current.play();
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    if (!voiceRecording) return;
+    if (voiceTimerRef.current) {
+      window.clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    voiceRecorderRef.current?.stop();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    voiceStreamRef.current = null;
+    setVoiceRecording(false);
+  };
+
+  const startVoiceRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceError("Voice recording is not supported on this device.");
+      return;
+    }
+    setVoiceError(null);
+    setVoiceSeconds(0);
+    voiceSecondsRef.current = 0;
+    setVoiceRecording(true);
+    voiceChunksRef.current = [];
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      const preferredType = MediaRecorder.isTypeSupported(
+        "audio/webm;codecs=opus",
+      )
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "";
+      const recorder = new MediaRecorder(
+        stream,
+        preferredType ? { mimeType: preferredType } : undefined,
+      );
+      voiceRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          voiceChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const duration = voiceSecondsRef.current;
+        const chunks = voiceChunksRef.current;
+        if (!chunks.length) {
+          setVoiceError("No audio captured. Try again.");
+          return;
+        }
+        if (duration < MIN_VOICE_SECONDS) {
+          setVoiceError(
+            `Record at least ${MIN_VOICE_SECONDS} seconds for your intro.`,
+          );
+          setVoicePreviewBlob(null);
+          if (voicePreviewUrl) {
+            URL.revokeObjectURL(voicePreviewUrl);
+            setVoicePreviewUrl(null);
+          }
+          return;
+        }
+        const blob = new Blob(chunks, { type: chunks[0].type || "audio/webm" });
+        if (voicePreviewUrl) {
+          URL.revokeObjectURL(voicePreviewUrl);
+        }
+        const previewUrl = URL.createObjectURL(blob);
+        setVoicePreviewBlob(blob);
+        setVoicePreviewUrl(previewUrl);
+        setVoiceError(null);
+      };
+
+      recorder.start();
+      voiceTimerRef.current = window.setInterval(() => {
+        setVoiceSeconds((prev) => {
+          const next = prev + 1;
+          voiceSecondsRef.current = next;
+          if (next >= MAX_VOICE_SECONDS) {
+            stopVoiceRecording();
+          }
+          return next;
+        });
+      }, 1000);
+    } catch (error) {
+      console.error(error);
+      setVoiceError("Unable to access microphone.");
+      setVoiceRecording(false);
+    }
+  };
+
+  const resetVoicePreview = () => {
+    if (voicePreviewUrl) {
+      URL.revokeObjectURL(voicePreviewUrl);
+    }
+    setVoicePreviewUrl(null);
+    setVoicePreviewBlob(null);
+    setVoiceSeconds(0);
+    voiceSecondsRef.current = 0;
+    setVoiceError(null);
+  };
+
+  const handleSaveVoiceIntro = async () => {
+    if (!voicePreviewBlob) {
+      setVoiceError("Record your voice intro before saving.");
+      return;
+    }
+    const duration = voiceSecondsRef.current;
+    if (duration < MIN_VOICE_SECONDS) {
+      setVoiceError(`Record at least ${MIN_VOICE_SECONDS} seconds.`);
+      return;
+    }
+    setVoiceUploading(true);
+    setVoiceError(null);
+    try {
+      const voiceFile = new File(
+        [voicePreviewBlob],
+        `voice-intro-${Date.now()}.webm`,
+        { type: voicePreviewBlob.type || "audio/webm" },
+      );
+      const uploadedUrl = await uploadAudioToCloudinary(voiceFile);
+      await updateUserProfile(user.id, {
+        voiceIntroUrl: uploadedUrl,
+        voiceIntroDuration: duration,
+        voiceIntroUpdatedAt: Date.now(),
+      });
+      setVoiceIntroUrl(uploadedUrl);
+      setVoiceIntroDuration(duration);
+      setShowVoiceModal(false);
+      resetVoicePreview();
+    } catch (error) {
+      console.error(error);
+      setVoiceError("Unable to save voice intro. Please try again.");
+    } finally {
+      setVoiceUploading(false);
+    }
+  };
 
   return (
     <div className="relative min-h-screen w-full bg-[#050505] font-sans text-gray-100 selection:bg-kipepeo-pink/30">
@@ -166,6 +361,78 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
             <p className="relative z-10 text-sm font-medium leading-relaxed text-gray-200 italic">
               "{user.bio}"
             </p>
+          </section>
+
+          {/* --- Voice Intro --- */}
+          <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 animate-in slide-in-from-bottom-5 duration-700 delay-175">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.25em]">
+                Voice Intro
+              </h3>
+              <button
+                onClick={() => setShowVoiceModal(true)}
+                className="px-3 py-1 rounded-full bg-kipepeo-pink/20 text-kipepeo-pink text-[9px] font-black uppercase tracking-widest border border-kipepeo-pink/40 active:scale-95 transition-transform"
+              >
+                Re-record
+              </button>
+            </div>
+
+            {voiceIntroUrl ? (
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={toggleVoicePlayback}
+                  className="h-12 w-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xs font-black uppercase tracking-widest text-kipepeo-pink"
+                >
+                  {voicePlaying ? "Pause" : "Play"}
+                </button>
+                <div className="flex-1">
+                  <AudioWaveform
+                    src={voiceIntroUrl}
+                    progress={
+                      voiceIntroDuration
+                        ? Math.min(voicePosition / voiceIntroDuration, 1)
+                        : 0
+                    }
+                    className="mb-2"
+                  />
+                  <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-widest text-gray-500">
+                    <span>{formatVoiceTime(voicePosition)}</span>
+                    <span>
+                      {voiceIntroDuration
+                        ? formatVoiceTime(voiceIntroDuration)
+                        : "0:00"}
+                    </span>
+                  </div>
+                </div>
+                <audio
+                  ref={audioRef}
+                  src={voiceIntroUrl}
+                  preload="metadata"
+                  controlsList="nodownload noplaybackrate"
+                  onTimeUpdate={(event) => {
+                    const target = event.currentTarget;
+                    setVoicePosition(target.currentTime);
+                  }}
+                  onLoadedMetadata={(event) => {
+                    const duration = event.currentTarget.duration;
+                    if (!voiceIntroDuration && Number.isFinite(duration)) {
+                      setVoiceIntroDuration(Math.round(duration));
+                    }
+                  }}
+                  onPlay={() => setVoicePlaying(true)}
+                  onPause={() => setVoicePlaying(false)}
+                  onEnded={() => {
+                    setVoicePlaying(false);
+                    setVoicePosition(0);
+                  }}
+                  className="hidden"
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">
+                Record a 10–20 second intro so people can hear your vibe.
+              </p>
+            )}
           </section>
 
           {/* --- SETTINGS GRID (2x2 Mobile) --- */}
@@ -447,6 +714,84 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                 className="w-full sm:w-auto px-6 py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
               >
                 Stay Here
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showVoiceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0b0b0b]/95 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black uppercase tracking-widest text-white">
+                Record Voice Intro
+              </h3>
+              <button
+                onClick={() => {
+                  if (voiceRecording) {
+                    stopVoiceRecording();
+                  }
+                  setShowVoiceModal(false);
+                  resetVoicePreview();
+                }}
+                className="text-xs uppercase tracking-widest text-gray-400"
+              >
+                Close
+              </button>
+            </div>
+
+            <p className="text-[10px] text-gray-500">
+              Keep it between 10–20 seconds. No music, just you.
+            </p>
+
+            <div className="flex items-center gap-3">
+              {!voiceRecording ? (
+                <button
+                  onClick={startVoiceRecording}
+                  className="px-4 py-2 rounded-full bg-kipepeo-pink text-white text-[10px] font-black uppercase tracking-widest active:scale-95 transition-transform"
+                >
+                  {voicePreviewBlob ? "Record Again" : "Record"}
+                </button>
+              ) : (
+                <button
+                  onClick={stopVoiceRecording}
+                  className="px-4 py-2 rounded-full bg-red-500/80 text-white text-[10px] font-black uppercase tracking-widest active:scale-95 transition-transform"
+                >
+                  Stop ({voiceSeconds}s)
+                </button>
+              )}
+              <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                {voiceSeconds}/{MAX_VOICE_SECONDS}s
+              </span>
+            </div>
+
+            {voicePreviewUrl && (
+              <audio
+                src={voicePreviewUrl}
+                controls
+                controlsList="nodownload noplaybackrate"
+                className="w-full"
+              />
+            )}
+
+            {voiceError && (
+              <p className="text-[10px] text-red-400">{voiceError}</p>
+            )}
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleSaveVoiceIntro}
+                disabled={voiceUploading}
+                className="flex-1 py-3 rounded-full bg-kipepeo-pink text-white text-[10px] font-black uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+              >
+                {voiceUploading ? "Saving..." : "Save Intro"}
+              </button>
+              <button
+                onClick={resetVoicePreview}
+                className="px-4 py-3 rounded-full bg-white/5 text-gray-300 text-[10px] font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+              >
+                Reset
               </button>
             </div>
           </div>

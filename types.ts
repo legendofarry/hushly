@@ -25,6 +25,9 @@ export interface UserProfile {
   occupationVisibility?: "public" | "private";
   gender?: Gender;
   interestedIn?: GenderPreference[];
+  voiceIntroUrl?: string;
+  voiceIntroDuration?: number;
+  voiceIntroUpdatedAt?: number;
   ageRange: string; // e.g. "20-25"
   bio: string;
   area: string; // Area/City only
