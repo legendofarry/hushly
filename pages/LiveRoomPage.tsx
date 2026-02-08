@@ -277,6 +277,10 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   const pendingOffersRef = useRef<
     Record<string, RTCSessionDescriptionInit | null>
   >({});
+  const pendingAnswersRef = useRef<
+    Record<string, RTCSessionDescriptionInit | null>
+  >({});
+  const pendingCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>({});
   const renegotiateSentRef = useRef<Set<string>>(new Set());
   const lastRenegotiateAtRef = useRef<Record<string, number>>({});
   const pendingRenegotiateRef = useRef<Record<string, number>>({});
@@ -925,6 +929,50 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     }
   };
 
+  const flushPendingCandidates = (
+    remoteId: string,
+    pc: RTCPeerConnection,
+  ) => {
+    if (!pc.remoteDescription) return;
+    const pending = pendingCandidatesRef.current[remoteId];
+    if (!pending || pending.length === 0) return;
+    pendingCandidatesRef.current[remoteId] = [];
+    pending.forEach((candidate) => {
+      pc.addIceCandidate(candidate).catch((error) => console.error(error));
+    });
+  };
+
+  const applyPendingAnswer = async (
+    remoteId: string,
+    connectionId: string,
+    pc: RTCPeerConnection,
+  ) => {
+    const pendingAnswer = pendingAnswersRef.current[remoteId];
+    if (!pendingAnswer) return;
+    if (pc.signalingState !== "have-local-offer") return;
+    await pc.setRemoteDescription(pendingAnswer);
+    pendingAnswersRef.current[remoteId] = null;
+    flushPendingCandidates(remoteId, pc);
+    offerCreatedRef.current.add(connectionId);
+  };
+
+  const answerPendingOffer = async (
+    remoteId: string,
+    connectionId: string,
+    pc: RTCPeerConnection,
+  ) => {
+    const pendingOffer = pendingOffersRef.current[remoteId];
+    if (!pendingOffer) return;
+    if (pc.signalingState !== "stable") return;
+    if (isOnStage && !localStreamRef.current) return;
+    pendingOffersRef.current[remoteId] = null;
+    await pc.setRemoteDescription(pendingOffer);
+    flushPendingCandidates(remoteId, pc);
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await updateLiveConnection(roomId as string, connectionId, { answer });
+  };
+
   const attachLocalTracks = (pc: RTCPeerConnection) => {
     if (!localStreamRef.current) return;
     localStreamRef.current.getTracks().forEach((track) => {
@@ -980,7 +1028,13 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     pc.onsignalingstatechange = () => {
       if (pc.signalingState !== "stable") return;
       const meta = peerMetaRef.current[remoteId];
-      if (!meta || meta.offererId !== user.id) return;
+      if (!meta) return;
+      if (meta.offererId !== user.id) {
+        answerPendingOffer(remoteId, meta.connectionId, pc).catch((error) =>
+          console.error(error),
+        );
+        return;
+      }
       const pendingAt = pendingRenegotiateRef.current[meta.connectionId];
       if (!pendingAt) return;
       if (isOnStage && !localStreamRef.current) return;
@@ -991,6 +1045,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
         .then((offer) =>
           updateLiveConnection(roomId as string, meta.connectionId, { offer }),
         )
+        .then(() => applyPendingAnswer(remoteId, meta.connectionId, pc))
         .catch((error) => console.error(error));
     };
 
@@ -1026,18 +1081,31 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
       async (data) => {
         if (!data) return;
         try {
-          if (!isOfferer && data.offer && !pc.currentRemoteDescription) {
+          if (!isOfferer && data.offer) {
+            if (pc.currentRemoteDescription?.sdp === data.offer.sdp) {
+              return;
+            }
             if (isOnStage && !localStreamRef.current) {
               pendingOffersRef.current[remoteId] = data.offer;
               return;
             }
+            if (pc.signalingState !== "stable") {
+              pendingOffersRef.current[remoteId] = data.offer;
+              return;
+            }
             await pc.setRemoteDescription(data.offer);
+            flushPendingCandidates(remoteId, pc);
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             await updateLiveConnection(roomId, connectionId, { answer });
           }
-          if (isOfferer && data.answer && !pc.currentRemoteDescription) {
+          if (isOfferer && data.answer) {
+            if (pc.signalingState !== "have-local-offer") {
+              return;
+            }
             await pc.setRemoteDescription(data.answer);
+            pendingAnswersRef.current[remoteId] = null;
+            flushPendingCandidates(remoteId, pc);
           }
           if (isOfferer && data.renegotiateRequestedAt) {
             const requestedAt =
@@ -1059,6 +1127,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 await updateLiveConnection(roomId, connectionId, { offer });
+                await applyPendingAnswer(remoteId, connectionId, pc);
                 offerCreatedRef.current.add(connectionId);
               }
             }
@@ -1074,6 +1143,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             await updateLiveConnection(roomId, connectionId, { offer });
+            await applyPendingAnswer(remoteId, connectionId, pc);
             offerCreatedRef.current.add(connectionId);
           }
         } catch (error) {
@@ -1087,7 +1157,14 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
       connectionId,
       role: isOfferer ? "answer" : "offer",
       onCandidate: (candidate) => {
-        void pc.addIceCandidate(candidate);
+        if (pc.remoteDescription) {
+          pc.addIceCandidate(candidate).catch((error) => console.error(error));
+        } else {
+          if (!pendingCandidatesRef.current[remoteId]) {
+            pendingCandidatesRef.current[remoteId] = [];
+          }
+          pendingCandidatesRef.current[remoteId].push(candidate);
+        }
       },
     });
 
@@ -1116,6 +1193,8 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
         delete pendingRenegotiateRef.current[meta.connectionId];
       }
       delete pendingOffersRef.current[remoteId];
+      delete pendingAnswersRef.current[remoteId];
+      delete pendingCandidatesRef.current[remoteId];
       delete inboundStreamsRef.current[remoteId];
       delete connectionUnsubsRef.current[remoteId];
       delete candidateUnsubsRef.current[remoteId];
@@ -1136,30 +1215,14 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     if (!localStreamRef.current || !roomId) return;
-    Object.entries(pendingOffersRef.current).forEach(
-      ([remoteId, pendingOffer]) => {
-        if (!pendingOffer) return;
-        const pc = peerConnectionsRef.current[remoteId];
-        const meta = peerMetaRef.current[remoteId];
-        if (!pc || !meta) return;
-        if (pc.currentRemoteDescription) {
-          pendingOffersRef.current[remoteId] = null;
-          return;
-        }
-        pc.setRemoteDescription(pendingOffer)
-          .then(() => pc.createAnswer())
-          .then((answer) => {
-            return pc.setLocalDescription(answer).then(() => answer);
-          })
-          .then((answer) =>
-            updateLiveConnection(roomId, meta.connectionId, { answer }),
-          )
-          .then(() => {
-            pendingOffersRef.current[remoteId] = null;
-          })
-          .catch((error) => console.error(error));
-      },
-    );
+    Object.entries(peerMetaRef.current).forEach(([remoteId, meta]) => {
+      if (meta.offererId === user.id) return;
+      const pc = peerConnectionsRef.current[remoteId];
+      if (!pc) return;
+      answerPendingOffer(remoteId, meta.connectionId, pc).catch((error) =>
+        console.error(error),
+      );
+    });
     Object.entries(peerMetaRef.current).forEach(([remoteId, meta]) => {
       if (meta.offererId !== user.id) return;
       const pc = peerConnectionsRef.current[remoteId];
@@ -1171,6 +1234,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
         .then((offer) =>
           updateLiveConnection(roomId, meta.connectionId, { offer }),
         )
+        .then(() => applyPendingAnswer(remoteId, meta.connectionId, pc))
         .then(() => {
           offerCreatedRef.current.add(meta.connectionId);
         })
@@ -1189,6 +1253,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
         .then((offer) =>
           updateLiveConnection(roomId, meta.connectionId, { offer }),
         )
+        .then(() => applyPendingAnswer(remoteId, meta.connectionId, pc))
         .catch((error) => console.error(error));
     });
     if (!isOnStage) return;
@@ -1242,6 +1307,8 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     unlockedAchievementKeysRef.current = new Set();
     celebrationActiveRef.current = false;
     pendingOffersRef.current = {};
+    pendingAnswersRef.current = {};
+    pendingCandidatesRef.current = {};
     renegotiateSentRef.current = new Set();
     lastRenegotiateAtRef.current = {};
     pendingRenegotiateRef.current = {};
