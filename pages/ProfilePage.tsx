@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { UserProfile } from "../types";
 import AppImage from "../components/AppImage";
@@ -10,8 +10,34 @@ interface Props {
 }
 
 const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   return (
     <div className="relative min-h-screen w-full bg-[#050505] font-sans text-gray-100 selection:bg-kipepeo-pink/30">
+      <style>{`
+        @keyframes ghostFloat {
+          0% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
+          100% { transform: translateY(0px); }
+        }
+        @keyframes ghostGlow {
+          0% { box-shadow: 0 0 20px rgba(236, 72, 153, 0.25); }
+          50% { box-shadow: 0 0 40px rgba(236, 72, 153, 0.45); }
+          100% { box-shadow: 0 0 20px rgba(236, 72, 153, 0.25); }
+        }
+        .ghost-float {
+          animation: ghostFloat 3s ease-in-out infinite;
+        }
+        .ghost-glow {
+          animation: ghostGlow 2.8s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ghost-float,
+          .ghost-glow {
+            animation: none;
+          }
+        }
+      `}</style>
       {/* --- Ambient Background Lights --- */}
       <div className="fixed left-0 top-0 -z-10 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-purple-900/20 blur-[120px] pointer-events-none"></div>
       <div className="fixed right-0 bottom-0 -z-10 h-[500px] w-[500px] translate-x-1/3 translate-y-1/3 rounded-full bg-kipepeo-pink/10 blur-[120px] pointer-events-none"></div>
@@ -338,7 +364,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 
           {/* Logout Button */}
           <button
-            onClick={onLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className="group relative mt-10 w-full overflow-hidden rounded-2xl bg-[#0a0a0a] py-5 transition-all hover:bg-red-500/10 active:scale-95"
           >
             <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
@@ -378,6 +404,54 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
           </div>
         </div>
       </div>
+
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6">
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#0b0b0b]/95 p-6 text-center shadow-2xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-pink-500/10 via-transparent to-purple-500/10 pointer-events-none"></div>
+
+            <div className="relative mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-white/5 ghost-glow">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-14 w-14 text-pink-200 ghost-float"
+              >
+                <path d="M12 3a6 6 0 0 0-6 6v9l2-1.5 2 1.5 2-1.5 2 1.5 2-1.5 2 1.5V9a6 6 0 0 0-6-6z" />
+                <circle cx="9" cy="10" r="1" />
+                <circle cx="15" cy="10" r="1" />
+                <path d="M9 13c1.3 1 4.7 1 6 0" />
+              </svg>
+            </div>
+
+            <h3 className="text-lg font-black uppercase tracking-widest text-white">
+              Leaving already?
+            </h3>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  onLogout();
+                }}
+                className="w-full sm:w-auto px-6 py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
+              >
+                Yes, Log Out
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="w-full sm:w-auto px-6 py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+              >
+                Stay Here
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

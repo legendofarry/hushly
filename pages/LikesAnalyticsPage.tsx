@@ -90,6 +90,110 @@ const LikesAnalyticsPage: React.FC<Props> = ({ user }) => {
     };
   }, [receivedLikes, sentLikes, startOfToday, startOfWeek]);
 
+  const achievements = useMemo(() => {
+    const receivedTotal = receivedLikes.length;
+    const sentTotal = sentLikes.length;
+    const mutualTotal = analytics.mutualCount;
+
+    return [
+      {
+        id: "first-like",
+        title: "First Spark",
+        description: "Receive your first like.",
+        unlocked: receivedTotal >= 1,
+        accent: "text-amber-300",
+      },
+      {
+        id: "fan-favorite",
+        title: "Fan Favorite",
+        description: "Receive 10 likes.",
+        unlocked: receivedTotal >= 10,
+        accent: "text-pink-300",
+      },
+      {
+        id: "heartthrob",
+        title: "Heartthrob",
+        description: "Receive 50 likes.",
+        unlocked: receivedTotal >= 50,
+        accent: "text-rose-300",
+      },
+      {
+        id: "social-butterfly",
+        title: "Social Butterfly",
+        description: "Send 10 likes.",
+        unlocked: sentTotal >= 10,
+        accent: "text-emerald-300",
+      },
+      {
+        id: "ice-breaker",
+        title: "Ice Breaker",
+        description: "Send 50 likes.",
+        unlocked: sentTotal >= 50,
+        accent: "text-teal-300",
+      },
+      {
+        id: "mutual-vibe",
+        title: "Mutual Vibes",
+        description: "Get 1 mutual like.",
+        unlocked: mutualTotal >= 1,
+        accent: "text-sky-300",
+      },
+      {
+        id: "match-magnet",
+        title: "Match Magnet",
+        description: "Get 5 mutual likes.",
+        unlocked: mutualTotal >= 5,
+        accent: "text-blue-300",
+      },
+      {
+        id: "verified",
+        title: "Verified Heart",
+        description: "Verify your email.",
+        unlocked: user.emailVerified,
+        accent: "text-violet-300",
+      },
+      {
+        id: "premium-crown",
+        title: "Premium Crown",
+        description: "Activate premium.",
+        unlocked: Boolean(user.isPremium),
+        accent: "text-yellow-300",
+      },
+      {
+        id: "live-100",
+        title: "Live 100",
+        description: "Hit 100 likes in a live.",
+        unlocked: false,
+        accent: "text-orange-300",
+      },
+      {
+        id: "live-500",
+        title: "Live 500",
+        description: "Hit 500 likes in a live.",
+        unlocked: false,
+        accent: "text-red-300",
+      },
+      {
+        id: "weekend-host",
+        title: "Weekend Host",
+        description: "Create your first weekend plan.",
+        unlocked: false,
+        accent: "text-lime-300",
+      },
+    ];
+  }, [
+    receivedLikes.length,
+    sentLikes.length,
+    analytics.mutualCount,
+    user.emailVerified,
+    user.isPremium,
+  ]);
+
+  const unlockedCount = useMemo(
+    () => achievements.filter((achievement) => achievement.unlocked).length,
+    [achievements],
+  );
+
   const aiInsights = useMemo(
     () =>
       getAnalyticsInsights({
@@ -233,6 +337,83 @@ const LikesAnalyticsPage: React.FC<Props> = ({ user }) => {
                 <p className="text-sm text-gray-300 italic">
                   "{aiSuggestedBio}"
                 </p>
+              </div>
+            </div>
+
+            <div className="glass rounded-2xl border border-white/5 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-widest text-gray-400">
+                    Achievements
+                  </h2>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-[0.3em] mt-1">
+                    {unlockedCount} / {achievements.length} unlocked
+                  </p>
+                </div>
+                <span className="text-[10px] uppercase tracking-[0.3em] text-kipepeo-pink">
+                  Crowns
+                </span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {achievements.map((achievement) => (
+                  <div
+                    key={achievement.id}
+                    className={`relative overflow-hidden rounded-2xl border p-4 transition-transform ${
+                      achievement.unlocked
+                        ? "border-white/10 bg-white/5"
+                        : "border-white/5 bg-white/5 opacity-60 grayscale"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div
+                        className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${
+                          achievement.unlocked
+                            ? "border-white/10 bg-white/10"
+                            : "border-white/5 bg-white/5"
+                        }`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={`h-6 w-6 ${
+                            achievement.unlocked
+                              ? achievement.accent
+                              : "text-gray-500"
+                          }`}
+                        >
+                          <path d="M3 17l2-8 5 5 2-6 2 6 5-5 2 8" />
+                          <path d="M3 17h18" />
+                          <circle cx="5" cy="7" r="1.5" />
+                          <circle cx="12" cy="5" r="1.5" />
+                          <circle cx="19" cy="7" r="1.5" />
+                        </svg>
+                      </div>
+                      <span
+                        className={`text-[10px] uppercase tracking-widest rounded-full border px-2 py-1 ${
+                          achievement.unlocked
+                            ? "border-emerald-500/30 text-emerald-300 bg-emerald-500/10"
+                            : "border-white/10 text-gray-500 bg-white/5"
+                        }`}
+                      >
+                        {achievement.unlocked ? "Unlocked" : "Locked"}
+                      </span>
+                    </div>
+                    <div className="mt-3">
+                      <p className="text-sm font-semibold">
+                        {achievement.title}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {achievement.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
