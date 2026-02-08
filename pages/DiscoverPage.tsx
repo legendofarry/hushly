@@ -704,6 +704,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     }
   };
 
+  const formatViewerCount = (count: number) => {
+    if (!Number.isFinite(count)) return "0";
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}K`;
+    }
+    return `${count}`;
+  };
+
   const handlePaymentSubmit = async () => {
     if (premiumChecking) {
       setPaymentError("Confirming premium status...");
@@ -2059,9 +2067,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             <div className="glass rounded-3xl border border-white/5 p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-black uppercase tracking-widest">
-                    Live Now
-                  </h2>
                   <p className="text-xs text-gray-500 uppercase tracking-[0.3em]">
                     {liveRooms.length} sessions
                   </p>
@@ -2073,9 +2078,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                   Go Live
                 </button>
               </div>
-              <p className="text-xs text-gray-400">
-                Tap a live card to join the room.
-              </p>
             </div>
 
             {liveLoading ? (
@@ -2091,54 +2093,76 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 No one is live right now. Be the first to go live.
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
                 {liveRooms.map((room) => (
                   <button
                     key={room.id}
                     onClick={() => navigate(`/live/${room.id}`)}
-                    className="w-full rounded-3xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10 transition-colors"
+                    className="group overflow-hidden rounded-3xl border border-white/10 bg-white/5 text-left shadow-xl transition-all hover:-translate-y-1 hover:border-white/20 hover:bg-white/10"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="relative h-14 w-14 overflow-hidden rounded-2xl border border-white/10">
-                        <AppImage
-                          src={room.hostPhotoUrl ?? user.photoUrl}
-                          alt={room.hostNickname}
-                          className="h-full w-full object-cover"
-                        />
-                        <span className="absolute left-1 top-1 rounded-full bg-red-500/90 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-white">
+                    <div className="relative aspect-[4/5] overflow-hidden">
+                      <AppImage
+                        src={room.hostPhotoUrl ?? user.photoUrl}
+                        alt={room.hostNickname}
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                      <div className="absolute left-3 top-3 flex items-center gap-2">
+                        <span className="rounded-md bg-kipepeo-pink px-2 py-1 text-[10px] font-black uppercase tracking-widest text-white">
                           Live
                         </span>
+                        <span className="flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-[10px] font-semibold uppercase tracking-widest text-white">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                          {formatViewerCount(room.viewerCount)}
+                        </span>
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-gray-400">
-                          <span>{room.viewerCount} viewers</span>
-                          <span>-</span>
-                          <span>
-                            {room.type === "group" ? "Group" : "Solo"}
-                          </span>
+                      <div className="absolute bottom-4 left-4 right-4">
+                        <div className="flex flex-wrap gap-2">
+                          {room.tags.slice(0, 3).map((tag) => (
+                            <span
+                              key={`${room.id}-${tag}`}
+                              className="rounded-full bg-black/60 px-3 py-1 text-[9px] font-semibold uppercase tracking-widest text-white/90"
+                            >
+                              {tag}
+                            </span>
+                          ))}
                         </div>
-                        <h3 className="text-lg font-black text-white">
-                          {room.title}
-                        </h3>
-                        <p className="text-xs text-gray-400">
-                          Host: {room.hostNickname}
-                        </p>
                       </div>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {room.tags.slice(0, 4).map((tag) => (
-                        <span
-                          key={`${room.id}-${tag}`}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[9px] uppercase tracking-widest text-gray-300"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                      {room.allowGuests && (
-                        <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[9px] uppercase tracking-widest text-emerald-200">
-                          Guests allowed
-                        </span>
-                      )}
+                    <div className="space-y-2 px-4 py-3">
+                      <h3 className="text-sm font-black uppercase tracking-wide text-white">
+                        {room.title}
+                      </h3>
+                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-gray-400">
+                        <span>{room.type === "group" ? "Group" : "Solo"}</span>
+                        <span>-</span>
+                        <span>{room.allowGuests ? "Guests" : "Invite only"}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <div className="h-6 w-6 overflow-hidden rounded-full border border-white/10">
+                          <AppImage
+                            src={room.hostPhotoUrl ?? user.photoUrl}
+                            alt={room.hostNickname}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <span>{room.hostNickname}</span>
+                      </div>
                     </div>
                   </button>
                 ))}
