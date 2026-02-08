@@ -84,8 +84,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const [conversation, setConversation] = useState<any | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [isAtBottom, setIsAtBottom] = useState(true);
-  const [showNewMessageIndicator, setShowNewMessageIndicator] =
-    useState(false);
+  const [showNewMessageIndicator, setShowNewMessageIndicator] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -653,7 +652,6 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     await startMaskPipeline();
   };
 
-
   useEffect(() => {
     if (!localVideoRef.current) return;
     localVideoRef.current.srcObject = localStream;
@@ -1139,7 +1137,8 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         callId,
         role: "callee",
         onCandidate: (candidate) => {
-          if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
+          if (pc.signalingState === "closed" || pc.connectionState === "closed")
+            return;
           void pc
             .addIceCandidate(new RTCIceCandidate(candidate))
             .catch((err) => {
@@ -1237,7 +1236,8 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
         callId: incomingCall.id,
         role: "caller",
         onCandidate: (candidate) => {
-          if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
+          if (pc.signalingState === "closed" || pc.connectionState === "closed")
+            return;
           void pc
             .addIceCandidate(new RTCIceCandidate(candidate))
             .catch((err) => {
@@ -1377,20 +1377,14 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     setSearchQuery("");
   };
 
-  const handleMessageContextMenu = (
-    event: React.MouseEvent,
-    message: any,
-  ) => {
+  const handleMessageContextMenu = (event: React.MouseEvent, message: any) => {
     event.preventDefault();
     if (message.senderId === user.id || isChatBlocked) return;
     setReactionError(null);
     setReactionTargetId(message.id);
   };
 
-  const handleMessageTouchStart = (
-    event: React.TouchEvent,
-    message: any,
-  ) => {
+  const handleMessageTouchStart = (event: React.TouchEvent, message: any) => {
     if (message.senderId === user.id || isChatBlocked) return;
     if (event.touches.length !== 1) return;
     const touch = event.touches[0];

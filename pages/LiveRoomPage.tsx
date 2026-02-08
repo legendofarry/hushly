@@ -137,6 +137,25 @@ type ConfettiPiece = {
   duration: number;
 };
 
+type PeerDebugInfo = {
+  id: string;
+  role: "offerer" | "answerer";
+  signalingState: RTCSignalingState;
+  iceConnectionState: RTCIceConnectionState;
+  connectionState: RTCPeerConnectionState;
+  localDesc: boolean;
+  remoteDesc: boolean;
+  pendingCandidates: number;
+};
+
+type DebugSnapshot = {
+  peers: PeerDebugInfo[];
+  pendingOffers: number;
+  pendingAnswers: number;
+  pendingCandidates: number;
+  updatedAt: number;
+};
+
 const CELEBRATION_STYLES = `
   @keyframes confettiFall {
     0% { transform: translate3d(0, -30px, 0) rotate(0deg); opacity: 0; }
@@ -199,7 +218,9 @@ const VideoTile: React.FC<{
   return (
     <div
       className={`relative overflow-hidden bg-black ${
-        fullBleed ? "rounded-none border-0" : "rounded-3xl border border-white/10"
+        fullBleed
+          ? "rounded-none border-0"
+          : "rounded-3xl border border-white/10"
       }`}
     >
       {stream ? (
@@ -276,6 +297,9 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   const [activeAchievement, setActiveAchievement] = useState<number | null>(
     null,
   );
+  const [debugSnapshot, setDebugSnapshot] = useState<DebugSnapshot | null>(
+    null,
+  );
 
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -296,7 +320,9 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   const pendingAnswersRef = useRef<
     Record<string, RTCSessionDescriptionInit | null>
   >({});
-  const pendingCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>({});
+  const pendingCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>(
+    {},
+  );
   const renegotiateSentRef = useRef<Set<string>>(new Set());
   const lastRenegotiateAtRef = useRef<Record<string, number>>({});
   const pendingRenegotiateRef = useRef<Record<string, number>>({});
@@ -306,6 +332,10 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   const unlockedAchievementKeysRef = useRef<Set<string>>(new Set());
   const confettiTimeoutRef = useRef<number | null>(null);
   const celebrationActiveRef = useRef(false);
+  const debugEnabled = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).get("webrtcDebug") === "1";
+  }, []);
 
   const isHost = room?.hostId === user.id;
   const isGuest = guests.some((guest) => guest.userId === user.id);
@@ -387,6 +417,48 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     const combined = [...stageIds, ...viewerIds.filter((id) => id !== user.id)];
     return Array.from(new Set(combined));
   }, [stageParticipants, viewerIds, isOnStage, user.id]);
+
+  useEffect(() => {
+    if (!debugEnabled) return;
+    const updateSnapshot = () => {
+      const peers = Object.entries(peerConnectionsRef.current).map(
+        ([remoteId, pc]) => {
+          const meta = peerMetaRef.current[remoteId];
+          const pendingCandidates =
+            pendingCandidatesRef.current[remoteId]?.length ?? 0;
+          return {
+            id: remoteId,
+            role: meta?.offererId === user.id ? "offerer" : "answerer",
+            signalingState: pc.signalingState,
+            iceConnectionState: pc.iceConnectionState,
+            connectionState: pc.connectionState,
+            localDesc: Boolean(pc.localDescription),
+            remoteDesc: Boolean(pc.remoteDescription),
+            pendingCandidates,
+          };
+        },
+      );
+      const pendingOffers = Object.values(pendingOffersRef.current).filter(
+        Boolean,
+      ).length;
+      const pendingAnswers = Object.values(pendingAnswersRef.current).filter(
+        Boolean,
+      ).length;
+      const pendingCandidates = Object.values(
+        pendingCandidatesRef.current,
+      ).reduce((sum, list) => sum + (list?.length ?? 0), 0);
+      setDebugSnapshot({
+        peers,
+        pendingOffers,
+        pendingAnswers,
+        pendingCandidates,
+        updatedAt: Date.now(),
+      });
+    };
+    updateSnapshot();
+    const interval = window.setInterval(updateSnapshot, 600);
+    return () => window.clearInterval(interval);
+  }, [debugEnabled, user.id]);
 
   const achievementOverlay =
     activeAchievement !== null || confettiPieces.length > 0 ? (
@@ -517,6 +589,53 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
         )}
       </div>
     ) : null;
+
+  const debugOverlay = debugEnabled ? (
+    <div className="pointer-events-none fixed bottom-3 left-3 z-[70] w-[320px] max-w-[90vw] rounded-2xl border border-white/10 bg-black/80 p-3 text-[10px] text-white shadow-xl">
+      <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-white/60">
+        <span>WebRTC Debug</span>
+        <span>{debugSnapshot?.peers.length ?? 0} peers</span>
+      </div>
+      <div className="mt-2 space-y-2">
+        {(debugSnapshot?.peers ?? []).length === 0 ? (
+          <div className="text-[10px] text-white/50">No peers yet.</div>
+        ) : (
+          (debugSnapshot?.peers ?? []).map((peer) => (
+            <div
+              key={peer.id}
+              className="rounded-xl border border-white/10 bg-white/5 px-2 py-2"
+            >
+              <div className="flex items-center justify-between text-[9px] uppercase tracking-widest text-white/60">
+                <span>{peer.id.slice(0, 6)}</span>
+                <span>{peer.role}</span>
+              </div>
+              <div className="mt-1 space-y-1 text-white/80">
+                <div>sig: {peer.signalingState}</div>
+                <div>ice: {peer.iceConnectionState}</div>
+                <div>conn: {peer.connectionState}</div>
+                <div>
+                  ld:{peer.localDesc ? "1" : "0"} rd:
+                  {peer.remoteDesc ? "1" : "0"} pendICE:
+                  {peer.pendingCandidates}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="mt-2 text-[9px] uppercase tracking-widest text-white/50">
+        offers {debugSnapshot?.pendingOffers ?? 0} • answers{" "}
+        {debugSnapshot?.pendingAnswers ?? 0} • ice{" "}
+        {debugSnapshot?.pendingCandidates ?? 0}
+      </div>
+      <div className="mt-1 text-[9px] text-white/40">
+        updated{" "}
+        {debugSnapshot
+          ? new Date(debugSnapshot.updatedAt).toLocaleTimeString("en-US")
+          : "--"}
+      </div>
+    </div>
+  ) : null;
 
   useEffect(() => {
     if (!roomId) return;
@@ -945,17 +1064,16 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     }
   };
 
-  const flushPendingCandidates = (
-    remoteId: string,
-    pc: RTCPeerConnection,
-  ) => {
+  const flushPendingCandidates = (remoteId: string, pc: RTCPeerConnection) => {
     if (!pc.remoteDescription) return;
-    if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
+    if (pc.signalingState === "closed" || pc.connectionState === "closed")
+      return;
     const pending = pendingCandidatesRef.current[remoteId];
     if (!pending || pending.length === 0) return;
     pendingCandidatesRef.current[remoteId] = [];
     pending.forEach((candidate) => {
-      if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
+      if (pc.signalingState === "closed" || pc.connectionState === "closed")
+        return;
       pc.addIceCandidate(candidate).catch((error) => console.error(error));
     });
   };
@@ -983,12 +1101,26 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     if (!pendingOffer) return;
     if (pc.signalingState !== "stable") return;
     if (isOnStage && !localStreamRef.current) return;
-    pendingOffersRef.current[remoteId] = null;
-    await pc.setRemoteDescription(pendingOffer);
-    flushPendingCandidates(remoteId, pc);
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    await updateLiveConnection(roomId as string, connectionId, { answer });
+    if (pc.currentRemoteDescription?.sdp === pendingOffer.sdp) {
+      pendingOffersRef.current[remoteId] = null;
+      return;
+    }
+    try {
+      await pc.setRemoteDescription(pendingOffer);
+      if (pc.signalingState !== "have-remote-offer") {
+        return;
+      }
+      flushPendingCandidates(remoteId, pc);
+      const answer = await pc.createAnswer();
+      if (pc.signalingState !== "have-remote-offer") {
+        return;
+      }
+      await pc.setLocalDescription(answer);
+      await updateLiveConnection(roomId as string, connectionId, { answer });
+      pendingOffersRef.current[remoteId] = null;
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const attachLocalTracks = (pc: RTCPeerConnection) => {
@@ -1112,8 +1244,14 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
               return;
             }
             await pc.setRemoteDescription(data.offer);
+            if (pc.signalingState !== "have-remote-offer") {
+              return;
+            }
             flushPendingCandidates(remoteId, pc);
             const answer = await pc.createAnswer();
+            if (pc.signalingState !== "have-remote-offer") {
+              return;
+            }
             await pc.setLocalDescription(answer);
             await updateLiveConnection(roomId, connectionId, { answer });
           }
@@ -1175,7 +1313,8 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
       connectionId,
       role: isOfferer ? "answer" : "offer",
       onCandidate: (candidate) => {
-        if (pc.signalingState === "closed" || pc.connectionState === "closed") return;
+        if (pc.signalingState === "closed" || pc.connectionState === "closed")
+          return;
         if (pc.remoteDescription) {
           pc.addIceCandidate(candidate).catch((error) => console.error(error));
         } else {
@@ -1403,6 +1542,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
           }
         `}</style>
         {achievementOverlay}
+        {debugOverlay}
         <div className="absolute inset-0">
           <div
             className={`grid h-full w-full ${stageGridConfig.gapClass} ${stageGridConfig.paddingClass}`}
@@ -1655,6 +1795,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     <div className="relative flex h-screen flex-col bg-[#0d0d0d] text-white">
       <style>{CELEBRATION_STYLES}</style>
       {achievementOverlay}
+      {debugOverlay}
       <header className="flex items-center justify-between border-b border-white/10 bg-black/60 px-4 py-3">
         <div className="flex items-center gap-3">
           <button
