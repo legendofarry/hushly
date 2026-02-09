@@ -96,9 +96,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [aiSignals, setAiSignals] = useState(() => loadAiSignals());
-  const [view, setView] = useState<"discover" | "live" | "plans" | "portal">(
-    "discover",
-  );
+  const [view, setView] = useState<
+    "discover" | "live" | "hub" | "plans" | "portal"
+  >("discover");
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [plans, setPlans] = useState<WeekendPlan[]>([]);
@@ -474,8 +474,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   useEffect(() => {
     if (loading || dailyDropLoading || !likesReady || !dislikesReady) return;
     const shouldRefresh =
-      !dailyDrop ||
-      now - dailyDrop.lastDropAt >= DAILY_DROP_INTERVAL_MS;
+      !dailyDrop || now - dailyDrop.lastDropAt >= DAILY_DROP_INTERVAL_MS;
     if (!shouldRefresh) return;
     if (dropGenerationLockRef.current) return;
 
@@ -658,8 +657,195 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const showMpesaFormatWarning = Boolean(
     paymentProof.trim() && !isMpesaFormatValid,
   );
+  const hubSections = useMemo(
+    () => [
+      {
+        id: "games",
+        title: "Games Zone",
+        tagline: "Arcade floor with neon co-op",
+        accent: "from-emerald-400 via-cyan-300 to-blue-400",
+        items: [
+          {
+            title: "Neon Trivia Rush",
+            description: "Fast quizzes, loud energy.",
+            status: "Live",
+            participants: 18,
+            capacity: 40,
+            time: "8m left",
+            action: "Join Now",
+          },
+          {
+            title: "Mood Match Memory",
+            description: "Flip cards, find your vibe.",
+            status: "Starting",
+            participants: 6,
+            capacity: 16,
+            time: "Starts in 4m",
+            action: "Reserve Seat",
+          },
+          {
+            title: "Glow Pong Arena",
+            description: "Quick duels with strangers.",
+            status: "Open",
+            participants: 0,
+            capacity: 2,
+            time: "Open floor",
+            action: "Enter",
+          },
+        ],
+      },
+      {
+        id: "activities",
+        title: "Activities & Events",
+        tagline: "Pop-up challenges and polls",
+        accent: "from-pink-400 via-purple-400 to-indigo-400",
+        items: [
+          {
+            title: "Pulse Poll: Friday Energy",
+            description: "Vote + see the live heatmap.",
+            status: "Live",
+            participants: 92,
+            capacity: 200,
+            time: "Live now",
+            action: "Vote",
+          },
+          {
+            title: "Icebreaker Roulette",
+            description: "30 seconds, new prompt.",
+            status: "Starting",
+            participants: 14,
+            capacity: 30,
+            time: "Starts in 2m",
+            action: "Queue In",
+          },
+          {
+            title: "Weekend Dare",
+            description: "Mini challenge for bold users.",
+            status: "Open",
+            participants: 5,
+            capacity: 50,
+            time: "Open all day",
+            action: "Join",
+          },
+        ],
+      },
+      {
+        id: "lounge",
+        title: "Social Lounge",
+        tagline: "Live rooms + reactions",
+        accent: "from-amber-300 via-orange-400 to-rose-400",
+        items: [
+          {
+            title: "Main Lounge Feed",
+            description: "See who is hanging out.",
+            status: "Live",
+            participants: 34,
+            capacity: 80,
+            time: "Always on",
+            action: "Step In",
+          },
+          {
+            title: "Confession Corner",
+            description: "Anonymous stories + replies.",
+            status: "Open",
+            participants: 12,
+            capacity: 100,
+            time: "Open now",
+            action: "Enter",
+          },
+          {
+            title: "After Hours Audio",
+            description: "Low-key chat with soft music.",
+            status: "Starting",
+            participants: 9,
+            capacity: 25,
+            time: "Starts in 6m",
+            action: "Save Spot",
+          },
+        ],
+      },
+      {
+        id: "hangout",
+        title: "Hangout Hall",
+        tagline: "Community tables + debates",
+        accent: "from-sky-400 via-teal-300 to-emerald-400",
+        items: [
+          {
+            title: "Community Table",
+            description: "Meet locals, quick intros.",
+            status: "Live",
+            participants: 21,
+            capacity: 60,
+            time: "Live now",
+            action: "Join",
+          },
+          {
+            title: "Hot Takes Stage",
+            description: "Debate prompts, vote winners.",
+            status: "Starting",
+            participants: 8,
+            capacity: 20,
+            time: "Starts in 9m",
+            action: "Join",
+          },
+          {
+            title: "Chill Plaza",
+            description: "Silent lounge to vibe.",
+            status: "Open",
+            participants: 4,
+            capacity: 40,
+            time: "Open now",
+            action: "Enter",
+          },
+        ],
+      },
+    ],
+    [],
+  );
+
+  const hubLiveCount = useMemo(
+    () =>
+      hubSections.reduce(
+        (total, section) =>
+          total + section.items.filter((item) => item.status === "Live").length,
+        0,
+      ),
+    [hubSections],
+  );
+
+  const hubParticipantCount = useMemo(
+    () =>
+      hubSections.reduce(
+        (total, section) =>
+          total +
+          section.items.reduce((count, item) => count + item.participants, 0),
+        0,
+      ),
+    [hubSections],
+  );
+  const hubDirectory = useMemo(
+    () => [
+      "Games Zone",
+      "Activities",
+      "Social Lounge",
+      "Hangout Hall",
+      "Arcade Row",
+      "Atrium",
+      "Plaza",
+      "Challenges",
+    ],
+    [],
+  );
   const tabIndex =
-    view === "discover" ? 0 : view === "live" ? 1 : view === "plans" ? 2 : 0;
+    view === "discover"
+      ? 0
+      : view === "live"
+        ? 1
+        : view === "hub"
+          ? 2
+          : view === "plans"
+            ? 3
+            : 0;
 
   const handleStartChat = async (target: UserProfile) => {
     try {
@@ -1095,6 +1281,23 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-12px); }
         }
+        @keyframes hubGlow {
+          0%, 100% { opacity: 0.25; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.05); }
+        }
+        @keyframes hubFloat {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-10px); }
+        }
+        @keyframes hubShimmer {
+          0% { transform: translateX(-30%); opacity: 0; }
+          50% { opacity: 0.7; }
+          100% { transform: translateX(30%); opacity: 0; }
+        }
+        @keyframes hubMarquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
         .card-swipe-in {
           animation: cardSwipeIn 220ms ease-out;
         }
@@ -1106,6 +1309,18 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         }
         .drop-sweep {
           animation: dropSweep 3.6s ease-in-out infinite;
+        }
+        .hub-glow {
+          animation: hubGlow 4s ease-in-out infinite;
+        }
+        .hub-float {
+          animation: hubFloat 3.2s ease-in-out infinite;
+        }
+        .hub-shimmer {
+          animation: hubShimmer 5s ease-in-out infinite;
+        }
+        .hub-marquee {
+          animation: hubMarquee 18s linear infinite;
         }
         .brand-cycler {
           position: relative;
@@ -1129,7 +1344,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           animation-delay: 4s;
         }
         @media (prefers-reduced-motion: reduce) {
-          .card-swipe-in { animation: none; }
+          .card-swipe-in,
+          .hub-glow,
+          .hub-float,
+          .hub-shimmer,
+          .hub-marquee { animation: none; }
           .brand-cycler__word {
             position: static;
             opacity: 1;
@@ -1480,7 +1699,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           <div
             className="absolute top-1 bottom-1 rounded-lg bg-white/10 shadow-sm transition-all duration-300 ease-out"
             style={{
-              width: "calc(33.333% - 8px)",
+              width: "calc(25% - 8px)",
               transform: `translateX(calc(${tabIndex * 100}% + ${tabIndex * 4}px))`,
             }}
           />
@@ -1495,6 +1714,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "live" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
           >
             Live
+          </button>
+          <button
+            onClick={() => setView("hub")}
+            className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "hub" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
+          >
+            Hub
           </button>
           <button
             onClick={() => setView("plans")}
@@ -2164,6 +2389,204 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             </p>
             <div className="mt-6 px-4 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-widest text-gray-400">
               Coming back soon
+            </div>
+          </div>
+        ) : view === "hub" ? (
+          <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">
+            <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-transparent p-6">
+              <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute -top-16 left-6 h-40 w-40 rounded-full bg-emerald-500/20 blur-3xl hub-glow"></div>
+                <div className="absolute top-1/2 right-0 h-48 w-48 rounded-full bg-purple-500/20 blur-3xl hub-glow"></div>
+                <div className="absolute bottom-[-20%] left-1/3 h-56 w-56 rounded-full bg-pink-500/10 blur-[130px] hub-glow"></div>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(236,72,153,0.18),_transparent_60%)] hub-shimmer"></div>
+              </div>
+              <div className="relative z-10 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-gray-400">
+                      Hushly Hub
+                    </p>
+                    <h2 className="text-3xl md:text-4xl font-black uppercase tracking-widest text-white">
+                      The Social Mall
+                    </h2>
+                  </div>
+                  <div className="px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] uppercase tracking-widest text-emerald-200">
+                    Live Now
+                  </div>
+                </div>
+                <p className="text-sm text-gray-300 max-w-2xl">
+                  Step into a mall-style hub: neon games, pop-up events, and
+                  lounges buzzing with people you can meet right now.
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                      Live Activities
+                    </p>
+                    <p className="text-lg font-black text-white">
+                      {hubLiveCount}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                      People Inside
+                    </p>
+                    <p className="text-lg font-black text-white">
+                      {hubParticipantCount}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                      Zones Open
+                    </p>
+                    <p className="text-lg font-black text-white">
+                      {hubSections.length}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-full bg-kipepeo-pink/20 text-kipepeo-pink text-[10px] font-black uppercase tracking-widest border border-kipepeo-pink/40 active:scale-95 transition-transform"
+                  >
+                    Browse Live Now
+                  </button>
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-full bg-white/5 text-gray-300 text-[10px] font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                  >
+                    Start Activity
+                  </button>
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-full bg-white/5 text-gray-300 text-[10px] font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
+                  >
+                    Invite Friends
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-5">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(99,102,241,0.12),_transparent_65%)] hub-shimmer"></div>
+              <div className="relative z-10 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center text-lg hub-float">
+                  ðŸ¬
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-white">
+                    First time in the Hub?
+                  </h3>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-widest">
+                    Tap any activity to join, or create your own to pull people
+                    in.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              {hubSections.map((section) => (
+                <div
+                  key={section.id}
+                  className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5"
+                >
+                  <div
+                    className={`absolute -top-16 right-8 h-36 w-36 rounded-full bg-gradient-to-br ${section.accent} opacity-20 blur-3xl hub-glow`}
+                  ></div>
+                  <div className="relative z-10 p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                          Zone
+                        </p>
+                        <h3 className="text-xl font-black uppercase tracking-widest text-white">
+                          {section.title}
+                        </h3>
+                        <p className="text-xs text-gray-400">
+                          {section.tagline}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="px-3 py-1 rounded-full text-[10px] uppercase tracking-widest text-gray-300 border border-white/10 bg-white/5 hover:bg-white/10"
+                      >
+                        Explore
+                      </button>
+                    </div>
+
+                    <div className="grid gap-3">
+                      {section.items.map((item) => {
+                        const statusClass =
+                          item.status === "Live"
+                            ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/30"
+                            : item.status === "Starting"
+                              ? "bg-amber-500/20 text-amber-200 border-amber-500/30"
+                              : "bg-white/5 text-gray-300 border-white/10";
+                        return (
+                          <div
+                            key={`${section.id}-${item.title}`}
+                            className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 p-4"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`px-2 py-1 rounded-full text-[9px] uppercase tracking-widest border ${statusClass}`}
+                                >
+                                  {item.status}
+                                </span>
+                                <span className="text-[9px] uppercase tracking-widest text-gray-500">
+                                  {item.time}
+                                </span>
+                              </div>
+                              <h4 className="text-sm font-bold text-white">
+                                {item.title}
+                              </h4>
+                              <p className="text-[10px] text-gray-400">
+                                {item.description}
+                              </p>
+                            </div>
+                            <div className="text-right space-y-2">
+                              <p className="text-[10px] uppercase tracking-widest text-gray-500">
+                                {item.participants}/{item.capacity} inside
+                              </p>
+                              <button
+                                type="button"
+                                className="px-3 py-1 rounded-full bg-kipepeo-pink/20 text-kipepeo-pink text-[10px] font-black uppercase tracking-widest border border-kipepeo-pink/40 active:scale-95 transition-transform"
+                              >
+                                {item.action}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">
+                  Hub Directory
+                </h3>
+                <span className="text-[10px] uppercase tracking-widest text-gray-500">
+                  Keep exploring
+                </span>
+              </div>
+              <div className="overflow-hidden">
+                <div className="flex gap-3 whitespace-nowrap hub-marquee">
+                  {[...hubDirectory, ...hubDirectory].map((label, index) => (
+                    <span
+                      key={`${label}-${index}`}
+                      className="px-4 py-2 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-gray-300"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         ) : (
