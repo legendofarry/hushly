@@ -1,13 +1,14 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserProfile } from "../types";
+import { LiveAchievement, UserProfile } from "../types";
 import AppImage from "../components/AppImage";
 import { OWNER_EMAIL } from "../services/paymentService";
 import { uploadAudioToCloudinary } from "../services/cloudinaryService";
 import { updateUserProfile } from "../services/userService";
 import AudioWaveform from "../components/AudioWaveform";
 import { BIO_MAX_WORDS, clampBio } from "../services/bioUtils";
+import { listenToHostLiveAchievements } from "../services/liveAchievementService";
 
 interface Props {
   user: UserProfile;
@@ -80,6 +81,9 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   const [voiceSeconds, setVoiceSeconds] = useState(0);
   const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
   const [voicePreviewBlob, setVoicePreviewBlob] = useState<Blob | null>(null);
+  const [liveAchievements, setLiveAchievements] = useState<LiveAchievement[]>(
+    [],
+  );
   const voiceSecondsRef = useRef(0);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
@@ -118,6 +122,15 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     setEditLocation(userCity);
     setEditBio(clampBio(user.bio || ""));
   }, [user.nickname, user.ageRange, userCity, user.bio]);
+
+  useEffect(() => {
+    if (!user.id) return;
+    const unsubscribe = listenToHostLiveAchievements(
+      user.id,
+      setLiveAchievements,
+    );
+    return () => unsubscribe();
+  }, [user.id]);
 
   useEffect(() => {
     setVoiceIntroUrl(user.voiceIntroUrl ?? "");
@@ -494,7 +507,31 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     alert("Coordinates copied to clipboard!");
   };
 
-  const achievements: { id: string; icon: string; title: string }[] = [];
+  const achievements = useMemo(() => {
+    if (liveAchievements.length === 0) return [];
+    const seen = new Set<string>();
+    const items: { id: string; icon: string; title: string }[] = [];
+    const sorted = [...liveAchievements].sort(
+      (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
+    );
+    sorted.forEach((achievement) => {
+      const key = achievement.key || achievement.id;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const icon =
+        achievement.type === "duration_milestone"
+          ? "⏱️"
+          : achievement.type === "likes_first"
+            ? "💖"
+            : "❤️";
+      items.push({
+        id: key,
+        icon,
+        title: achievement.label || "Live Achievement",
+      });
+    });
+    return items;
+  }, [liveAchievements]);
 
   return (
     <div className="min-h-full bg-slate-950 flex flex-col">

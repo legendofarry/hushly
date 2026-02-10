@@ -182,7 +182,10 @@ export interface LiveJoinRequest {
   createdAt: number;
 }
 
-export type LiveAchievementType = "likes_milestone";
+export type LiveAchievementType =
+  | "likes_milestone"
+  | "likes_first"
+  | "duration_milestone";
 
 export interface LiveAchievement {
   id: string;
@@ -192,9 +195,10 @@ export interface LiveAchievement {
   type: LiveAchievementType;
   key: string;
   label: string;
-  metric: "likes";
-  likeCount: number;
-  threshold: number;
+  metric: "likes" | "duration";
+  likeCount?: number;
+  threshold?: number;
+  durationMinutes?: number;
   liveTitle: string;
   createdAt: number;
 }

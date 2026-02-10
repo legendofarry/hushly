@@ -29,7 +29,11 @@ import {
   listenToLiveMute,
   updateLiveRoom,
 } from "../services/liveService";
-import { createLiveLikeAchievement } from "../services/liveAchievementService";
+import {
+  createLiveFirstDurationAchievement,
+  createLiveFirstLikesAchievement,
+  createLiveLikeAchievement,
+} from "../services/liveAchievementService";
 import { createNotification } from "../services/notificationService";
 import {
   followUser,
@@ -75,6 +79,9 @@ const LIVE_ICE_SERVERS: RTCConfiguration = {
 const REACTION_OPTIONS = ["❤️", "🔥", "👏"];
 const BAD_WORDS = ["spam", "scam", "nude", "sex", "escort"];
 const LIVE_LIKE_MILESTONES = [100, 500, 1000, 2000];
+const FIRST_LIVE_MINUTES = 10;
+const FIRST_LIVE_MS = FIRST_LIVE_MINUTES * 60 * 1000;
+const FIRST_LIVE_LIKE_THRESHOLD = 50;
 const CONFETTI_COLORS = [
   "#F97316",
   "#FACC15",
@@ -359,6 +366,10 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   const pendingRenegotiateRef = useRef<Record<string, number>>({});
   const lastMessageAtRef = useRef(0);
   const lastLikeCountRef = useRef<number | null>(null);
+  const firstDurationAwardedRef = useRef(false);
+  const firstLikesAwardedRef = useRef(false);
+  const reconnectTimeoutsRef = useRef<Record<string, number>>({});
+  const connectionTargetsRef = useRef<string[]>([]);
   const achievementQueueRef = useRef<number[]>([]);
   const unlockedAchievementKeysRef = useRef<Set<string>>(new Set());
   const confettiTimeoutRef = useRef<number | null>(null);
@@ -466,6 +477,44 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     const combined = [...stageIds, ...viewerIds.filter((id) => id !== user.id)];
     return Array.from(new Set(combined));
   }, [stageParticipants, viewerIds, isOnStage, user.id]);
+
+  useEffect(() => {
+    connectionTargetsRef.current = connectionTargets;
+  }, [connectionTargets]);
+
+  const clearReconnect = (remoteId: string) => {
+    const timeoutId = reconnectTimeoutsRef.current[remoteId];
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      delete reconnectTimeoutsRef.current[remoteId];
+    }
+  };
+
+  const teardownPeer = useCallback((remoteId: string) => {
+    clearReconnect(remoteId);
+    const meta = peerMetaRef.current[remoteId];
+    connectionUnsubsRef.current[remoteId]?.();
+    candidateUnsubsRef.current[remoteId]?.();
+    peerConnectionsRef.current[remoteId]?.close();
+    delete peerConnectionsRef.current[remoteId];
+    delete peerMetaRef.current[remoteId];
+    if (meta?.connectionId) {
+      renegotiateSentRef.current.delete(meta.connectionId);
+      delete lastRenegotiateAtRef.current[meta.connectionId];
+      delete pendingRenegotiateRef.current[meta.connectionId];
+    }
+    delete pendingOffersRef.current[remoteId];
+    delete pendingAnswersRef.current[remoteId];
+    delete pendingCandidatesRef.current[remoteId];
+    delete inboundStreamsRef.current[remoteId];
+    delete connectionUnsubsRef.current[remoteId];
+    delete candidateUnsubsRef.current[remoteId];
+    setRemoteStreams((prev) => {
+      const next = { ...prev };
+      delete next[remoteId];
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (!debugEnabled) return;
@@ -761,14 +810,27 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   }, [roomId, room?.hostId, isHost, user]);
 
   useEffect(() => {
-    if (!room?.startedAt) return;
+    if (!room || !room.startedAt) return;
     const interval = window.setInterval(() => {
-      setLiveDuration(
-        formatDuration(Date.now() - (room.startedAt ?? Date.now())),
-      );
+      const elapsedMs = Date.now() - (room.startedAt ?? Date.now());
+      setLiveDuration(formatDuration(elapsedMs));
+      if (
+        isHost &&
+        !firstDurationAwardedRef.current &&
+        elapsedMs >= FIRST_LIVE_MS
+      ) {
+        firstDurationAwardedRef.current = true;
+        createLiveFirstDurationAchievement({
+          roomId: room.id,
+          hostId: room.hostId,
+          hostNickname: room.hostNickname,
+          liveTitle: room.title,
+          durationMinutes: FIRST_LIVE_MINUTES,
+        }).catch((error) => console.error(error));
+      }
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [room?.startedAt]);
+  }, [room?.startedAt, room?.id, room?.hostId, room?.hostNickname, room?.title, isHost]);
 
   useEffect(() => {
     if (!room) return;
@@ -1372,6 +1434,22 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     role: "offer" | "answer",
     connectionId: string,
   ) => {
+    const scheduleReconnect = (delayMs: number) => {
+      clearReconnect(remoteId);
+      reconnectTimeoutsRef.current[remoteId] = window.setTimeout(() => {
+        const pc = peerConnectionsRef.current[remoteId];
+        if (!pc) return;
+        if (pc.connectionState === "connected") {
+          clearReconnect(remoteId);
+          return;
+        }
+        teardownPeer(remoteId);
+        if (connectionTargetsRef.current.includes(remoteId)) {
+          void connectToPeer(remoteId);
+        }
+      }, delayMs);
+    };
+
     const pc = new RTCPeerConnection(LIVE_ICE_SERVERS);
     if (localStreamRef.current) {
       attachLocalTracks(pc);
@@ -1432,11 +1510,20 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     };
 
     pc.onconnectionstatechange = () => {
-      if (
-        pc.connectionState === "disconnected" ||
-        pc.connectionState === "failed"
-      ) {
-        pc.close();
+      if (pc.connectionState === "connected") {
+        clearReconnect(remoteId);
+        return;
+      }
+      if (pc.connectionState === "disconnected") {
+        scheduleReconnect(4500);
+        return;
+      }
+      if (pc.connectionState === "failed") {
+        scheduleReconnect(0);
+        return;
+      }
+      if (pc.connectionState === "closed") {
+        clearReconnect(remoteId);
       }
     };
 
@@ -1571,28 +1658,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     const activeIds = new Set(connectionTargets);
     Object.keys(peerConnectionsRef.current).forEach((remoteId) => {
       if (activeIds.has(remoteId)) return;
-      const meta = peerMetaRef.current[remoteId];
-      connectionUnsubsRef.current[remoteId]?.();
-      candidateUnsubsRef.current[remoteId]?.();
-      peerConnectionsRef.current[remoteId]?.close();
-      delete peerConnectionsRef.current[remoteId];
-      delete peerMetaRef.current[remoteId];
-      if (meta?.connectionId) {
-        renegotiateSentRef.current.delete(meta.connectionId);
-        delete lastRenegotiateAtRef.current[meta.connectionId];
-        delete pendingRenegotiateRef.current[meta.connectionId];
-      }
-      delete pendingOffersRef.current[remoteId];
-      delete pendingAnswersRef.current[remoteId];
-      delete pendingCandidatesRef.current[remoteId];
-      delete inboundStreamsRef.current[remoteId];
-      delete connectionUnsubsRef.current[remoteId];
-      delete candidateUnsubsRef.current[remoteId];
-      setRemoteStreams((prev) => {
-        const next = { ...prev };
-        delete next[remoteId];
-        return next;
-      });
+      teardownPeer(remoteId);
     });
   }, [room, connectionTargets, user.id]);
 
@@ -1662,6 +1728,9 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     return () => {
+      Object.values(reconnectTimeoutsRef.current).forEach((timeoutId) =>
+        window.clearTimeout(timeoutId),
+      );
       Object.values(peerConnectionsRef.current).forEach((pc) => pc.close());
       Object.values(connectionUnsubsRef.current).forEach((unsub) => unsub());
       Object.values(candidateUnsubsRef.current).forEach((unsub) => unsub());
@@ -1693,6 +1762,8 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
 
   useEffect(() => {
     lastLikeCountRef.current = null;
+    firstDurationAwardedRef.current = false;
+    firstLikesAwardedRef.current = false;
     achievementQueueRef.current = [];
     unlockedAchievementKeysRef.current = new Set();
     celebrationActiveRef.current = false;
@@ -1711,13 +1782,33 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     if (!roomId || !room) return;
     const currentLikes = room.likeCount ?? 0;
     const previousLikes = lastLikeCountRef.current;
+    const maybeAwardFirstLikes = () => {
+      if (!isHost || firstLikesAwardedRef.current) return;
+      if (currentLikes < FIRST_LIVE_LIKE_THRESHOLD) return;
+      firstLikesAwardedRef.current = true;
+      createLiveFirstLikesAchievement({
+        roomId,
+        hostId: room.hostId,
+        hostNickname: room.hostNickname,
+        liveTitle: room.title,
+        likeCount: currentLikes,
+        threshold: FIRST_LIVE_LIKE_THRESHOLD,
+      }).catch((error) => console.error(error));
+    };
     if (previousLikes === null) {
       lastLikeCountRef.current = currentLikes;
+      maybeAwardFirstLikes();
       return;
     }
     if (currentLikes <= previousLikes) {
       lastLikeCountRef.current = currentLikes;
       return;
+    }
+    if (
+      previousLikes < FIRST_LIVE_LIKE_THRESHOLD &&
+      currentLikes >= FIRST_LIVE_LIKE_THRESHOLD
+    ) {
+      maybeAwardFirstLikes();
     }
     LIVE_LIKE_MILESTONES.forEach((threshold) => {
       if (previousLikes < threshold && currentLikes >= threshold) {
