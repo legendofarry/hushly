@@ -1,14 +1,22 @@
-import React, { useMemo } from 'react';
+import React, { useMemo } from "react";
 
 const BackgroundHearts: React.FC = () => {
-  // We generate 300 hearts with random positions, delays, and durations
   const hearts = useMemo(() => {
-    return [...Array(300)].map((_, i) => ({
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return [];
+    }
+    const width = typeof window !== "undefined" ? window.innerWidth : 1024;
+    const count = width < 480 ? 50 : width < 768 ? 80 : 120;
+    return [...Array(count)].map((_, i) => ({
       id: i,
       left: `${Math.random() * 100}%`,
-      delay: `${Math.random() * -30}s`, // Negative delay so some start midway
-      duration: `${15 + Math.random() * 20}s`,
-      size: `${8 + Math.random() * 16}px`
+      delay: `${Math.random() * -30}s`,
+      duration: `${18 + Math.random() * 18}s`,
+      size: `${8 + Math.random() * 14}px`,
     }));
   }, []);
 
@@ -32,4 +40,4 @@ const BackgroundHearts: React.FC = () => {
   );
 };
 
-export default BackgroundHearts;
+export default React.memo(BackgroundHearts);

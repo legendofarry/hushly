@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { UserProfile } from "../types";
 import AppImage from "../components/AppImage";
 import {
@@ -47,6 +46,8 @@ import maskNoir from "../assets/masks/mask-noir.svg";
 interface Props {
   user: UserProfile;
 }
+
+type FaceLandmarkerType = import("@mediapipe/tasks-vision").FaceLandmarker;
 
 type MaskStyle = "visor" | "pixel" | "holo" | "noir";
 
@@ -170,8 +171,10 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const maskModeRef = useRef<"mask" | "blur">("mask");
   const facesRef = useRef<any[]>([]);
   const maskMissCountRef = useRef(0);
-  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
-  const faceLandmarkerPromiseRef = useRef<Promise<FaceLandmarker> | null>(null);
+  const faceLandmarkerRef = useRef<FaceLandmarkerType | null>(null);
+  const faceLandmarkerPromiseRef = useRef<
+    Promise<FaceLandmarkerType> | null
+  >(null);
   const maskImagesRef = useRef<Record<MaskStyle, HTMLImageElement | null>>({
     visor: null,
     pixel: null,
@@ -354,6 +357,9 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     }
 
     faceLandmarkerPromiseRef.current = (async () => {
+      const { FaceLandmarker, FilesetResolver } = await import(
+        "@mediapipe/tasks-vision"
+      );
       const vision = await FilesetResolver.forVisionTasks(FACE_LANDMARKER_WASM);
       const create = async (delegate: "GPU" | "CPU") =>
         FaceLandmarker.createFromOptions(vision, {
@@ -478,7 +484,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     }
 
     let nextMode: "mask" | "blur" = "mask";
-    let landmarker: FaceLandmarker | null = null;
+    let landmarker: FaceLandmarkerType | null = null;
     try {
       await loadMaskImages();
       if (!maskImagesRef.current[maskStyleRef.current]) {
