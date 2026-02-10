@@ -18,6 +18,7 @@ import {
 import FilterModal from "../hushly/components/FilterModal";
 import type { Filters as DiscoverFilters } from "../hushly/types";
 import LiveSection from "../hushly/components/LiveSection";
+import GameHub from "../hushly/components/GameHub";
 import type { User as LiveUser } from "../hushly/types";
 import {
   getAllUsers,
@@ -1821,7 +1822,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       )}
 
       {/* Header */}
-      {view !== "live" && (
+      {view !== "live" && view !== "hub" && (
         <header
           className={
             view === "discover"
@@ -2164,7 +2165,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       {/* Main Content Area */}
       <div
         className={`flex-1 relative flex flex-col z-10 w-full ${
-          view === "discover" || view === "live"
+          view === "discover" || view === "live" || view === "hub"
             ? "overflow-y-auto no-scrollbar"
             : "px-2 pb-4 overflow-hidden max-w-[48rem] mx-auto"
         }`}
@@ -2473,203 +2474,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         ) : view === "live" ? (
           <LiveSection user={liveUser} onUpgrade={() => updateView("plans")} />
         ) : view === "hub" ? (
-          <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">
-            <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-transparent p-6">
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute -top-16 left-6 h-40 w-40 rounded-full bg-emerald-500/20 blur-3xl hub-glow"></div>
-                <div className="absolute top-1/2 right-0 h-48 w-48 rounded-full bg-purple-500/20 blur-3xl hub-glow"></div>
-                <div className="absolute bottom-[-20%] left-1/3 h-56 w-56 rounded-full bg-pink-500/10 blur-[130px] hub-glow"></div>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(236,72,153,0.18),_transparent_60%)] hub-shimmer"></div>
-              </div>
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-gray-400">
-                      Hushly Hub
-                    </p>
-                    <h2 className="text-3xl md:text-4xl font-black uppercase tracking-widest text-white">
-                      The Social Mall
-                    </h2>
-                  </div>
-                  <div className="px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-[10px] uppercase tracking-widest text-emerald-200">
-                    Live Now
-                  </div>
-                </div>
-                <p className="text-sm text-gray-300 max-w-2xl">
-                  Step into a mall-style hub: neon games, pop-up events, and
-                  lounges buzzing with people you can meet right now.
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                    <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Live Activities
-                    </p>
-                    <p className="text-lg font-black text-white">
-                      {hubLiveCount}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                    <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                      People Inside
-                    </p>
-                    <p className="text-lg font-black text-white">
-                      {hubParticipantCount}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                    <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                      Zones Open
-                    </p>
-                    <p className="text-lg font-black text-white">
-                      {hubSections.length}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="px-4 py-2 rounded-full bg-kipepeo-pink/20 text-kipepeo-pink text-[10px] font-black uppercase tracking-widest border border-kipepeo-pink/40 active:scale-95 transition-transform"
-                  >
-                    Browse Live Now
-                  </button>
-                  <button
-                    type="button"
-                    className="px-4 py-2 rounded-full bg-white/5 text-gray-300 text-[10px] font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
-                  >
-                    Start Activity
-                  </button>
-                  <button
-                    type="button"
-                    className="px-4 py-2 rounded-full bg-white/5 text-gray-300 text-[10px] font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
-                  >
-                    Invite Friends
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-5">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(99,102,241,0.12),_transparent_65%)] hub-shimmer"></div>
-              <div className="relative z-10 flex items-center gap-4">
-                <div className="h-12 w-12 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center text-lg hub-float">
-                  ðŸ¬
-                </div>
-                <div>
-                  <h3 className="text-sm font-black uppercase tracking-widest text-white">
-                    First time in the Hub?
-                  </h3>
-                  <p className="text-[10px] text-gray-400 uppercase tracking-widest">
-                    Tap any activity to join, or create your own to pull people
-                    in.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-5">
-              {hubSections.map((section) => (
-                <div
-                  key={section.id}
-                  className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5"
-                >
-                  <div
-                    className={`absolute -top-16 right-8 h-36 w-36 rounded-full bg-gradient-to-br ${section.accent} opacity-20 blur-3xl hub-glow`}
-                  ></div>
-                  <div className="relative z-10 p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                          Zone
-                        </p>
-                        <h3 className="text-xl font-black uppercase tracking-widest text-white">
-                          {section.title}
-                        </h3>
-                        <p className="text-xs text-gray-400">
-                          {section.tagline}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="px-3 py-1 rounded-full text-[10px] uppercase tracking-widest text-gray-300 border border-white/10 bg-white/5 hover:bg-white/10"
-                      >
-                        Explore
-                      </button>
-                    </div>
-
-                    <div className="grid gap-3">
-                      {section.items.map((item) => {
-                        const statusClass =
-                          item.status === "Live"
-                            ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/30"
-                            : item.status === "Starting"
-                              ? "bg-amber-500/20 text-amber-200 border-amber-500/30"
-                              : "bg-white/5 text-gray-300 border-white/10";
-                        return (
-                          <div
-                            key={`${section.id}-${item.title}`}
-                            className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 p-4"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`px-2 py-1 rounded-full text-[9px] uppercase tracking-widest border ${statusClass}`}
-                                >
-                                  {item.status}
-                                </span>
-                                <span className="text-[9px] uppercase tracking-widest text-gray-500">
-                                  {item.time}
-                                </span>
-                              </div>
-                              <h4 className="text-sm font-bold text-white">
-                                {item.title}
-                              </h4>
-                              <p className="text-[10px] text-gray-400">
-                                {item.description}
-                              </p>
-                            </div>
-                            <div className="text-right space-y-2">
-                              <p className="text-[10px] uppercase tracking-widest text-gray-500">
-                                {item.participants}/{item.capacity} inside
-                              </p>
-                              <button
-                                type="button"
-                                className="px-3 py-1 rounded-full bg-kipepeo-pink/20 text-kipepeo-pink text-[10px] font-black uppercase tracking-widest border border-kipepeo-pink/40 active:scale-95 transition-transform"
-                              >
-                                {item.action}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">
-                  Hub Directory
-                </h3>
-                <span className="text-[10px] uppercase tracking-widest text-gray-500">
-                  Keep exploring
-                </span>
-              </div>
-              <div className="overflow-hidden">
-                <div className="flex gap-3 whitespace-nowrap hub-marquee">
-                  {[...hubDirectory, ...hubDirectory].map((label, index) => (
-                    <span
-                      key={`${label}-${index}`}
-                      className="px-4 py-2 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-gray-300"
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+          <GameHub
+            user={liveUser}
+            onExit={() => updateView("discover")}
+            onUpgrade={() => updateView("plans")}
+          />
         ) : (
           <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">
             <div className="glass rounded-3xl border border-white/5 p-5 space-y-4">
@@ -3102,4 +2911,5 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 };
 
 export default DiscoverPage;
+
 
