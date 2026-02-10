@@ -2439,7 +2439,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               </div>
             </div>
           ) : (
-            <div className="pb-4 pl-4 pr-4 flex flex-col h-full animate-in fade-in zoom-in duration-300 relative">
+            <div className="p-4 flex flex-col h-full animate-in fade-in zoom-in duration-300 relative">
               {showStarBurst && (
                 <div
                   key={burstKey}
