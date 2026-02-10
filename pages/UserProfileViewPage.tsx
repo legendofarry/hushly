@@ -263,17 +263,14 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
           <Link
             to="/discover"
             className="text-2xl active:scale-90 transition-transform"
-          ></Link>
+            aria-label="Back"
+          >
+            <i className="fa-solid fa-chevron-left text-white"></i>
+          </Link>
           <h1 className="text-xl font-black uppercase tracking-widest">
             Profile View
           </h1>
         </div>
-        <Link
-          to="/chats"
-          className="w-10 h-10 glass rounded-full flex items-center justify-center text-lg active:scale-90 transition-transform"
-        >
-          Chat
-        </Link>
       </header>
 
       <div className="p-6 flex-1 overflow-y-auto no-scrollbar">
