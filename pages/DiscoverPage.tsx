@@ -155,6 +155,7 @@ const matchesAgeRange = (
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const filtersDirtyKey = `hushly_filters_dirty_${user.id}`;
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState<DiscoverFilters>(() => ({
     gender: "Everyone",
@@ -179,6 +180,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     expandAge: true,
     mode: "For You",
   }));
+  const [filtersDirty, setFiltersDirty] = useState(false);
   const [headerToggle, setHeaderToggle] = useState(true);
   const [showStarBurst, setShowStarBurst] = useState(false);
   const [burstKey, setBurstKey] = useState(0);
@@ -260,6 +262,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const hubExitTimerRef = useRef<number | null>(null);
   const deferredSignals = useDeferredValue(aiSignals);
   const deferredQuery = useDeferredValue(aiQuery);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(filtersDirtyKey);
+    setFiltersDirty(stored === "1");
+  }, [filtersDirtyKey]);
+
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -446,17 +454,23 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     [likedIds, dislikedIds],
   );
 
+  const preferredGenders = useMemo(() => {
+    if (user.interestedIn && user.interestedIn.length > 0) {
+      return user.interestedIn;
+    }
+    if (user.gender === "male") return ["female"];
+    if (user.gender === "female") return ["male"];
+    return ["everyone"];
+  }, [user.gender, user.interestedIn]);
+
   const matchesDiscoverFilters = useMemo(() => {
-    const preferredGenders =
-      user.interestedIn && user.interestedIn.length > 0
-        ? user.interestedIn
-        : ["everyone"];
     const allowAllGenders = preferredGenders.includes("everyone");
     return (profile: UserProfile) => {
       if (!allowAllGenders) {
         if (!profile.gender) return false;
         if (!preferredGenders.includes(profile.gender)) return false;
       }
+      if (!filtersDirty) return true;
       if (!matchesGenderFilter(profile.gender, filters.gender)) return false;
       if (filters.hasBio && !profile.bio?.trim()) return false;
       if (
@@ -469,7 +483,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       if (!matchesAgeRange(profile.ageRange, filters.ageRange)) return false;
       return true;
     };
-  }, [filters, user.interestedIn]);
+  }, [filters, preferredGenders, filtersDirty]);
 
   const eligibleProfiles = useMemo(
     () =>
@@ -591,14 +605,20 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     const selected = candidates.slice(0, dropSize);
     const selectedIds = selected.map((profile) => profile.id);
 
+    const dropFilters = filtersDirty
+      ? {
+          ...filters,
+          genders: preferredGenders,
+        }
+      : {
+          genders: preferredGenders,
+        };
+
     void createDailyDrop({
       userId: user.id,
       profileIds: selectedIds,
       dropSize,
-      filters: {
-        ...filters,
-        genders: user.interestedIn ?? [],
-      },
+      filters: dropFilters,
     })
       .then(() => {
         if (!selectedIds.length) return;
@@ -626,9 +646,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     now,
     eligibleProfiles,
     filters,
+    filtersDirty,
     user.id,
     user.nickname,
-    user.interestedIn,
+    preferredGenders,
   ]);
 
   useEffect(() => {
@@ -868,11 +889,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, [view, isFilterModalOpen]);
 
   const triggerHubSplash = useCallback(
-    (
-      title: string,
-      subtitle: string,
-      duration = HUB_SPLASH_DURATION_MS,
-    ) => {
+    (title: string, subtitle: string, duration = HUB_SPLASH_DURATION_MS) => {
       if (hubSplashTimerRef.current) {
         window.clearTimeout(hubSplashTimerRef.current);
       }
@@ -2181,6 +2198,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           onApply={(next) => {
             setFilters(next);
             setIsFilterModalOpen(false);
+            setFiltersDirty(true);
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(filtersDirtyKey, "1");
+            }
           }}
           onClose={() => setIsFilterModalOpen(false)}
         />
@@ -2418,7 +2439,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               </div>
             </div>
           ) : (
-            <div className="p-4 flex flex-col h-full animate-in fade-in zoom-in duration-300 relative">
+            <div className="pb-4 pl-4 pr-4 flex flex-col h-full animate-in fade-in zoom-in duration-300 relative">
               {showStarBurst && (
                 <div
                   key={burstKey}
@@ -2464,44 +2485,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               )}
 
-              <div className="flex items-center justify-between mb-4 relative z-10">
-                <div className="flex items-center gap-2">
-                  {isSimulation ? (
-                    <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-                      <i className="fa-solid fa-ghost text-white text-sm"></i>
-                    </div>
-                  ) : (
-                    <div className="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
-                      <i className="fa-solid fa-fire text-white text-sm"></i>
-                    </div>
-                  )}
-                  <span className="font-bold text-lg">
-                    {isSimulation ? "Ghost Mode" : "Discovery"}
-                  </span>
-                </div>
-
-                {isSimulation ? (
-                  <button
-                    onClick={() => setIsSimulation(false)}
-                    className="bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 text-[10px] font-black uppercase text-white tracking-widest active:scale-95 transition-all"
-                  >
-                    Return to Base
-                  </button>
-                ) : (
-                  <div className="bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
-                    <span className="text-xs font-bold text-rose-500">
-                      {dropCountValue}
-                    </span>
-                    <span className="text-[10px] text-slate-500 ml-1 uppercase">
-                      Drop Left
-                    </span>
-                  </div>
-                )}
-              </div>
-
               {current && (
                 <div
-                  className="relative flex-1 group z-10"
+                  className="relative h-[420px] md:h-[420px] group z-10"
                   onClick={() => navigate(`/users/${current.id}`)}
                 >
                   <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl bg-slate-900 border border-white/5">
@@ -2518,6 +2504,27 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                         <i className="fa-solid fa-wand-sparkles text-indigo-400 text-xs"></i>
                         <span className="text-[10px] text-white font-black uppercase tracking-widest whitespace-nowrap">
                           No one will know about your activity
+                        </span>
+                      </div>
+                    )}
+
+                    {isSimulation ? (
+                      <button
+                        onClick={() => setIsSimulation(false)}
+                        className="bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 text-[10px] font-black uppercase text-white tracking-widest active:scale-95 transition-all"
+                      >
+                        Return to Base
+                      </button>
+                    ) : (
+                      <div
+                        className="bg-slate-900 px-3 py-1 rounded-full z-10 absolute top-4 right-4 flex items-center gap-1 border border-rose-800 border-[5px]
+"
+                      >
+                        <span className="text-xs font-bold text-white">
+                          {dropCountValue}
+                        </span>
+                        <span className="text-[10px] text-slate-500 ml-1 uppercase">
+                          Drop Left
                         </span>
                       </div>
                     )}

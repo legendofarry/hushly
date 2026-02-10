@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { arrayRemove, arrayUnion, doc, onSnapshot } from "firebase/firestore";
 import AppImage from "../components/AppImage";

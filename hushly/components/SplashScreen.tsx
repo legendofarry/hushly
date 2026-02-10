@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 const SplashScreen: React.FC = () => {
   return (
@@ -8,12 +8,14 @@ const SplashScreen: React.FC = () => {
           <i className="fa-solid fa-heart text-rose-500 text-6xl"></i>
         </div>
         <div className="absolute -top-4 -right-4 w-12 h-12 bg-amber-400 rounded-full flex items-center justify-center animate-pulse">
-          <i className="fa-solid fa-crown text-white text-xl"></i>
+          <i className="fa-solid fa-lips text-white text-xl"></i>
         </div>
       </div>
-      <h1 className="mt-8 text-5xl font-bold text-white tracking-tighter">Hushly</h1>
+      <h1 className="mt-8 text-5xl font-bold text-white tracking-tighter">
+        Hushly
+      </h1>
       <p className="mt-2 text-white/80 font-medium">Kenyan Love, Redefined.</p>
-      
+
       <div className="absolute bottom-10 flex flex-col items-center">
         <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden">
           <div className="h-full bg-white w-1/2 animate-[loading_2s_ease-in-out_infinite]"></div>
