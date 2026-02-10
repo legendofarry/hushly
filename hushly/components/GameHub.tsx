@@ -922,4 +922,4 @@ const GameHub: React.FC<Props> = ({
   );
 };
 
-export default GameHub;
+export default React.memo(GameHub);

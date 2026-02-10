@@ -233,6 +233,8 @@ const shouldShowNav = (pathname: string, search: string) => {
   if (path.startsWith("/settings")) return false;
   if (path.startsWith("/admin/payments")) return false;
   if (path.startsWith("/users/")) return false;
+  if (path.startsWith("/chats")) return false;
+  if (path.startsWith("/profile")) return false;
   if (path.startsWith("/discover")) {
     const params = new URLSearchParams(search);
     const view = params.get("view");

@@ -1,5 +1,6 @@
 import React, {
   useDeferredValue,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -315,11 +316,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (view !== "discover") return;
+    setNow(Date.now());
+    const interval = window.setInterval(() => {
       setNow(Date.now());
     }, 60000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => window.clearInterval(interval);
+  }, [view]);
 
   useEffect(() => {
     const unsubscribe = listenToWeekendPlans(
@@ -819,13 +822,18 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   }, [location.search]);
 
   useEffect(() => {
+    if (view !== "discover") return;
     const interval = window.setInterval(() => {
       setHeaderToggle((prev) => !prev);
     }, 4000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [view]);
 
   useEffect(() => {
+    if (view !== "discover") {
+      setCountdown("");
+      return;
+    }
     if (!outOfSwipes || isSimulation) {
       setCountdown("");
       return;
@@ -851,7 +859,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 1000);
     return () => window.clearInterval(timer);
-  }, [outOfSwipes, isSimulation, nextDropAt]);
+  }, [view, outOfSwipes, isSimulation, nextDropAt]);
 
   useEffect(() => {
     if (view !== "discover" && isFilterModalOpen) {
@@ -859,20 +867,23 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     }
   }, [view, isFilterModalOpen]);
 
-  const triggerHubSplash = (
-    title: string,
-    subtitle: string,
-    duration = HUB_SPLASH_DURATION_MS,
-  ) => {
-    if (hubSplashTimerRef.current) {
-      window.clearTimeout(hubSplashTimerRef.current);
-    }
-    setHubSplash({ title, subtitle });
-    hubSplashTimerRef.current = window.setTimeout(() => {
-      setHubSplash(null);
-      hubSplashTimerRef.current = null;
-    }, duration);
-  };
+  const triggerHubSplash = useCallback(
+    (
+      title: string,
+      subtitle: string,
+      duration = HUB_SPLASH_DURATION_MS,
+    ) => {
+      if (hubSplashTimerRef.current) {
+        window.clearTimeout(hubSplashTimerRef.current);
+      }
+      setHubSplash({ title, subtitle });
+      hubSplashTimerRef.current = window.setTimeout(() => {
+        setHubSplash(null);
+        hubSplashTimerRef.current = null;
+      }, duration);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (view === "hub") {
@@ -883,7 +894,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       window.clearTimeout(hubExitTimerRef.current);
       hubExitTimerRef.current = null;
     }
-  }, [view]);
+  }, [triggerHubSplash, view]);
 
   useEffect(() => {
     return () => {
@@ -896,42 +907,52 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     };
   }, []);
 
-  const applyViewChange = (
-    nextView: "discover" | "live" | "hub" | "plans" | "portal",
-  ) => {
-    setView(nextView);
-    const params = new URLSearchParams(location.search);
-    if (nextView === "discover") {
-      params.delete("view");
-    } else {
-      params.set("view", nextView);
-    }
-    const search = params.toString();
-    navigate(
-      {
-        pathname: location.pathname,
-        search: search ? `?${search}` : "",
-      },
-      { replace: true },
-    );
-  };
-
-  const updateView = (
-    nextView: "discover" | "live" | "hub" | "plans" | "portal",
-  ) => {
-    if (view === "hub" && nextView !== "hub") {
-      if (hubExitTimerRef.current) {
-        window.clearTimeout(hubExitTimerRef.current);
+  const applyViewChange = useCallback(
+    (nextView: "discover" | "live" | "hub" | "plans" | "portal") => {
+      setView(nextView);
+      const params = new URLSearchParams(location.search);
+      if (nextView === "discover") {
+        params.delete("view");
+      } else {
+        params.set("view", nextView);
       }
-      triggerHubSplash("Goodbye from the Hub", "See you again soon.");
-      hubExitTimerRef.current = window.setTimeout(() => {
-        applyViewChange(nextView);
-        hubExitTimerRef.current = null;
-      }, HUB_EXIT_SPLASH_DURATION_MS);
-      return;
-    }
-    applyViewChange(nextView);
-  };
+      const search = params.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: search ? `?${search}` : "",
+        },
+        { replace: true },
+      );
+    },
+    [location.pathname, location.search, navigate],
+  );
+
+  const updateView = useCallback(
+    (nextView: "discover" | "live" | "hub" | "plans" | "portal") => {
+      if (view === "hub" && nextView !== "hub") {
+        if (hubExitTimerRef.current) {
+          window.clearTimeout(hubExitTimerRef.current);
+        }
+        triggerHubSplash("Goodbye from the Hub", "See you again soon.");
+        hubExitTimerRef.current = window.setTimeout(() => {
+          applyViewChange(nextView);
+          hubExitTimerRef.current = null;
+        }, HUB_EXIT_SPLASH_DURATION_MS);
+        return;
+      }
+      applyViewChange(nextView);
+    },
+    [applyViewChange, triggerHubSplash, view],
+  );
+  const handleExitToDiscover = useCallback(
+    () => updateView("discover"),
+    [updateView],
+  );
+  const handleUpgradePlans = useCallback(
+    () => updateView("plans"),
+    [updateView],
+  );
   const hubSections = useMemo(
     () => [
       {
@@ -2558,14 +2579,14 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         ) : view === "live" ? (
           <LiveSection
             user={liveUser}
-            onUpgrade={() => updateView("plans")}
-            onExit={() => updateView("discover")}
+            onUpgrade={handleUpgradePlans}
+            onExit={handleExitToDiscover}
           />
         ) : view === "hub" ? (
           <GameHub
             user={liveUser}
-            onExit={() => updateView("discover")}
-            onUpgrade={() => updateView("plans")}
+            onExit={handleExitToDiscover}
+            onUpgrade={handleUpgradePlans}
           />
         ) : (
           <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">

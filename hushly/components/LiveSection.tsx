@@ -890,4 +890,4 @@ const LiveSection: React.FC<Props> = ({
   );
 };
 
-export default LiveSection;
+export default React.memo(LiveSection);
