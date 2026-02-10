@@ -203,13 +203,18 @@ const AppRoutes: React.FC<{
   );
 };
 
-const shouldShowNav = (pathname: string) => {
+const shouldShowNav = (pathname: string, search: string) => {
   const path = pathname.toLowerCase();
   if (path === "/") return false;
   if (path.startsWith("/onboarding")) return false;
   if (path.startsWith("/settings")) return false;
   if (path.startsWith("/admin/payments")) return false;
   if (path.startsWith("/users/")) return false;
+  if (path.startsWith("/discover")) {
+    const params = new URLSearchParams(search);
+    const view = params.get("view");
+    if (view === "live" || view === "hub") return false;
+  }
   return true;
 };
 
@@ -225,7 +230,9 @@ const AppShell: React.FC<{
   setIsVerified,
 }) => {
   const location = useLocation();
-  const showNav = Boolean(user && isVerified) && shouldShowNav(location.pathname);
+  const showNav =
+    Boolean(user && isVerified) &&
+    shouldShowNav(location.pathname, location.search);
 
   return (
     <HushlyShell showNav={showNav}>

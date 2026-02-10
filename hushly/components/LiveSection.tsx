@@ -5,6 +5,7 @@ interface Props {
   user: User | null;
   onUpgrade: () => void;
   onProfileClick?: (profile: Profile) => void;
+  onExit?: () => void;
 }
 
 interface Comment {
@@ -39,7 +40,12 @@ const reactionTypes = [
   { emoji: "🙌", label: "Respect", color: "#a855f7" },
 ];
 
-const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
+const LiveSection: React.FC<Props> = ({
+  user,
+  onUpgrade,
+  onProfileClick,
+  onExit,
+}) => {
   const [mode, setMode] = useState<
     "browse" | "watch" | "setup" | "countdown" | "broadcast" | "summary"
   >("browse");
@@ -56,7 +62,6 @@ const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
   const [streamTitle, setStreamTitle] = useState("");
   const [streamVibe, setStreamVibe] = useState("Casual Chat");
   const [isTitleGenerating, setIsTitleGenerating] = useState(false);
-  const [beautyLevel, setBeautyLevel] = useState(50);
   const [enableGifts, setEnableGifts] = useState(true);
 
   // Summary Stats
@@ -365,7 +370,10 @@ const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
 
   if (mode === "setup") {
     return (
-      <div className="p-6 h-full flex flex-col bg-[#080808] animate-in slide-in-from-bottom duration-500 no-scrollbar overflow-y-auto">
+      <div
+        className="p-6 h-full flex flex-col bg-[#080808] animate-in slide-in-from-bottom duration-500 no-scrollbar overflow-y-auto"
+        style={{ WebkitOverflowScrolling: "touch" }}
+      >
         <header className="flex items-center justify-between mb-8 sticky top-0 bg-[#080808]/80 backdrop-blur-md z-10 py-2">
           <button
             onClick={() => setMode("browse")}
@@ -389,9 +397,6 @@ const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
               playsInline
               muted
               className="w-full h-full object-cover scale-x-[-1]"
-              style={{
-                filter: `contrast(${100 + beautyLevel / 10}%) brightness(${100 + beautyLevel / 20}%) saturate(${100 + beautyLevel / 30}%)`,
-              }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
             <div className="absolute bottom-4 left-6 flex items-center gap-2">
@@ -403,23 +408,6 @@ const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-[#121212] p-6 rounded-3xl border border-white/5">
-              <div className="flex justify-between items-center mb-4">
-                <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
-                  Beauty Filter
-                </label>
-                <span className="text-rose-500 text-[10px] font-black">
-                  {beautyLevel}%
-                </span>
-              </div>
-              <input
-                type="range"
-                value={beautyLevel}
-                onChange={(e) => setBeautyLevel(parseInt(e.target.value))}
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
-              />
-            </div>
-
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
@@ -512,9 +500,6 @@ const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
               playsInline
               muted
               className="w-full h-full object-cover scale-x-[-1]"
-              style={{
-                filter: `contrast(${100 + beautyLevel / 10}%) brightness(${100 + beautyLevel / 20}%) saturate(${100 + beautyLevel / 30}%)`,
-              }}
             />
           ) : (
             <img
@@ -825,12 +810,40 @@ const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
             Live Safari
           </h2>
         </div>
-        <button
-          onClick={handleGoLiveInitiate}
-          className="bg-rose-500/10 border border-rose-500/30 px-6 py-2 rounded-full text-[10px] font-black uppercase text-rose-500 hover:bg-rose-500/20 transition-all flex items-center gap-2"
-        >
-          <i className="fa-solid fa-tower-broadcast animate-pulse"></i> Go Live
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleGoLiveInitiate}
+            className="bg-rose-500/10 border border-rose-500/30 px-6 py-2 rounded-full text-[10px] font-black uppercase text-rose-500 hover:bg-rose-500/20 transition-all flex items-center gap-2"
+          >
+            <i className="fa-solid fa-tower-broadcast animate-pulse"></i> Go
+            Live
+          </button>
+
+          {onExit && (
+            <button
+              onClick={onExit}
+              className="bg-white/5 border border-white/10 px-4 py-2 rounded-full text-[10px] font-black uppercase text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2"
+            >
+              Exit
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="feather feather-log-out"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* HUGE ASPECT RATIO CONTRAST: Tower vs Wide Card */}
