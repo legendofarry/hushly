@@ -834,16 +834,16 @@ const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
       </div>
 
       {/* HUGE ASPECT RATIO CONTRAST: Tower vs Wide Card */}
-      <div className="columns-2 gap-5 flex-1 overflow-y-auto no-scrollbar pb-24">
+      <div className="columns-2 gap-[0.5rem] flex-1 overflow-y-auto no-scrollbar pb-24">
         {streams.map((stream) => (
-          <div key={stream.id} className="break-inside-avoid mb-5">
+          <div key={stream.id} className="break-inside-avoid mb-2">
             <button
               onClick={() => {
                 setSelectedStream(stream);
                 setMode("watch");
                 setTotalLikes(0);
               }}
-              className={`w-full ${stream.aspect} bg-slate-900 rounded-[2.5rem] overflow-hidden relative border border-white/5 group shadow-2xl transition-all active:scale-95`}
+              className={`w-full ${stream.aspect} bg-slate-900 rounded-[0.8rem] overflow-hidden relative border border-white/5 group shadow-2xl transition-all active:scale-95`}
             >
               <img
                 src={stream.thumb}
@@ -860,20 +860,14 @@ const LiveSection: React.FC<Props> = ({ user, onUpgrade, onProfileClick }) => {
               </div>
 
               <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-lg text-[7px] font-black text-white border border-white/10 flex items-center gap-1">
-                <i className="fa-solid fa-heart text-rose-500 text-[6px]"></i>{" "}
-                {stream.likes}
+                <i className="fa-solid fa-eye text-[8px] text-slate-400"></i>{" "}
+                {stream.viewers} fans
               </div>
 
               <div className="absolute bottom-5 left-5 right-5 text-left">
                 <p className="text-white font-black text-[12px] mb-0.5 truncate">
                   {stream.user}, {stream.age}
                 </p>
-                <div className="flex items-center gap-2">
-                  <i className="fa-solid fa-eye text-[8px] text-slate-400"></i>
-                  <p className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">
-                    {stream.viewers} fans
-                  </p>
-                </div>
               </div>
             </button>
           </div>
