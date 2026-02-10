@@ -139,13 +139,6 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col font-['Outfit'] animate-in fade-in duration-300 overflow-hidden">
-      {/* Red Progress/Status Bar at top */}
-      <div className="pt-6 px-6">
-        <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-          <div className="h-full bg-rose-500 w-1/4"></div>
-        </div>
-      </div>
-
       <header className="px-6 py-6 flex items-center justify-between z-10">
         <button
           onClick={onClose}
