@@ -5,10 +5,13 @@ import {
   Route,
   Navigate,
   useNavigate,
+  useLocation,
 } from "react-router-dom";
 import { onAuthStateChanged } from "firebase/auth";
 import { UserProfile } from "./types";
 import { auth } from "./firebase";
+import HushlyShell from "./components/HushlyShell";
+import SplashScreen from "./hushly/components/SplashScreen";
 import LandingPage from "./pages/LandingPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import DiscoverPage from "./pages/DiscoverPage";
@@ -197,6 +200,84 @@ const AppRoutes: React.FC<{
         }
       />
     </Routes>
+  );
+};
+
+const shouldShowNav = (pathname: string) => {
+  const path = pathname.toLowerCase();
+  if (path === "/") return false;
+  if (path.startsWith("/onboarding")) return false;
+  if (path.startsWith("/settings")) return false;
+  if (path.startsWith("/admin/payments")) return false;
+  if (path.startsWith("/users/")) return false;
+  return true;
+};
+
+const AppShell: React.FC<{
+  user: UserProfile | null;
+  isVerified: boolean;
+  setUser: (u: UserProfile | null) => void;
+  setIsVerified: (v: boolean) => void;
+  privacyShieldActive: boolean;
+  focusShieldActive: boolean;
+  showPrivacyNotice: boolean;
+  dismissPrivacyNotice: () => void;
+}> = ({
+  user,
+  isVerified,
+  setUser,
+  setIsVerified,
+  privacyShieldActive,
+  focusShieldActive,
+  showPrivacyNotice,
+  dismissPrivacyNotice,
+}) => {
+  const location = useLocation();
+  const showNav = Boolean(user && isVerified) && shouldShowNav(location.pathname);
+
+  return (
+    <HushlyShell showNav={showNav}>
+      {privacyShieldActive && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl">
+          <div className="rounded-2xl border border-white/10 bg-black/60 px-6 py-4 text-center text-xs uppercase tracking-[0.3em] text-white">
+            {focusShieldActive
+              ? "Privacy Shield Active"
+              : "Screenshots Are Blocked"}
+          </div>
+        </div>
+      )}
+
+      {showPrivacyNotice && user && (
+        <div className="fixed bottom-6 left-1/2 z-40 w-[90%] max-w-md -translate-x-1/2 rounded-3xl border border-white/10 bg-black/70 p-4 text-xs text-gray-200 shadow-xl">
+          <p className="font-semibold uppercase tracking-widest text-white">
+            Privacy Notice
+          </p>
+          <p className="mt-2 text-gray-300">
+            Screenshots and screen recordings are prohibited. Sharing private
+            content without consent may lead to account restrictions.
+          </p>
+          <button
+            onClick={dismissPrivacyNotice}
+            className="mt-3 rounded-full bg-rose-500 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white"
+          >
+            I Understand
+          </button>
+        </div>
+      )}
+
+      <div
+        className={`min-h-screen transition-all ${
+          privacyShieldActive ? "blur-2xl pointer-events-none" : ""
+        }`}
+      >
+        <AppRoutes
+          user={user}
+          isVerified={isVerified}
+          setUser={setUser}
+          setIsVerified={setIsVerified}
+        />
+      </div>
+    </HushlyShell>
   );
 };
 
@@ -434,57 +515,21 @@ const App: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-kipepeo-dark">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-kipepeo-orange"></div>
-      </div>
-    );
+    return <SplashScreen />;
   }
 
   return (
     <HashRouter>
-      <div className="relative min-h-screen font-sans selection:bg-kipepeo-pink selection:text-white bg-kipepeo-dark privacy-lock">
-        {privacyShieldActive && (
-          <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl">
-            <div className="rounded-2xl border border-white/10 bg-black/60 px-6 py-4 text-center text-xs uppercase tracking-[0.3em] text-white">
-              {focusShieldActive
-                ? "Privacy Shield Active"
-                : "Screenshots Are Blocked"}
-            </div>
-          </div>
-        )}
-
-        {showPrivacyNotice && user && (
-          <div className="fixed bottom-6 left-1/2 z-40 w-[90%] max-w-md -translate-x-1/2 rounded-3xl border border-white/10 bg-black/70 p-4 text-xs text-gray-200 shadow-xl">
-            <p className="font-semibold uppercase tracking-widest text-white">
-              Privacy Notice
-            </p>
-            <p className="mt-2 text-gray-300">
-              Screenshots and screen recordings are prohibited. Sharing private
-              content without consent may lead to account restrictions.
-            </p>
-            <button
-              onClick={dismissPrivacyNotice}
-              className="mt-3 rounded-full bg-kipepeo-pink px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white"
-            >
-              I Understand
-            </button>
-          </div>
-        )}
-
-        <div
-          className={`min-h-screen transition-all ${
-            privacyShieldActive ? "blur-2xl pointer-events-none" : ""
-          }`}
-        >
-          <AppRoutes
-            user={user}
-            isVerified={isVerified}
-            setUser={setUser}
-            setIsVerified={setIsVerified}
-          />
-        </div>
-      </div>
+      <AppShell
+        user={user}
+        isVerified={isVerified}
+        setUser={setUser}
+        setIsVerified={setIsVerified}
+        privacyShieldActive={privacyShieldActive}
+        focusShieldActive={focusShieldActive}
+        showPrivacyNotice={showPrivacyNotice}
+        dismissPrivacyNotice={dismissPrivacyNotice}
+      />
     </HashRouter>
   );
 };

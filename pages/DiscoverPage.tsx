@@ -6,17 +6,19 @@ import React, {
   useState,
   useTransition,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti"; // Import the confetti library
 import {
   AppNotification,
-  AGE_RANGES,
-  IntentType,
   DailyDrop,
   PaymentRequest,
   UserProfile,
   WeekendPlan,
 } from "../types";
+import FilterModal from "../hushly/components/FilterModal";
+import type { Filters as DiscoverFilters } from "../hushly/types";
+import LiveSection from "../hushly/components/LiveSection";
+import type { User as LiveUser } from "../hushly/types";
 import {
   getAllUsers,
   getAllUserSettings,
@@ -78,18 +80,101 @@ import {
   markDailyDropAction,
 } from "../services/dailyDropService";
 
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      "dotlottie-wc": any;
+    }
+  }
+}
+
 const MPESA_FORMAT_REGEX =
   /[A-Z0-9]{8,12}\s+Confirmed\.\s+Ksh\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s+sent\s+to\s+.+?\s+on\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s?(?:AM|PM)\./i;
 
 const DAILY_DROP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_DAILY_DROP_SIZE = 12;
 
+const resolveViewFromSearch = (
+  search: string,
+): "discover" | "live" | "hub" | "plans" | "portal" => {
+  const params = new URLSearchParams(search);
+  const view = params.get("view");
+  if (view === "live" || view === "hub" || view === "plans" || view === "portal") {
+    return view;
+  }
+  return "discover";
+};
+
+const parseAgeRange = (value?: string) => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.endsWith("+")) {
+    const min = Number(trimmed.slice(0, -1));
+    if (!Number.isFinite(min)) return null;
+    return { min, max: Number.POSITIVE_INFINITY };
+  }
+  const parts = trimmed.split("-");
+  if (parts.length !== 2) return null;
+  const min = Number(parts[0]);
+  const max = Number(parts[1]);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return { min, max };
+};
+
+const matchesGenderFilter = (
+  profileGender: UserProfile["gender"] | undefined,
+  filterGender: string,
+) => {
+  if (filterGender === "Everyone") return true;
+  if (!profileGender) return false;
+  if (filterGender === "Women") return profileGender === "female";
+  if (filterGender === "Men") return profileGender === "male";
+  return true;
+};
+
+const matchesAgeRange = (
+  profileAgeRange: string | undefined,
+  filterRange: [number, number],
+) => {
+  const parsed = parseAgeRange(profileAgeRange);
+  if (!parsed) return true;
+  const [min, max] = filterRange;
+  return parsed.max >= min && parsed.min <= max;
+};
+
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
-  const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
-  const [selectedAgeRange, setSelectedAgeRange] = useState("All");
-  const [selectedArea, setSelectedArea] = useState("All");
+  const location = useLocation();
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [filters, setFilters] = useState<DiscoverFilters>(() => ({
+    gender: "Everyone",
+    ageRange: [18, 37],
+    location: user.area || "Nairobi",
+    distance: 50,
+    hasBio: false,
+    interests: [],
+    lookingFor: "",
+    languages: [],
+    zodiac: "",
+    education: "",
+    familyPlans: "",
+    communicationStyle: "",
+    loveStyle: "",
+    pets: "",
+    drinking: "",
+    smoking: "",
+    workout: "",
+    socialMedia: "",
+    expandDistance: true,
+    expandAge: true,
+    mode: "For You",
+  }));
+  const [headerToggle, setHeaderToggle] = useState(true);
+  const [showStarBurst, setShowStarBurst] = useState(false);
+  const [burstKey, setBurstKey] = useState(0);
+  const [isSimulation, setIsSimulation] = useState(false);
+  const [countdown, setCountdown] = useState("");
   const [aiQuery, setAiQuery] = useState("");
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,7 +183,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [aiSignals, setAiSignals] = useState(() => loadAiSignals());
   const [view, setView] = useState<
     "discover" | "live" | "hub" | "plans" | "portal"
-  >("discover");
+  >(() => resolveViewFromSearch(location.search));
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [plans, setPlans] = useState<WeekendPlan[]>([]);
@@ -160,18 +245,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const lastViewStartRef = useRef<number>(Date.now());
   const deferredSignals = useDeferredValue(aiSignals);
   const deferredQuery = useDeferredValue(aiQuery);
-  const hearts = useMemo(
-    () =>
-      Array.from({ length: 200 }, (_, index) => ({
-        id: index,
-        left: Math.random() * 100,
-        size: Math.random() * 20 + 10,
-        duration: Math.random() * 10 + 10,
-        delay: Math.random() * 10,
-      })),
-    [],
-  );
-
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -351,49 +424,44 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     return () => unsubscribe();
   }, [user.id]);
 
-  const toggleIntentFilter = (intent: IntentType) => {
-    setSelectedIntents((prev) =>
-      prev.includes(intent)
-        ? prev.filter((i) => i !== intent)
-        : [...prev, intent],
-    );
-  };
-
   const seenIds = useMemo(
     () => new Set([...likedIds, ...dislikedIds]),
     [likedIds, dislikedIds],
   );
 
-  const eligibleProfiles = useMemo(() => {
+  const matchesDiscoverFilters = useMemo(() => {
     const preferredGenders =
       user.interestedIn && user.interestedIn.length > 0
         ? user.interestedIn
         : ["everyone"];
     const allowAllGenders = preferredGenders.includes("everyone");
-
-    return profiles.filter((profile) => {
-      if (seenIds.has(profile.id)) return false;
+    return (profile: UserProfile) => {
       if (!allowAllGenders) {
         if (!profile.gender) return false;
         if (!preferredGenders.includes(profile.gender)) return false;
       }
-      const matchesIntent =
-        selectedIntents.length === 0 ||
-        profile.intents?.some((intent) => selectedIntents.includes(intent));
-      const matchesAge =
-        selectedAgeRange === "All" || profile.ageRange === selectedAgeRange;
-      const matchesArea =
-        selectedArea === "All" || profile.area === selectedArea;
-      return matchesIntent && matchesAge && matchesArea;
-    });
-  }, [
-    profiles,
-    seenIds,
-    user.interestedIn,
-    selectedIntents,
-    selectedAgeRange,
-    selectedArea,
-  ]);
+      if (!matchesGenderFilter(profile.gender, filters.gender)) return false;
+      if (filters.hasBio && !profile.bio?.trim()) return false;
+      if (
+        filters.location &&
+        filters.location !== "All" &&
+        profile.area !== filters.location
+      ) {
+        return false;
+      }
+      if (!matchesAgeRange(profile.ageRange, filters.ageRange)) return false;
+      return true;
+    };
+  }, [filters, user.interestedIn]);
+
+  const eligibleProfiles = useMemo(
+    () =>
+      profiles.filter(
+        (profile) =>
+          !seenIds.has(profile.id) && matchesDiscoverFilters(profile),
+      ),
+    [profiles, seenIds, matchesDiscoverFilters],
+  );
 
   const profileMap = useMemo(() => {
     const map = new Map<string, UserProfile>();
@@ -420,18 +488,23 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     [dropProfiles, actionedSet],
   );
 
+  const visibleDropProfiles = useMemo(
+    () => remainingDropProfiles.filter(matchesDiscoverFilters),
+    [remainingDropProfiles, matchesDiscoverFilters],
+  );
+
   const filteredProfiles = useMemo(() => {
-    if (!remainingDropProfiles.length) return [];
-    if (!deferredQuery) return remainingDropProfiles;
+    if (!visibleDropProfiles.length) return [];
+    if (!deferredQuery) return visibleDropProfiles;
     const semanticMatches = semanticSearchProfiles(
       deferredQuery,
-      remainingDropProfiles,
+      visibleDropProfiles,
     );
     const semanticIds = new Set(semanticMatches.map((item) => item.profile.id));
     const candidates =
       semanticIds.size > 0
-        ? remainingDropProfiles.filter((profile) => semanticIds.has(profile.id))
-        : remainingDropProfiles;
+        ? visibleDropProfiles.filter((profile) => semanticIds.has(profile.id))
+        : visibleDropProfiles;
     const ranked = rankProfiles({
       user,
       profiles: candidates,
@@ -439,7 +512,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       semanticQuery: deferredQuery,
     });
     return ranked.map((item) => item.profile);
-  }, [remainingDropProfiles, deferredQuery, deferredSignals, user]);
+  }, [visibleDropProfiles, deferredQuery, deferredSignals, user]);
 
   const matchReasons = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -449,19 +522,31 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     return map;
   }, [filteredProfiles, deferredSignals, user]);
 
-  const areaOptions = useMemo(() => {
-    const areas = new Set<string>();
-    profiles.forEach((profile) => {
-      if (profile.area) areas.add(profile.area);
-    });
-    if (user.area) areas.add(user.area);
-    return Array.from(areas).sort();
-  }, [profiles, user.area]);
+  const simulationProfiles = useMemo(() => {
+    if (visibleDropProfiles.length) return visibleDropProfiles;
+    return eligibleProfiles;
+  }, [visibleDropProfiles, eligibleProfiles]);
+
+  const activeProfiles = isSimulation ? simulationProfiles : filteredProfiles;
 
   const dropTotal = dailyDrop?.profileIds.length ?? 0;
   const dropRemaining = remainingDropProfiles.length;
   const dropCompleted =
     Boolean(dailyDrop) && dropTotal > 0 && dropRemaining === 0;
+  const dropCountValue = dailyDrop
+    ? visibleDropProfiles.length
+    : filteredProfiles.length;
+  const outOfSwipes = dropCompleted;
+  const shouldShowEmptyState =
+    (outOfSwipes && !isSimulation) || filteredProfiles.length === 0;
+  const emptyStateTitle =
+    filteredProfiles.length === 0
+      ? "No Profiles Match Filters"
+      : "No Matches Left Today";
+  const emptyStateBody =
+    filteredProfiles.length === 0
+      ? "Try adjusting your discovery settings to see more people from the tribe."
+      : "Check back later as your drop refreshes.";
   const nextDropAt = dailyDrop
     ? dailyDrop.lastDropAt + DAILY_DROP_INTERVAL_MS
     : 0;
@@ -494,9 +579,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       profileIds: selectedIds,
       dropSize,
       filters: {
-        intents: selectedIntents,
-        ageRange: selectedAgeRange,
-        area: selectedArea,
+        ...filters,
         genders: user.interestedIn ?? [],
       },
     })
@@ -525,9 +608,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     dailyDrop,
     now,
     eligibleProfiles,
-    selectedIntents,
-    selectedAgeRange,
-    selectedArea,
+    filters,
     user.id,
     user.nickname,
     user.interestedIn,
@@ -568,11 +649,71 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   useEffect(() => {
     setCurrentIndex(0);
-  }, [dailyDrop?.lastDropAt, aiQuery]);
+  }, [dailyDrop?.lastDropAt, aiQuery, filters]);
 
-  const current = filteredProfiles[currentIndex];
-  const isCurrentLiked = Boolean(current && likedIds.has(current.id));
-  const isCurrentDisliked = Boolean(current && dislikedIds.has(current.id));
+  const current =
+    filteredProfiles.length > 0
+      ? filteredProfiles[currentIndex % filteredProfiles.length]
+      : null;
+  const currentAge = current?.ageRange
+    ? parseAgeRange(current.ageRange)?.min
+    : undefined;
+  const distanceLabel = current
+    ? (() => {
+        let hash = 0;
+        for (let i = 0; i < current.id.length; i += 1) {
+          hash = (hash * 31 + current.id.charCodeAt(i)) % 31;
+        }
+        const km = 2 + (hash % 28);
+        return `${km}km away`;
+      })()
+    : "";
+
+  const liveUser = useMemo<LiveUser | null>(() => {
+    if (!user) return null;
+    const parsedAge = parseAgeRange(user.ageRange);
+    const age = parsedAge ? parsedAge.min : 18;
+    const normalizedEmail = user.email?.trim().toLowerCase() ?? "";
+    const ownerEmail = OWNER_EMAIL.trim().toLowerCase();
+    const isOwner = Boolean(normalizedEmail && normalizedEmail === ownerEmail);
+    const hasPremium =
+      Boolean(user.isPremium) &&
+      (!user.premiumExpiresAt || user.premiumExpiresAt > Date.now());
+    const isPaid = isOwner || hasPremium;
+    return {
+      id: user.id,
+      name: user.nickname || user.realName || "Member",
+      email: user.email,
+      nickname: user.nickname,
+      gender: user.gender ?? "other",
+      interests: [],
+      intents: user.intents ?? [],
+      age,
+      location: user.area || "Nairobi",
+      bio: user.bio || "",
+      isPaid,
+      dailySwipesRemaining: 0,
+      lastDropAt: Date.now(),
+      avatar: {
+        base: "Male Body",
+        baseColor: "#475569",
+        outfit: "None",
+        outfitColor: "#475569",
+        accessory: "None",
+        accessoryColor: "#475569",
+        hair: "None",
+        hairColor: "#475569",
+      },
+      achievements: [],
+      photos: user.photoUrl ? [user.photoUrl] : [],
+      voiceIntro: user.voiceIntroUrl,
+      followingIds: [],
+      followerCount: user.followerCount ?? 0,
+      lifestyle: undefined,
+      personality: undefined,
+      prompts: undefined,
+    };
+  }, [user]);
 
   const clearLike = (profileId: string) => {
     if (!likedIds.has(profileId)) return;
@@ -657,6 +798,72 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const showMpesaFormatWarning = Boolean(
     paymentProof.trim() && !isMpesaFormatValid,
   );
+
+  useEffect(() => {
+    const nextView = resolveViewFromSearch(location.search);
+    if (nextView !== view) {
+      setView(nextView);
+    }
+  }, [location.search, view]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setHeaderToggle((prev) => !prev);
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!outOfSwipes || isSimulation) {
+      setCountdown("");
+      return;
+    }
+    const updateCountdown = () => {
+      const nowTs = Date.now();
+      const fallbackNext = nowTs + DAILY_DROP_INTERVAL_MS;
+      const target = nextDropAt || fallbackNext;
+      const diff = target - nowTs;
+      if (diff <= 0) {
+        setCountdown("00:00:00");
+        return;
+      }
+      const h = Math.floor(diff / (1000 * 60 * 60));
+      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const s = Math.floor((diff % (1000 * 60)) / 1000);
+      setCountdown(
+        `${h.toString().padStart(2, "0")}:${m
+          .toString()
+          .padStart(2, "0")}:${s.toString().padStart(2, "0")}`,
+      );
+    };
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(timer);
+  }, [outOfSwipes, isSimulation, nextDropAt]);
+
+  useEffect(() => {
+    if (view !== "discover" && isFilterModalOpen) {
+      setIsFilterModalOpen(false);
+    }
+  }, [view, isFilterModalOpen]);
+
+  const updateView = (nextView: "discover" | "live" | "hub" | "plans" | "portal") => {
+    setView(nextView);
+    const params = new URLSearchParams(location.search);
+    if (nextView === "discover") {
+      params.delete("view");
+    } else {
+      params.set("view", nextView);
+    }
+    const search = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: search ? `?${search}` : "",
+      },
+      { replace: true },
+    );
+  };
   const hubSections = useMemo(
     () => [
       {
@@ -1048,7 +1255,16 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   // --- ACTIONS ---
-  const handleNextProfile = () => {
+  const advanceSimulationProfile = () => {
+    if (filteredProfiles.length === 0) return;
+    setCurrentIndex((prev) => (prev + 1) % filteredProfiles.length);
+  };
+
+  const handleNextProfile = (options?: { simulate?: boolean }) => {
+    if (options?.simulate) {
+      advanceSimulationProfile();
+      return;
+    }
     if (filteredProfiles.length === 0) return;
     if (dailyDrop) {
       setCurrentIndex(0);
@@ -1057,43 +1273,44 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     setCurrentIndex((prev) => (prev + 1) % filteredProfiles.length);
   };
 
-  const handleSkip = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // Logic to record skip would go here
-    if (current) {
-      if (likedIds.has(current.id)) {
-        clearLike(current.id);
-      }
-      void createDislike({
-        fromUserId: user.id,
-        toUserId: current.id,
-        fromNickname: user.nickname,
-        toNickname: current.nickname,
-      });
-      if (dailyDrop) {
-        void markDailyDropAction(user.id, current.id);
-        setDailyDrop((prev) => {
-          if (!prev) return prev;
-          if (prev.actionedIds.includes(current.id)) return prev;
-          return {
-            ...prev,
-            actionedIds: [...prev.actionedIds, current.id],
-          };
-        });
-      }
-      setDislikedIds((prev) => {
-        const next = new Set(prev);
-        next.add(current.id);
-        return next;
-      });
-      const updated = recordSkipSignal(current);
-      startAiTransition(() => setAiSignals(updated));
+  const handleSkipAction = () => {
+    if (!current) return;
+    if (likedIds.has(current.id)) {
+      clearLike(current.id);
     }
+    void createDislike({
+      fromUserId: user.id,
+      toUserId: current.id,
+      fromNickname: user.nickname,
+      toNickname: current.nickname,
+    });
+    if (dailyDrop) {
+      void markDailyDropAction(user.id, current.id);
+      setDailyDrop((prev) => {
+        if (!prev) return prev;
+        if (prev.actionedIds.includes(current.id)) return prev;
+        return {
+          ...prev,
+          actionedIds: [...prev.actionedIds, current.id],
+        };
+      });
+    }
+    setDislikedIds((prev) => {
+      const next = new Set(prev);
+      next.add(current.id);
+      return next;
+    });
+    const updated = recordSkipSignal(current);
+    startAiTransition(() => setAiSignals(updated));
     handleNextProfile();
   };
 
-  const handleLike = (e: React.MouseEvent) => {
+  const handleSkip = (e: React.MouseEvent) => {
     e.stopPropagation();
+    handleSkipAction();
+  };
+
+  const handleLikeAction = () => {
     if (!current) return;
     if (likedIds.has(current.id)) {
       handleNextProfile();
@@ -1173,10 +1390,47 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     handleNextProfile();
   };
 
-  const handleChat = (e: React.MouseEvent) => {
+  const handleLike = (e: React.MouseEvent) => {
     e.stopPropagation();
+    handleLikeAction();
+  };
+
+  const handleQuickChat = () => {
     if (current) {
       void handleStartChat(current);
+    }
+  };
+
+  const handleChat = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    handleQuickChat();
+  };
+
+  const handleAction = (dir: "left" | "right") => {
+    if (isSimulation) {
+      handleNextProfile({ simulate: true });
+      return;
+    }
+    if (outOfSwipes) return;
+    if (dir === "left") {
+      handleSkipAction();
+    } else {
+      handleLikeAction();
+    }
+  };
+
+  const handleStarAction = () => {
+    if (outOfSwipes && !isSimulation) return;
+    setBurstKey((prev) => prev + 1);
+    setShowStarBurst(true);
+    window.setTimeout(() => {
+      handleNextProfile({ simulate: true });
+    }, 400);
+    window.setTimeout(() => {
+      setShowStarBurst(false);
+    }, 2500);
+    if (!isSimulation) {
+      handleQuickChat();
     }
   };
 
@@ -1233,7 +1487,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             <button
               onClick={() => {
                 setEscortLoading(false);
-                setView("discover");
+                updateView("discover");
               }}
               className="w-full py-4 bg-white/5 hover:bg-white/10 border border-white/5 text-gray-400 hover:text-white font-semibold rounded-xl uppercase tracking-widest text-xs transition-all"
             >
@@ -1361,24 +1615,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       {/* Dynamic Background */}
       <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-pink-900/20 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        {hearts.map((heart) => (
-          <div
-            key={heart.id}
-            className="absolute text-pink-400/70"
-            style={{
-              left: `${heart.left}%`,
-              bottom: "-50px",
-              fontSize: `${heart.size}px`,
-              animation: `floatUp ${heart.duration}s linear infinite`,
-              animationDelay: `-${heart.delay}s`,
-            }}
-          >
-            {"\u2764"}
-          </div>
-        ))}
-      </div>
-
       {showDailyDropIntro && dailyDrop && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6">
           <div className="absolute inset-0 overflow-hidden">
@@ -1585,117 +1821,158 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       )}
 
       {/* Header */}
-      <header className="px-5 pt-5 pb-2 z-20 shrink-0 max-w-2xl mx-auto w-full">
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-8 bg-gradient-to-b from-pink-500 to-purple-600 rounded-full"></div>
-            <h1 className="text-2xl font-black tracking-tighter bg-clip-text text-white bg-gradient-to-r from-white to-gray-400">
-              <a href="#" className="brand-cycler">
-                <span className="brand-cycler__word brand-cycler__word--primary">
-                  Hushly
-                </span>
-                <span className="brand-cycler__word brand-cycler__word--secondary">
-                  Proudly Kenyan
-                </span>
-              </a>
-            </h1>
-          </div>
+      {view !== "live" && (
+        <header
+          className={
+            view === "discover"
+              ? "z-20 shrink-0 w-full"
+              : "px-5 pt-5 pb-2 z-20 shrink-0 max-w-2xl mx-auto w-full"
+          }
+        >
+          {view === "discover" ? (
+          <div className="pb-2 pt-4 px-6 flex justify-between items-center z-40 bg-slate-950/50 backdrop-blur-md pb-4 animate-in fade-in slide-in-from-top duration-300">
+            <div className="flex items-center">
+              <div className="w-2.5 h-8 bg-gradient-to-b from-[#f43f5e] to-[#7c3aed] rounded-full mr-3 shadow-[0_0_15px_rgba(244,63,94,0.4)]"></div>
+              <div className="overflow-hidden h-fit">
+                <h1
+                  key={headerToggle ? "brand" : "tagline"}
+                  className="text-2xl font-black text-white tracking-tighter leading-8 animate-text-swap uppercase"
+                >
+                  {headerToggle ? "HUSHLY" : "Tribe Vibes"}
+                </h1>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-3">
-            <Link
-              to="/chats"
-              className="w-10 h-10 flex items-center justify-center text-lg active:scale-90 transition-transform relative"
-            >
-              {unreadConversationCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-5 px-1.5 rounded-full bg-kipepeo-pink text-[10px] font-black flex items-center justify-center shadow-[0_0_10px_rgba(236,72,153,0.6)]">
-                  {unreadConversationCount > 9 ? "9+" : unreadConversationCount}
-                </span>
-              )}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="#fff"
-                stroke="#ec4899"
-                class="feather feather-send"
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsFilterModalOpen(true)}
+                className="w-10 h-10 bg-slate-900 border border-white/5 rounded-full flex items-center justify-center text-slate-300 shadow-lg active:scale-90 transition-all"
+                title="Discovery Settings"
               >
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </Link>
+                <i className="fa-solid fa-sliders"></i>
+              </button>
+              <button
+                onClick={() => updateView("portal")}
+                className="w-10 h-10 bg-amber-500/10 border border-amber-500/30 rounded-full flex items-center justify-center text-amber-500 shadow-lg active:scale-90 transition-all"
+                title="Companion Portal"
+              >
+                <i className="fa-solid fa-gem"></i>
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-8 bg-gradient-to-b from-pink-500 to-purple-600 rounded-full"></div>
+              <h1 className="text-2xl font-black tracking-tighter bg-clip-text text-white bg-gradient-to-r from-white to-gray-400">
+                <a href="#" className="brand-cycler">
+                  <span className="brand-cycler__word brand-cycler__word--primary">
+                    Hushly
+                  </span>
+                  <span className="brand-cycler__word brand-cycler__word--secondary">
+                    Proudly Kenyan
+                  </span>
+                </a>
+              </h1>
+            </div>
 
-            <button
-              onClick={() => setView("portal")}
-              className="hidden w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors active:scale-95"
-            >
-              <span className="text-lg filter drop-shadow-[0_0_5px_rgba(220,38,38,0.5)]">
+            <div className="flex items-center gap-3">
+              <Link
+                to="/chats"
+                className="w-10 h-10 flex items-center justify-center text-lg active:scale-90 transition-transform relative"
+              >
+                {unreadConversationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-5 px-1.5 rounded-full bg-kipepeo-pink text-[10px] font-black flex items-center justify-center shadow-[0_0_10px_rgba(236,72,153,0.6)]">
+                    {unreadConversationCount > 9 ? "9+" : unreadConversationCount}
+                  </span>
+                )}
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  height="24px"
-                  width="24px"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
                   fill="#fff"
                   stroke="#ec4899"
-                  version="1.1"
-                  id="_x32_"
-                  viewBox="0 0 512 512"
+                  className="feather feather-send"
                 >
-                  <g>
-                    <path
-                      class="st0"
-                      d="M222.598,186.442c29.136,23.184,64.397,10.377,56.084-10.394c-41.721-15.548-58.381-67.814-40.19-87.473   c18.173-19.65,56.138,0.338,35.866-15.326c-20.256-15.662-55.515-2.857-69.274,20.549   C191.325,117.212,193.461,163.25,222.598,186.442z"
-                    />
-                    <path
-                      class="st0"
-                      d="M312.038,160.099c33.338-15.939,30.544-70.172,9.025-80.789c-21.501-10.608-34.69-0.446-20.7,19.036   c18.404,23.236-18.03,51.821-35.1,44.978C265.262,143.324,278.683,176.047,312.038,160.099z"
-                    />
-                    <path
-                      class="st0"
-                      d="M285.518,60.451c27.73-3.933,44.319,4.94,55.764,23.797c13.136-20.886-2.865-64.957-47.114-81.128   c-44.23-16.161-102.006,33.978-89.209,69.23C212.488,63.486,249.475,43.605,285.518,60.451z"
-                    />
-                    <path
-                      class="st0"
-                      d="M129.509,238.655c10.804,7.716,51.208,20.54,85.969,31.718c34.744,11.177,69.95-12.353,68.49-50.193   c-105.387-7.013-105.174-84.608-99.602-107.346c-45.423-0.392-60.143,40.626-57.046,69.06   C130.631,212.152,118.118,230.512,129.509,238.655z"
-                    />
-                    <path
-                      class="st0"
-                      d="M141.044,111.161c21.074-9.567,34.974-6.168,34.974-6.168s5.286-16.108,12.495-23.717   c-1.904-3.15-1.958-13.866-1.958-13.866s0.232-11.997,2.403-20.834c-18.013-8.428-56.744,7.556-58.933,11.035   C127.854,61.092,124.935,105.892,141.044,111.161z"
-                    />
-                    <path
-                      class="st0"
-                      d="M414.044,126.13c-11-53.558-56.423-53.95-56.423-53.95s-0.552,13.243-7.476,19.597   c18.475,33.961-13.208,86.912-36.755,88.301c67.778,51.368,100.884-11.053,105.868-20.54   C424.278,150.052,416.02,139.995,414.044,126.13z"
-                    />
-                    <path
-                      class="st0"
-                      d="M373.284,213.728c-15.218,6.025-51.332-5.402-69.719-21.492c-1.21,8.615-12.921,20.032-17.336,19.855   c14.346,10.643,22.302,43.83-12.264,68.393c8.276,13.625,54.981,16.126,85.204,5.659c4.913-1.709,18.351-27.65,23.94-43.233   C390.532,222.262,396.993,204.348,373.284,213.728z"
-                    />
-                    <path
-                      class="st0"
-                      d="M259.958,92.045c-19.33,5.989-16.215,37.093,5.464,39.709c31.095-3.115,24.848-32.296,17.069-33.31   c-7.795-1.015,1.335,16.383-8.543,16.66c-11.712,0.302-16.766-7.957-10.804-14.239C267.968,95.783,269.142,89.598,259.958,92.045z"
-                    />
-                    <path
-                      class="st0"
-                      d="M334.66,364.984c-49.267-20.682-83.957-10.51-107.381,4.743c3.329-7.093,6.426-13.972,9.185-20.415   c12.797-29.92,19.401-51.466,19.525-51.84l-23.441-7.52l-0.108,0.338c-1.21,3.906-13.117,41.044-34.512,83.228   c-7.138,14.097-15.431,28.692-24.598,42.842c11.089-30.792,23.851-63.116-12.424-98.535c-5.5,3.346-5.998,14.951-5.998,14.951   s-20.166-51.831-34.529-50.656c-14.364,1.184-39.479,56.023-14.454,87.937c-13.278-3.24-19.276,11.711-10.964,16.081   c7.938,4.183,57.278,39.861,60.784,55.097c-14.31,18.262-30.311,34.316-47.63,45.556c-6.016,3.898-8.224,12.264-4.967,18.68   c3.275,6.416,10.786,8.446,16.803,4.548c22.89-14.907,42.593-35.759,59.448-58.435c9.006-12.129,17.176-24.794,24.581-37.431   c61.958,36.79,105.424,16.5,109.98,6.746c4.912-10.519-17.71-4.326-17.71-4.326S355.164,377.034,334.66,364.984z"
-                    />
-                  </g>
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
                 </svg>
-              </span>
-            </button>
+              </Link>
 
-            <Link
-              to="/profile"
-              className="w-10 h-10 rounded-full p-[2px] bg-gradient-to-br from-pink-500 to-purple-600 active:scale-95 transition-transform"
-            >
-              <AppImage
-                src={user.photoUrl}
-                className="w-full h-full object-cover rounded-full border-2 border-slate-950"
-                alt="Profile"
-              />
-            </Link>
+              <button
+                onClick={() => updateView("portal")}
+                className="hidden w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center hover:bg-red-500/20 transition-colors active:scale-95"
+              >
+                <span className="text-lg filter drop-shadow-[0_0_5px_rgba(220,38,38,0.5)]">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    height="24px"
+                    width="24px"
+                    fill="#fff"
+                    stroke="#ec4899"
+                    version="1.1"
+                    id="_x32_"
+                    viewBox="0 0 512 512"
+                  >
+                    <g>
+                      <path
+                        class="st0"
+                        d="M222.598,186.442c29.136,23.184,64.397,10.377,56.084-10.394c-41.721-15.548-58.381-67.814-40.19-87.473   c18.173-19.65,56.138,0.338,35.866-15.326c-20.256-15.662-55.515-2.857-69.274,20.549   C191.325,117.212,193.461,163.25,222.598,186.442z"
+                      />
+                      <path
+                        class="st0"
+                        d="M312.038,160.099c33.338-15.939,30.544-70.172,9.025-80.789c-21.501-10.608-34.69-0.446-20.7,19.036   c18.404,23.236-18.03,51.821-35.1,44.978C265.262,143.324,278.683,176.047,312.038,160.099z"
+                      />
+                      <path
+                        class="st0"
+                        d="M285.518,60.451c27.73-3.933,44.319,4.94,55.764,23.797c13.136-20.886-2.865-64.957-47.114-81.128   c-44.23-16.161-102.006,33.978-89.209,69.23C212.488,63.486,249.475,43.605,285.518,60.451z"
+                      />
+                      <path
+                        class="st0"
+                        d="M129.509,238.655c10.804,7.716,51.208,20.54,85.969,31.718c34.744,11.177,69.95-12.353,68.49-50.193   c-105.387-7.013-105.174-84.608-99.602-107.346c-45.423-0.392-60.143,40.626-57.046,69.06   C130.631,212.152,118.118,230.512,129.509,238.655z"
+                      />
+                      <path
+                        class="st0"
+                        d="M141.044,111.161c21.074-9.567,34.974-6.168,34.974-6.168s5.286-16.108,12.495-23.717   c-1.904-3.15-1.958-13.866-1.958-13.866s0.232-11.997,2.403-20.834c-18.013-8.428-56.744,7.556-58.933,11.035   C127.854,61.092,124.935,105.892,141.044,111.161z"
+                      />
+                      <path
+                        class="st0"
+                        d="M414.044,126.13c-11-53.558-56.423-53.95-56.423-53.95s-0.552,13.243-7.476,19.597   c18.475,33.961-13.208,86.912-36.755,88.301c67.778,51.368,100.884-11.053,105.868-20.54   C424.278,150.052,416.02,139.995,414.044,126.13z"
+                      />
+                      <path
+                        class="st0"
+                        d="M373.284,213.728c-15.218,6.025-51.332-5.402-69.719-21.492c-1.21,8.615-12.921,20.032-17.336,19.855   c14.346,10.643,22.302,43.83-12.264,68.393c8.276,13.625,54.981,16.126,85.204,5.659c4.913-1.709,18.351-27.65,23.94-43.233   C390.532,222.262,396.993,204.348,373.284,213.728z"
+                      />
+                      <path
+                        class="st0"
+                        d="M259.958,92.045c-19.33,5.989-16.215,37.093,5.464,39.709c31.095-3.115,24.848-32.296,17.069-33.31   c-7.795-1.015,1.335,16.383-8.543,16.66c-11.712,0.302-16.766-7.957-10.804-14.239C267.968,95.783,269.142,89.598,259.958,92.045z"
+                      />
+                      <path
+                        class="st0"
+                        d="M334.66,364.984c-49.267-20.682-83.957-10.51-107.381,4.743c3.329-7.093,6.426-13.972,9.185-20.415   c12.797-29.92,19.401-51.466,19.525-51.84l-23.441-7.52l-0.108,0.338c-1.21,3.906-13.117,41.044-34.512,83.228   c-7.138,14.097-15.431,28.692-24.598,42.842c11.089-30.792,23.851-63.116-12.424-98.535c-5.5,3.346-5.998,14.951-5.998,14.951   s-20.166-51.831-34.529-50.656c-14.364,1.184-39.479,56.023-14.454,87.937c-13.278-3.24-19.276,11.711-10.964,16.081   c7.938,4.183,57.278,39.861,60.784,55.097c-14.31,18.262-30.311,34.316-47.63,45.556c-6.016,3.898-8.224,12.264-4.967,18.68   c3.275,6.416,10.786,8.446,16.803,4.548c22.89-14.907,42.593-35.759,59.448-58.435c9.006-12.129,17.176-24.794,24.581-37.431   c61.958,36.79,105.424,16.5,109.98,6.746c4.912-10.519-17.71-4.326-17.71-4.326S355.164,377.034,334.66,364.984z"
+                      />
+                    </g>
+                  </svg>
+                </span>
+              </button>
+
+              <Link
+                to="/profile"
+                className="w-10 h-10 rounded-full p-[2px] bg-gradient-to-br from-pink-500 to-purple-600 active:scale-95 transition-transform"
+              >
+                <AppImage
+                  src={user.photoUrl}
+                  className="w-full h-full object-cover rounded-full border-2 border-slate-950"
+                  alt="Profile"
+                />
+              </Link>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="relative p-1 bg-white/5 rounded-xl flex items-center mb-4">
+          {view !== "discover" && (
+          <div className="relative p-1 bg-white/5 rounded-xl flex items-center mb-4">
           <div
             className="absolute top-1 bottom-1 rounded-lg bg-white/10 shadow-sm transition-all duration-300 ease-out"
             style={{
@@ -1704,163 +1981,33 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             }}
           />
           <button
-            onClick={() => setView("discover")}
+            onClick={() => updateView("discover")}
             className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "discover" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
           >
             Discovery
           </button>
           <button
-            onClick={() => setView("live")}
+            onClick={() => updateView("live")}
             className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "live" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
           >
             Live
           </button>
           <button
-            onClick={() => setView("hub")}
+            onClick={() => updateView("hub")}
             className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "hub" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
           >
             Hub
           </button>
           <button
-            onClick={() => setView("plans")}
+            onClick={() => updateView("plans")}
             className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "plans" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
           >
             Weekend
           </button>
         </div>
+          )}
 
-        {view === "discover" && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => setShowFilters((prev) => !prev)}
-                className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-300 hover:bg-white/10 transition-colors"
-              >
-                {showFilters ? "Hide Filters" : "Filter & Sort"}
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedIntents([]);
-                  setSelectedAgeRange("All");
-                  setSelectedArea("All");
-                  setAiQuery("");
-                }}
-                className="text-[10px] uppercase tracking-widest text-gray-500 hover:text-gray-300"
-              >
-                Clear Filters
-              </button>
-            </div>
-
-            {showFilters && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
-                    AI Search
-                  </p>
-                  <input
-                    value={aiQuery}
-                    onChange={(event) => setAiQuery(event.target.value)}
-                    placeholder="low-key weekend vibe near Westlands"
-                    className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs text-gray-200 focus:outline-none"
-                  />
-                  <p className="mt-2 text-[10px] text-gray-500">
-                    Semantic search across bio, intents, and area.
-                  </p>
-                  {dailyDrop && (
-                    <p className="mt-2 text-[10px] text-gray-600">
-                      Filter changes apply to your next drop.
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
-                    Intent
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.values(IntentType).map((intent) => {
-                      const isActive = selectedIntents.includes(intent);
-                      return (
-                        <button
-                          key={intent}
-                          onClick={() => toggleIntentFilter(intent)}
-                          className={`px-3 py-2 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-all duration-300 ${
-                            isActive
-                              ? "bg-gradient-to-r from-pink-600 to-purple-600 border-transparent text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]"
-                              : "bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:border-white/10"
-                          }`}
-                        >
-                          {intent}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="text-[10px] uppercase tracking-widest text-gray-400">
-                      Age Range
-                    </label>
-                    <select
-                      value={selectedAgeRange}
-                      onChange={(event) =>
-                        setSelectedAgeRange(event.target.value)
-                      }
-                      className="mt-2 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
-                    >
-                      <option value="All">All</option>
-                      {AGE_RANGES.map((range) => (
-                        <option key={range} value={range}>
-                          {range}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] uppercase tracking-widest text-gray-400">
-                      Area
-                    </label>
-                    <select
-                      value={selectedArea}
-                      onChange={(event) => setSelectedArea(event.target.value)}
-                      className="mt-2 w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-xs uppercase tracking-widest text-gray-200 focus:outline-none"
-                    >
-                      <option value="All">All</option>
-                      {areaOptions.map((area) => (
-                        <option key={area} value={area}>
-                          {area}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {dailyDrop && (
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-gray-400">
-                    Today&apos;s Matches
-                  </p>
-                  <p className="text-sm font-semibold text-white">
-                    {dropRemaining} left of {dropTotal}
-                  </p>
-                  {dropCompleted && (
-                    <p className="text-[10px] uppercase tracking-widest text-gray-500 mt-1">
-                      Next drop in {timeRemainingHours}h {timeRemainingMinutes}m
-                    </p>
-                  )}
-                </div>
-                <div className="h-12 w-12 rounded-2xl bg-kipepeo-pink/20 border border-kipepeo-pink/40 flex items-center justify-center text-xs font-black uppercase tracking-widest text-kipepeo-pink">
-                  Drop
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {view === "discover" && (
+          {view === "discover" && (
           <>
             {rsvpTarget && (
               <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
@@ -1934,7 +2081,19 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
             )}
           </>
         )}
-      </header>
+        </header>
+      )}
+
+      {isFilterModalOpen && (
+        <FilterModal
+          filters={filters}
+          onApply={(next) => {
+            setFilters(next);
+            setIsFilterModalOpen(false);
+          }}
+          onClose={() => setIsFilterModalOpen(false)}
+        />
+      )}
 
       {showMatchModal && matchProfile && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
@@ -2003,7 +2162,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 px-2 pb-4 overflow-hidden relative flex flex-col z-10 max-w-[48rem] mx-auto w-full">
+      <div
+        className={`flex-1 relative flex flex-col z-10 w-full ${
+          view === "discover" || view === "live"
+            ? "overflow-y-auto no-scrollbar"
+            : "px-2 pb-4 overflow-hidden max-w-[48rem] mx-auto"
+        }`}
+      >
         {showNotifications && (
           <div className="absolute top-0 right-2 z-30 w-72 glass rounded-2xl border border-white/10 p-4 shadow-xl">
             <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">
@@ -2109,288 +2274,204 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           </div>
         )}
         {view === "discover" ? (
-          <>
-            {loading ? (
-              <div className="flex-1 flex flex-col items-center justify-center space-y-4 animate-pulse">
-                <div className="w-full max-w-xs aspect-[3/4] rounded-3xl bg-white/5 border border-white/5 relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent skew-x-12 animate-shimmer"></div>
-                </div>
-                <div className="text-gray-500 text-xs font-medium uppercase tracking-widest">
-                  Searching Network...
-                </div>
+          shouldShowEmptyState ? (
+            <div className="h-full relative flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
+              <div className="relative z-10 w-fit h-fit flex items-center justify-center mb-2 overflow-visible">
+                <dotlottie-wc
+                  src="https://lottie.host/ef4d935d-c6d1-472a-9a29-ad403e4ed20b/439t582a3D.lottie"
+                  style={{ width: "100px", height: "100px" }}
+                  autoplay
+                  loop
+                ></dotlottie-wc>
               </div>
-            ) : loadError ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-4 text-red-400">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
+
+              <h2 className="relative z-10 text-3xl font-black text-white mb-2 tracking-tighter">
+                {emptyStateTitle}
+              </h2>
+              <p className="relative z-10 text-slate-500 mb-8 max-w-xs mx-auto leading-relaxed font-medium">
+                {emptyStateBody}
+              </p>
+
+              {outOfSwipes && !isSimulation && (
+                <div className="relative z-10 bg-slate-900/40 backdrop-blur-md px-8 py-6 rounded-3xl border border-white/5 shadow-2xl mb-10 w-full max-w-xs mx-auto">
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">
+                    Refueling Safari
+                  </p>
+                  <p className="text-4xl font-black text-rose-500 font-mono tracking-tighter">
+                    {countdown || "24:00:00"}
+                  </p>
                 </div>
-                <p className="text-gray-400 text-sm font-medium">{loadError}</p>
-              </div>
-            ) : current ? (
-              <div className="flex-1 relative flex flex-col h-full">
-                {/* Profile Card */}
-                <div
-                  key={current.id}
-                  className="relative flex-1 rounded-[2rem] overflow-hidden bg-gray-900 border border-white/10 shadow-2xl card-swipe-in"
+              )}
+
+              <div className="relative z-10 w-full max-w-xs space-y-4">
+                <button
+                  onClick={() => setIsSimulation(true)}
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl border border-white/5 transition-all active:scale-95 flex items-center justify-center gap-3 uppercase text-xs tracking-widest"
                 >
-                  {/* Main Image */}
-                  <div className="absolute inset-0">
+                  <i className="fa-solid fa-wand-magic-sparkles text-indigo-400"></i>
+                  Ghost Mode
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 flex flex-col h-full animate-in fade-in zoom-in duration-300 relative">
+              {showStarBurst && (
+                <div
+                  key={burstKey}
+                  className="fixed inset-0 z-[200] pointer-events-none flex items-center justify-center overflow-hidden"
+                >
+                  {[...Array(60)].map((_, i) => {
+                    const isStar = i % 2 === 0;
+                    const angle = Math.random() * 360;
+                    const distance = 80 + Math.random() * 300;
+                    const tx = Math.cos((angle * Math.PI) / 180) * distance;
+                    const ty = Math.sin((angle * Math.PI) / 180) * distance;
+                    const size = 12 + Math.random() * 14;
+                    const delay = Math.random() * 0.2;
+                    const duration = 1.2 + Math.random() * 0.8;
+                    const rotation = Math.random() * 360;
+
+                    return (
+                      <div
+                        key={i}
+                        className={`absolute ${
+                          isStar ? "text-amber-400" : "text-rose-500"
+                        } animate-confetti-fly opacity-0`}
+                        style={{
+                          "--tx": `${tx}px`,
+                          "--ty": `${ty}px`,
+                          "--rot": `${rotation}deg`,
+                          "--dur": `${duration}s`,
+                          fontSize: `${size}px`,
+                          animationDelay: `${delay}s`,
+                          willChange: "transform, opacity",
+                        } as React.CSSProperties}
+                      >
+                        <i
+                          className={`fa-solid ${
+                            isStar ? "fa-star" : "fa-heart"
+                          }`}
+                        ></i>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between mb-4 relative z-10">
+                <div className="flex items-center gap-2">
+                  {isSimulation ? (
+                    <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
+                      <i className="fa-solid fa-ghost text-white text-sm"></i>
+                    </div>
+                  ) : (
+                    <div className="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
+                      <i className="fa-solid fa-fire text-white text-sm"></i>
+                    </div>
+                  )}
+                  <span className="font-bold text-lg">
+                    {isSimulation ? "Ghost Mode" : "Discovery"}
+                  </span>
+                </div>
+
+                {isSimulation ? (
+                  <button
+                    onClick={() => setIsSimulation(false)}
+                    className="bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 text-[10px] font-black uppercase text-white tracking-widest active:scale-95 transition-all"
+                  >
+                    Return to Base
+                  </button>
+                ) : (
+                  <div className="bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
+                    <span className="text-xs font-bold text-rose-500">
+                      {dropCountValue}
+                    </span>
+                    <span className="text-[10px] text-slate-500 ml-1 uppercase">
+                      Drop Left
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {current && (
+                <div
+                  className="relative flex-1 group z-10"
+                  onClick={() => navigate(`/users/${current.id}`)}
+                >
+                  <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl bg-slate-900 border border-white/5">
                     <AppImage
                       src={current.photoUrl}
-                      className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
                       alt={current.nickname}
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                       fetchPriority="high"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/90"></div>
-                    <div className="absolute bottom-0 inset-x-0 h-2/3 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent"></div>
-                  </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
 
-                  {/* Status Badge */}
-                  <div className="absolute top-5 left-5">
-                    {current.isOnline && (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 backdrop-blur-md border border-emerald-500/30">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
-                        <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
-                          Online
+                    {isSimulation && (
+                      <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-indigo-500/20 backdrop-blur-md px-6 py-2 rounded-full border border-indigo-500/50 flex items-center gap-2">
+                        <i className="fa-solid fa-wand-sparkles text-indigo-400 text-xs"></i>
+                        <span className="text-[10px] text-white font-black uppercase tracking-widest whitespace-nowrap">
+                          No one will know about your activity
                         </span>
                       </div>
                     )}
-                  </div>
 
-                  {/* Card Content Info */}
-                  <div className="absolute bottom-0 inset-x-0 p-6 z-20 flex flex-col justify-end h-full pointer-events-none">
-                    <div className="pointer-events-auto">
-                      <div className="flex items-end justify-between mb-2">
-                        <h2 className="text-4xl font-black text-white leading-none tracking-tighter drop-shadow-lg">
+                    <div className="absolute bottom-6 left-6 right-6">
+                      <div className="flex items-center gap-2 mb-1 cursor-pointer">
+                        <h3 className="text-3xl font-bold text-white tracking-tighter">
                           {current.nickname}
-                        </h2>
+                          {currentAge ? `, ${currentAge}` : ""}
+                        </h3>
+                        <i className="fa-solid fa-circle-check text-sky-400"></i>
                       </div>
-
-                      <div className="flex items-center gap-2 mb-4 text-gray-300 text-sm font-medium">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="text-pink-500"
-                        >
-                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                          <circle cx="12" cy="10" r="3" />
-                        </svg>
-                        <span>{current.area}</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 mb-5">
-                        {(current.intents ?? []).map((i) => (
-                          <span
-                            key={i}
-                            className="px-2.5 py-1 rounded-md bg-white/10 backdrop-blur-sm border border-white/10 text-[10px] font-bold uppercase text-gray-200 tracking-wider"
-                          >
-                            {i}
-                          </span>
-                        ))}
-                      </div>
-
-                      {matchReasons.get(current.id)?.length ? (
-                        <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-3">
-                          <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">
-                            Why this match
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {matchReasons.get(current.id)?.map((reason) => (
-                              <span
-                                key={reason}
-                                className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-widest text-gray-300"
-                              >
-                                {reason}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {/* Action Bar (Redesigned) */}
-                      <div className="flex items-center justify-center gap-5 sm:gap-8 w-full max-w-md mx-auto mt-auto pt-4 pb-2 z-10">
-                        {/* --- PASS BUTTON --- */}
-                        {/* Logic: Destructive action. Glassy dark circle. Turns Red & Rotates on touch. */}
-                        <button
-                          onClick={handleSkip}
-                          className="group relative flex h-14 w-14 flex-col items-center justify-center rounded-full border border-white/5 bg-[#000000]/40 shadow-xl backdrop-blur-xl transition-all duration-300 active:scale-90 active:bg-rose-500/10 active:border-rose-500/50 active:shadow-[0_0_25px_-5px_rgba(244,63,94,0.4)] hover:bg-white/5"
-                          aria-label="Pass"
-                        >
-                          <div className="transition-transform duration-300 group-active:-rotate-90 group-hover:-rotate-90">
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="26"
-                              height="26"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className="text-gray-400 transition-colors duration-300 group-hover:text-rose-500 group-active:text-rose-500"
-                            >
-                              <line x1="18" y1="6" x2="6" y2="18" />
-                              <line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                          </div>
-                        </button>
-
-                        {/* --- CHAT BUTTON (HERO) --- */}
-                        {/* Logic: Primary Action. Gradient Pill. Liquid animation. Pulsing glow. */}
-                        <button
-                          onClick={handleChat}
-                          className="relative flex h-16 w-36 sm:w-44 items-center justify-center gap-3 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 shadow-[0_8px_20px_-6px_rgba(236,72,153,0.5)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_15px_30px_-5px_rgba(236,72,153,0.6)] active:translate-y-0 active:scale-95 active:shadow-none overflow-hidden group"
-                        >
-                          {/* Inner Shine Animation */}
-                          <div className="absolute inset-0 w-full h-full">
-                            <div className="absolute top-0 -left-[100%] h-full w-1/2 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-12 animate-[shimmer_2s_infinite]"></div>
-                          </div>
-
-                          <span className="relative z-10 text-sm font-black uppercase tracking-[0.15em] text-white drop-shadow-md">
-                            Say Hi
-                          </span>
-
-                          <div className="relative z-10">
-                            {/* Ping Animation Effect */}
-                            <span className="absolute -right-1 -top-1 h-3 w-3 animate-ping rounded-full bg-white opacity-75"></span>
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="20"
-                              height="20"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                              className="text-white drop-shadow-sm transform transition-transform duration-300 group-hover:rotate-12 group-active:scale-110"
-                            >
-                              <path d="M4.913 2.658c2.075-.27 4.19-.408 6.337-.408 2.147 0 4.262.139 6.337.408 1.922.25 3.291 1.861 3.405 3.727a4.403 4.403 0 00-1.032 1.722c-2.904.571-5.736.883-8.71 1.055v.65c0 .323-.234.606-.549.664a40.73 40.73 0 01-5.068 0 .675.675 0 01-.548-.664v-.65c-2.975-.172-5.806-.484-8.71-1.055a4.403 4.403 0 00-1.032-1.722A3.75 3.75 0 014.913 2.658z" />
-                              <path d="M20.919 11.312a5.908 5.908 0 01-1.221 1.481l-1.31 4.582a.75.75 0 01-1.174.406l-2.607-1.738a41.34 41.34 0 00-5.186.002l-2.607 1.738a.75.75 0 01-1.174-.406l-1.31-4.582a5.908 5.908 0 01-1.221-1.481 24.168 24.168 0 015.655 1.144c2.164.58 4.475.58 6.64 0a24.168 24.168 0 015.655-1.144z" />
-                            </svg>
-                          </div>
-                        </button>
-
-                        {/* --- LIKE BUTTON --- */}
-                        {/* Logic: Positive action. Glassy circle. Beating Heart. Turns Green/Pink. */}
-                        <button
-                          onClick={handleLike}
-                          className={`group relative flex h-14 w-14 flex-col items-center justify-center rounded-full border shadow-xl backdrop-blur-xl transition-all duration-300 active:scale-90 ${
-                            isCurrentLiked
-                              ? "border-green-500/50 bg-green-500/10 hover:border-green-400/70 hover:bg-green-500/15"
-                              : "border-white/5 bg-[#000000]/40 hover:bg-white/5 active:bg-green-500/10 active:border-green-500/50 active:shadow-[0_0_25px_-5px_rgba(34,197,94,0.4)]"
-                          }`}
-                          aria-label="Like"
-                        >
-                          <div
-                            className={`transition-all duration-300 ${isCurrentLiked ? "" : "group-hover:scale-110 group-active:scale-75"}`}
-                          >
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              width="26"
-                              height="26"
-                              viewBox="0 0 24 24"
-                              fill={isCurrentLiked ? "currentColor" : "none"}
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className={`transition-colors duration-300 ${
-                                isCurrentLiked
-                                  ? "text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.8)]"
-                                  : "text-gray-400 group-hover:text-green-400 group-active:text-green-400 group-active:fill-green-400/20"
-                              }`}
-                            >
-                              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-                            </svg>
-                          </div>
-                        </button>
-                      </div>
+                      <p className="text-slate-300 text-sm mb-2">
+                        <i className="fa-solid fa-location-dot mr-1 text-rose-500"></i>{" "}
+                        {current.area}
+                        {distanceLabel ? ` • ${distanceLabel}` : ""}
+                      </p>
+                      <p className="text-white/90 text-sm line-clamp-2 font-medium italic">
+                        "{current.bio ?? ""}"
+                      </p>
                     </div>
                   </div>
                 </div>
+              )}
+
+              <div className="flex items-center justify-center gap-6 mt-6 mb-8 relative z-20">
+                <button
+                  onClick={() => handleAction("left")}
+                  className="w-16 h-16 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center text-rose-500 text-2xl shadow-xl transition-all active:scale-75 hover:bg-slate-800"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+                <button
+                  onClick={handleStarAction}
+                  className="w-14 h-14 bg-slate-900 border border-amber-500/50 rounded-full flex items-center justify-center text-amber-400 text-xl shadow-lg transition-all active:scale-75 hover:bg-amber-400 hover:text-white"
+                >
+                  <i className="fa-solid fa-star"></i>
+                </button>
+                <button
+                  onClick={() => handleAction("right")}
+                  className="w-16 h-16 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center text-emerald-500 text-2xl shadow-xl transition-all active:scale-75 hover:bg-slate-800"
+                >
+                  <i className="fa-solid fa-heart"></i>
+                </button>
               </div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center bg-white/5 rounded-3xl border border-white/5 my-2 mx-[5px] px-6">
-                {loading || dailyDropLoading || dropGenerating ? (
-                  <>
-                    <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center text-2xl mb-4 shadow-inner">
-                      *
-                    </div>
-                    <h3 className="text-xl font-bold text-white mb-2">
-                      Loading Today&apos;s Matches
-                    </h3>
-                    <p className="text-gray-500 text-sm text-center max-w-[240px]">
-                      Curating your daily drop...
-                    </p>
-                  </>
-                ) : dropCompleted ? (
-                  <>
-                    <div className="w-20 h-20 bg-gray-900 rounded-full flex items-center justify-center text-xs font-black uppercase tracking-widest mb-4 shadow-inner">
-                      Lock
-                    </div>
-                    <h3 className="text-xl font-bold text-white mb-2">
-                      Daily Drop Locked
-                    </h3>
-                    <p className="text-gray-500 text-sm text-center max-w-[240px]">
-                      Next drop in {timeRemainingHours}h {timeRemainingMinutes}m
-                    </p>
-                    <p className="mt-3 text-[10px] uppercase tracking-widest text-gray-600">
-                      Come back for fresh matches
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center text-xs font-black uppercase tracking-widest mb-4 shadow-inner">
-                      Moon
-                    </div>
-                    <h3 className="text-xl font-bold text-white mb-2">
-                      No Matches Yet
-                    </h3>
-                    <p className="text-gray-500 text-sm text-center max-w-[200px]">
-                      Check back later as your drop refreshes.
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-          </>
+
+              <style>{`
+                  @keyframes confetti-fly {
+                    0% { transform: translate(0, 0) scale(0) rotate(0deg); opacity: 0; }
+                    10% { opacity: 1; transform: scale(1); }
+                    100% { transform: translate(var(--tx), var(--ty)) scale(1.5) rotate(var(--rot)); opacity: 0; }
+                  }
+                  .animate-confetti-fly {
+                    animation: confetti-fly var(--dur) cubic-bezier(0.1, 0.5, 0.2, 1) forwards;
+                  }
+                `}</style>
+            </div>
+          )
         ) : view === "live" ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-6">
-            <div className="w-20 h-20 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-3xl mb-4">
-              📡
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">
-              Live is being rebuilt
-            </h3>
-            <p className="text-gray-500 text-sm max-w-sm">
-              We paused live sessions to rebuild from scratch. This tab stays
-              here, but streaming is temporarily offline.
-            </p>
-            <div className="mt-6 px-4 py-2 rounded-full border border-white/10 text-[10px] uppercase tracking-widest text-gray-400">
-              Coming back soon
-            </div>
-          </div>
+          <LiveSection user={liveUser} onUpgrade={() => updateView("plans")} />
         ) : view === "hub" ? (
           <div className="flex-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-6">
             <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-transparent p-6">
@@ -3021,3 +3102,4 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 };
 
 export default DiscoverPage;
+

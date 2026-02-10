@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hushly</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- DotLottie Web Component -->
+    <script src="https://unpkg.com/@lottiefiles/dotlottie-wc@0.8.11/dist/dotlottie-wc.js" type="module"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800;900&display=swap');
+      body {
+        font-family: 'Outfit', sans-serif;
+        background-color: #0f172a;
+        color: white;
+        margin: 0;
+        overflow-x: hidden;
+      }
+      .glass {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .gradient-primary {
+        background: linear-gradient(135deg, #f43f5e 0%, #fb923c 100%);
+      }
+      .game-card-shadow {
+        box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
+      }
+      .animate-float {
+        animation: float 3s ease-in-out infinite;
+      }
+      
+      @keyframes text-swap {
+        0% { transform: translateY(10px); opacity: 0; }
+        10% { transform: translateY(0px); opacity: 1; }
+        90% { transform: translateY(0px); opacity: 1; }
+        100% { transform: translateY(-10px); opacity: 0; }
+      }
+      .animate-text-swap {
+        animation: text-swap 4s ease-in-out infinite;
+      }
+
+      /* Global background heart animation */
+      @keyframes bg-heart-float {
+        0% { 
+          transform: translateY(105vh) rotate(10deg); 
+          opacity: 0; 
+        }
+        80% {
+          opacity: 0.1;
+        }
+        100% { 
+          transform: translateY(-45vh) rotate(0deg); 
+          opacity: 0.3; 
+        }
+      }
+      .bg-heart-particle {
+        position: fixed;
+        bottom: 0;
+        pointer-events: none;
+        color: #f43f5e;
+        z-index: 0;
+        animation: bg-heart-float var(--dur) linear infinite;
+        animation-delay: var(--delay);
+        left: var(--left);
+        font-size: var(--size);
+        filter: drop-shadow(0 0 5px rgba(244, 63, 94, 0.2));
+      }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>

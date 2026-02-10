@@ -1,0 +1,9 @@
+{
+  "name": "Copy of Hushly - Kenyan Dating & Social Hub",
+  "description": "A premium Kenyan dating experience featuring daily profile drops, live streaming, a game hub for bonding, and a dedicated escort service portal.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
