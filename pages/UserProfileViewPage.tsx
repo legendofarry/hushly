@@ -15,29 +15,276 @@ const TTS_API_BASE = import.meta.env.VITE_TTS_API_BASE || "";
 const buildTtsUrl = (path: string) =>
   TTS_API_BASE ? `${TTS_API_BASE.replace(/\/$/, "")}${path}` : path;
 
-const buildVoiceIntroText = (profile: UserProfile) => {
-  const greetings = [
-    "Hey, um...",
-    "Okay, so...",
-    "Hi there, mmh...",
-    "Hey... so, yeah,",
-  ];
-  const fillers = ["um", "mmh", "okay", "so", "like"];
-  const bioLeads = [
-    "I guess my vibe is",
-    "My bio says",
-    "In my words",
-    "I wrote that",
-  ];
-  const closers = [
-    "Anyway, yeah... that's me.",
-    "Okay, thanks for listening.",
-    "Cool, yeah... that's me.",
-    "Um... yeah, that's me.",
-  ];
+const VOICE_TEMPLATE_STORAGE_KEY = "hushly.aiVoiceTemplateByProfile.v1";
+const VOICE_INTRO_TEMPLATES = [
+  `Um... okay.
+Hi. I'm {{name}}.
+Yeah... this feels a little strange.
+I'm in {{location}}.
+I'm here for {{intent}}.
+Mm... fingers crossed.
+{{bio}}
+If you're still here...
+hi. That's nice.`,
+  `Mm... hi.
+So... I'm {{name}}.
+Nice to meet you.
+Kind of.
+I live in {{location}}.
+I'm here for {{intent}}.
+Yeah... that's me.`,
+  `Okay... um.
+Hey.
+I'm {{name}}.
+I'm based in {{location}}.
+I'm here for {{intent}}.
+Hopefully the fun kind.
+{{bio}}
+Mm... yeah.
+That's the intro.`,
+  `Um... hey.
+So... I'm {{name}}.
+This part is always awkward.
+I'm in {{location}}.
+I'm here for {{intent}}.
+If you're listening...
+mmh... respect.`,
+  `Mm... okay.
+Hi. I'm {{name}}.
+Yes, this is happening.
+I live in {{location}}.
+I'm here for {{intent}}.
+{{bio}}
+So... yeah.
+Hello.`,
+  `Um... hi there.
+I'm {{name}}.
+Nice to meet you.
+Even if it's a little weird.
+I'm in {{location}}.
+I'm here for {{intent}}.
+Mm... that's me.`,
+  `Okay... so.
+Hi. I'm {{name}}.
+Deep breath.
+I'm based in {{location}}.
+I'm here for {{intent}}.
+{{bio}}
+Mm... hi.`,
+  `Mm... hey.
+I'm {{name}}.
+This feels awkward already.
+I live in {{location}}.
+I'm here for {{intent}}.
+If you smiled...
+yeah... same.`,
+  `Um... okay.
+So... I'm {{name}}.
+Let's do this.
+I'm in {{location}}.
+I'm here for {{intent}}.
+No pressure.
+{{bio}}
+Mm... hi.`,
+  `Mm... hi.
+I'm {{name}}.
+Nice to meet you.
+I think.
+I live in {{location}}.
+I'm here for {{intent}}.
+So... yeah.
+That's it.`,
+  `Okay... um.
+Hi.
+I'm {{name}}.
+I'm based in {{location}}.
+I'm here for {{intent}}.
+Hopefully something good.
+{{bio}}
+Mm... hello.`,
+  `Mm... hey you.
+So... I'm {{name}}.
+Yeah, that's my voice.
+I live in {{location}}.
+I'm here for {{intent}}.
+If you're curious...
+mmh... I like that.`,
+  `Um... hi.
+I'm {{name}}.
+This is slightly uncomfortable.
+In a good way.
+I'm in {{location}}.
+I'm here for {{intent}}.
+{{bio}}
+So... yeah.`,
+  `Okay... so.
+Hi. I'm {{name}}.
+Nice to meet you.
+Officially.
+I live in {{location}}.
+I'm here for {{intent}}.
+Mm... that's me.`,
+  `Mm... okay.
+I'm {{name}}.
+Hi.
+I'm based in {{location}}.
+I'm here for {{intent}}.
+{{bio}}
+If you're listening...
+hi again.`,
+  `Um... hey.
+I'm {{name}}.
+This is my little intro.
+I live in {{location}}.
+I'm here for {{intent}}.
+Mm... hope that sounded okay.`,
+  `Mm... hi there.
+So... I'm {{name}}.
+Nice to meet you.
+I'm in {{location}}.
+I'm here for {{intent}}.
+Yeah...
+that's me.`,
+  `Okay... um.
+Hi. I'm {{name}}.
+This is harder than it looks.
+I live in {{location}}.
+I'm here for {{intent}}.
+{{bio}}
+Mm... hi.`,
+  `Mm... okay.
+I'm {{name}}.
+Hello.
+I'm based in {{location}}.
+I'm here for {{intent}}.
+If you're still listening...
+that's kind of sweet.`,
+  `Um... hi.
+So... I'm {{name}}.
+Yeah... that's me.
+I live in {{location}}.
+I'm here for {{intent}}.
+Mm... that's all.`,
+  `Okay... hey.
+I'm {{name}}.
+Nice to meet you.
+I'm in {{location}}.
+I'm here for {{intent}}.
+{{bio}}
+Mm... hi again.`,
+  `Mm... hi.
+I'm {{name}}.
+This feels personal already.
+I live in {{location}}.
+I'm here for {{intent}}.
+So... yeah.`,
+  `Um... okay.
+Hi. I'm {{name}}.
+Thanks for listening.
+I'm based in {{location}}.
+I'm here for {{intent}}.
+{{bio}}
+Mm... hello.`,
+  `Mm... hey.
+So... I'm {{name}}.
+Little nervous.
+I live in {{location}}.
+I'm here for {{intent}}.
+Yeah...
+that's me.`,
+  `Okay... um.
+Hi.
+I'm {{name}}.
+I'm in {{location}}.
+I'm here for {{intent}}.
+If you smiled...
+mmh... good sign.`,
+  `Mm... hi there.
+I'm {{name}}.
+Nice to meet you.
+Honestly.
+I live in {{location}}.
+I'm here for {{intent}}.
+Mm... yeah.`,
+  `Um... okay.
+So... I'm {{name}}.
+This is my moment.
+I'm based in {{location}}.
+I'm here for {{intent}}.
+{{bio}}
+Hi.`,
+  `Mm... hey.
+I'm {{name}}.
+This feels oddly intimate.
+I live in {{location}}.
+I'm here for {{intent}}.
+Mm... hello.`,
+  `Okay... so.
+Hi. I'm {{name}}.
+Let's keep this simple.
+I'm in {{location}}.
+I'm here for {{intent}}.
+Yeah...
+that's me.`,
+  `Mm... hi.
+I'm {{name}}.
+Thanks for being here.
+I live in {{location}}.
+I'm here for {{intent}}.
+If you're still listening...
+mmh... I like you already.`,
+];
 
-  const pick = (items: string[]) =>
-    items[Math.floor(Math.random() * items.length)];
+const readVoiceTemplateHistory = () => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const raw = window.localStorage.getItem(VOICE_TEMPLATE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed as Record<string, number>;
+    }
+  } catch (error) {
+    console.warn("Unable to read voice template history", error);
+  }
+  return {};
+};
+
+const writeVoiceTemplateHistory = (value: Record<string, number>) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      VOICE_TEMPLATE_STORAGE_KEY,
+      JSON.stringify(value),
+    );
+  } catch (error) {
+    console.warn("Unable to store voice template history", error);
+  }
+};
+
+const pickVoiceTemplate = (profileId?: string | null) => {
+  const templates = VOICE_INTRO_TEMPLATES;
+  if (!profileId || templates.length === 0) {
+    return templates[0] ?? "";
+  }
+  const history = readVoiceTemplateHistory();
+  const lastIndex =
+    typeof history[profileId] === "number" ? history[profileId] : null;
+  const choices = templates
+    .map((_, index) => index)
+    .filter((index) => index !== lastIndex);
+  const pickFrom = choices.length ? choices : templates.map((_, i) => i);
+  const nextIndex = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+  history[profileId] = nextIndex;
+  writeVoiceTemplateHistory(history);
+  return templates[nextIndex] ?? templates[0] ?? "";
+};
+
+const buildVoiceIntroText = (profile: UserProfile) => {
   const name = profile.nickname || "me";
   const location = (profile.area || "around here").split(" - ")[0];
   const intentRaw =
@@ -50,20 +297,18 @@ const buildVoiceIntroText = (profile: UserProfile) => {
     .replace(/["“”]/g, "")
     .replace(/\s+/g, " ")
     .trim();
-  const bioSnippet =
-    rawBio.length > 120
-      ? `${rawBio.slice(0, 120).trim()}...`
-      : rawBio || "I like good vibes and honest chats.";
+  const bioSnippet = rawBio.length > 120 ? `${rawBio.slice(0, 120).trim()}...` : rawBio;
+  const safeBio = bioSnippet || "I like good vibes and honest chats.";
+  const bioFinal = /[.!?]$/.test(safeBio) ? safeBio : `${safeBio}.`;
 
-  const intro = [
-    `${pick(greetings)} I'm ${name}.`,
-    `I'm in ${location}.`,
-    `I'm here for ${intentLabel} vibes.`,
-    `${pick(fillers)} ${pick(bioLeads)}: ${bioSnippet}.`,
-    pick(closers),
-  ];
+  const template = pickVoiceTemplate(profile.id || profile.nickname);
+  const filled = template
+    .replace(/{{name}}/g, name)
+    .replace(/{{location}}/g, location)
+    .replace(/{{intent}}/g, intentLabel)
+    .replace(/{{bio}}/g, bioFinal);
 
-  return intro.join(" ");
+  return filled.replace(/\s+/g, " ").trim();
 };
 
 const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
@@ -83,11 +328,51 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
   const [aiAudioError, setAiAudioError] = useState<string | null>(null);
   const [aiMuted, setAiMuted] = useState(false);
   const [aiPlaying, setAiPlaying] = useState(false);
+  const [aiNeedsGesture, setAiNeedsGesture] = useState(false);
   const aiAudioRef = useRef<HTMLAudioElement | null>(null);
   const aiAutoPlayedRef = useRef<string | null>(null);
   const aiAutoTimerRef = useRef<number | null>(null);
   const aiRequestRef = useRef<AbortController | null>(null);
   const aiMutedRef = useRef(false);
+  const aiAutoStartRef = useRef<number | null>(null);
+  const aiProfileIdRef = useRef<string | null>(null);
+  const aiGestureRetryRef = useRef(false);
+  const aiAutoPendingRef = useRef(false);
+
+  const attemptAiAutoPlay = useCallback(
+    (profileId: string, fromGesture = false) => {
+      if (aiAutoPlayedRef.current === profileId) return;
+      if (aiMutedRef.current) return;
+      const audio = aiAudioRef.current;
+      if (!audio) return;
+      audio.currentTime = 0;
+      audio
+        .play()
+        .then(() => {
+          aiAutoPlayedRef.current = profileId;
+          aiAutoPendingRef.current = false;
+          setAiNeedsGesture(false);
+          if (fromGesture) {
+            setAiAudioError(null);
+          }
+        })
+        .catch(() => {
+          if (fromGesture) return;
+          setAiAudioError("Tap replay to hear the intro.");
+          setAiNeedsGesture(true);
+          if (aiGestureRetryRef.current) return;
+          aiGestureRetryRef.current = true;
+          const retry = () => {
+            aiGestureRetryRef.current = false;
+            if (aiProfileIdRef.current !== profileId) return;
+            attemptAiAutoPlay(profileId, true);
+          };
+          document.addEventListener("pointerdown", retry, { once: true });
+          document.addEventListener("keydown", retry, { once: true });
+        });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -141,9 +426,13 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
       setAiAudioUrl(null);
       setAiAudioError(null);
       setAiAudioLoading(false);
+      setAiNeedsGesture(false);
       stopAiAudio();
       return;
     }
+    aiProfileIdRef.current = profile.id;
+    aiGestureRetryRef.current = false;
+    aiAutoStartRef.current = Date.now();
     const text = buildVoiceIntroText(profile);
     setAiAudioUrl(null);
     setAiAudioError(null);
@@ -184,20 +473,15 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
         }
         setAiAudioUrl(payload.audioUrl);
         setAiAudioLoading(false);
-        if (aiAutoPlayedRef.current === profile.id) return;
-        if (aiMutedRef.current) return;
+        aiAutoPendingRef.current = true;
         const elapsed = Date.now() - startedAt;
         const delay = Math.max(0, 2000 - elapsed);
+        if (aiAutoTimerRef.current) {
+          window.clearTimeout(aiAutoTimerRef.current);
+          aiAutoTimerRef.current = null;
+        }
         aiAutoTimerRef.current = window.setTimeout(() => {
-          if (aiAutoPlayedRef.current === profile.id) return;
-          if (aiMutedRef.current) return;
-          aiAutoPlayedRef.current = profile.id;
-          const audio = aiAudioRef.current;
-          if (!audio) return;
-          audio.currentTime = 0;
-          audio.play().catch(() => {
-            setAiAudioError("Tap replay to hear the intro.");
-          });
+          attemptAiAutoPlay(profile.id);
         }, delay);
       })
       .catch((error) => {
@@ -212,6 +496,21 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
       stopAiAudio();
     };
   }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    const handleGesture = () => {
+      if (!aiAudioUrl) return;
+      if (!aiAutoPendingRef.current) return;
+      attemptAiAutoPlay(profile.id, true);
+    };
+    document.addEventListener("pointerdown", handleGesture);
+    document.addEventListener("keydown", handleGesture);
+    return () => {
+      document.removeEventListener("pointerdown", handleGesture);
+      document.removeEventListener("keydown", handleGesture);
+    };
+  }, [profile?.id, aiAudioUrl, attemptAiAutoPlay]);
 
   useEffect(() => {
     if (!profile?.voiceIntroUrl) return;
@@ -369,11 +668,17 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
                     <span className="text-rose-300">{aiAudioError}</span>
                   )}
                 </div>
+                {aiNeedsGesture && !aiMuted && (
+                  <div className="mt-3 text-[10px] uppercase tracking-widest text-amber-200">
+                    Tap anywhere to enable voice auto-play.
+                  </div>
+                )}
                 {aiAudioUrl && (
                   <audio
                     ref={aiAudioRef}
                     src={aiAudioUrl}
                     preload="auto"
+                    playsInline
                     onPlay={() => {
                       audioRef.current?.pause();
                       setAiPlaying(true);
