@@ -365,7 +365,9 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   const celebrationActiveRef = useRef(false);
   const debugEnabled = useMemo(() => {
     if (typeof window === "undefined") return false;
-    return new URLSearchParams(window.location.search).get("webrtcDebug") === "1";
+    return (
+      new URLSearchParams(window.location.search).get("webrtcDebug") === "1"
+    );
   }, []);
 
   const isHost = room?.hostId === user.id;
@@ -1160,9 +1162,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     fallbackNickname?: string,
   ): SelectedUser => {
     const viewer =
-      viewers.find(
-        (item) => (item?.userId ?? item?.id) === userId,
-      ) ?? null;
+      viewers.find((item) => (item?.userId ?? item?.id) === userId) ?? null;
     const guest = guests.find((item) => item.userId === userId) ?? null;
     const nickname =
       viewer?.nickname || guest?.nickname || fallbackNickname || "User";
@@ -1965,9 +1965,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
                   <p className="mt-1 font-semibold">
                     {room.pinnedMessage.senderNickname}
                   </p>
-                  <p className="text-amber-100/90">
-                    {room.pinnedMessage.text}
-                  </p>
+                  <p className="text-amber-100/90">{room.pinnedMessage.text}</p>
                 </div>
               )}
               {messages.map((message) => (
@@ -2238,7 +2236,6 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
             </div>
           </div>
         )}
-
       </div>
     );
   }
@@ -2413,7 +2410,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
             const senderName =
               message.type === "system"
                 ? "System"
-                : message.senderNickname ?? "Guest";
+                : (message.senderNickname ?? "Guest");
             const senderColor =
               message.type === "system"
                 ? "text-slate-400"
@@ -2501,7 +2498,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
           >
             Send
           </button>
-          <div className="bg-rose-500/10 border border-rose-500/20 p-2 rounded-2xl flex gap-2">
+          <div className="bg-rose-500/10 border border-rose-500/20 p-2 rounded-2xl flex gap-2 bottom-[6rem] right-6 absolute flex-col">
             {REACTION_OPTIONS.map((reaction) => (
               <button
                 key={`host-reaction-${reaction}`}
@@ -2528,26 +2525,7 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
         </div>
       )}
 
-      {isOnStage && (
-        <div className="fixed bottom-4 left-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-2">
-          <button
-            onClick={() => setIsMicMuted((prev) => !prev)}
-            className={`rounded-full px-3 py-1 text-[9px] uppercase tracking-widest ${
-              isMicMuted ? "bg-red-500/80" : "bg-white/10"
-            }`}
-          >
-            {isMicMuted ? "Mic Off" : "Mic On"}
-          </button>
-          <button
-            onClick={() => setIsCameraOff((prev) => !prev)}
-            className={`rounded-full px-3 py-1 text-[9px] uppercase tracking-widest ${
-              isCameraOff ? "bg-red-500/80" : "bg-white/10"
-            }`}
-          >
-            {isCameraOff ? "Cam Off" : "Cam On"}
-          </button>
-        </div>
-      )}
+      {isOnStage && null}
 
       {showRequests && isHost && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4">
@@ -2725,6 +2703,30 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
             </div>
             {isHost && (
               <div className="mt-6 space-y-2">
+                {isOnStage && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsMicMuted((prev) => !prev)}
+                      className={`flex-1 rounded-full px-3 py-2 text-[10px] uppercase tracking-widest ${
+                        isMicMuted
+                          ? "border border-red-500/40 text-red-300"
+                          : "border border-white/10 text-gray-200"
+                      }`}
+                    >
+                      {isMicMuted ? "Mic Off" : "Mic On"}
+                    </button>
+                    <button
+                      onClick={() => setIsCameraOff((prev) => !prev)}
+                      className={`flex-1 rounded-full px-3 py-2 text-[10px] uppercase tracking-widest ${
+                        isCameraOff
+                          ? "border border-red-500/40 text-red-300"
+                          : "border border-white/10 text-gray-200"
+                      }`}
+                    >
+                      {isCameraOff ? "Cam Off" : "Cam On"}
+                    </button>
+                  </div>
+                )}
                 <button
                   onClick={() => {
                     setShowSettings(false);
