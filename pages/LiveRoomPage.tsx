@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { doc, onSnapshot } from "firebase/firestore";
+import { arrayRemove, arrayUnion, doc, onSnapshot } from "firebase/firestore";
 import AppImage from "../components/AppImage";
 import { db } from "../firebase";
 import {
@@ -10,6 +10,7 @@ import {
   endLiveRoom,
   ensureLiveConnection,
   incrementLiveLike,
+  deleteLiveMessage,
   listenToJoinRequests,
   listenToLiveCandidates,
   listenToLiveConnection,
@@ -26,6 +27,7 @@ import {
   updateJoinRequestStatus,
   updateLiveConnection,
   listenToLiveMute,
+  updateLiveRoom,
 } from "../services/liveService";
 import { createLiveLikeAchievement } from "../services/liveAchievementService";
 import { createNotification } from "../services/notificationService";
@@ -84,6 +86,22 @@ const CONFETTI_COLORS = [
 const ACHIEVEMENT_DISPLAY_MS = 5200;
 const CONFETTI_CLEANUP_MS = 4200;
 const CONFETTI_PIECE_COUNT = 140;
+const MESSAGE_COLOR_CLASSES = [
+  "text-rose-400",
+  "text-sky-400",
+  "text-amber-400",
+  "text-emerald-400",
+  "text-purple-400",
+];
+
+const getMessageColor = (seed?: string) => {
+  if (!seed) return "text-slate-200";
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) % 997;
+  }
+  return MESSAGE_COLOR_CLASSES[Math.abs(hash) % MESSAGE_COLOR_CLASSES.length];
+};
 
 const formatDuration = (ms: number) => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -154,6 +172,12 @@ type DebugSnapshot = {
   pendingAnswers: number;
   pendingCandidates: number;
   updatedAt: number;
+};
+
+type SelectedUser = {
+  id: string;
+  nickname: string;
+  photoUrl?: string;
 };
 
 const CELEBRATION_STYLES = `
@@ -281,6 +305,13 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowUpdating, setIsFollowUpdating] = useState(false);
+  const [showAudience, setShowAudience] = useState(false);
+  const [showLiveEnded, setShowLiveEnded] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<SelectedUser | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<LiveMessage | null>(
+    null,
+  );
+  const [replyTarget, setReplyTarget] = useState<SelectedUser | null>(null);
   const [emojiBursts, setEmojiBursts] = useState<
     Array<{
       id: string;
@@ -338,6 +369,9 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   }, []);
 
   const isHost = room?.hostId === user.id;
+  const isModerator = Boolean(room?.moderatorIds?.includes(user.id));
+  const canModerate = Boolean(isHost || isModerator);
+  const isBanned = Boolean(room?.bannedUserIds?.includes(user.id));
   const isGuest = guests.some((guest) => guest.userId === user.id);
   const isOnStage = Boolean(isHost || isGuest);
 
@@ -402,12 +436,25 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
   );
 
   const hostPhoto = room?.hostPhotoUrl ?? user.photoUrl;
+  const hostDisplayName =
+    room?.hostNickname || user.nickname || user.realName || "You";
 
   const viewerIds = useMemo(() => {
     return viewers
       .map((viewer) => viewer?.userId ?? viewer?.id)
       .filter((id: string) => Boolean(id)) as string[];
   }, [viewers]);
+
+  const audienceList = useMemo(() => {
+    if (!room) return [] as SelectedUser[];
+    return viewers
+      .map((viewer) => ({
+        id: viewer?.userId ?? viewer?.id,
+        nickname: viewer?.nickname ?? "Viewer",
+        photoUrl: viewer?.photoUrl,
+      }))
+      .filter((viewer) => viewer.id && viewer.id !== room.hostId);
+  }, [room, viewers]);
 
   const connectionTargets = useMemo(() => {
     const stageIds = stageParticipants
@@ -725,9 +772,15 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     if (!room) return;
     if (room.status === "ended") {
       setMenuMessage("Live has ended.");
-      window.setTimeout(() => navigate("/discover"), 1200);
+      if (isHost) {
+        window.setTimeout(() => navigate("/discover?view=live"), 1200);
+      } else {
+        setShowLiveEnded(true);
+      }
+    } else {
+      setShowLiveEnded(false);
     }
-  }, [room?.status, navigate, room]);
+  }, [room?.status, navigate, room, isHost]);
 
   useEffect(() => {
     if (!roomId || !isHost) return;
@@ -780,11 +833,12 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
 
   const chatAllowedByAccess = useMemo(() => {
     if (!room) return false;
+    if (canModerate) return true;
     if (isOnStage) return true;
     if (room.chatAccess === "noone") return false;
     if (room.chatAccess === "followers" && !isFollowing) return false;
     return true;
-  }, [room, isFollowing, isOnStage]);
+  }, [room, isFollowing, isOnStage, canModerate]);
 
   const isMutedByTimer = useMemo(() => {
     if (!room?.moderation?.muteNewUsers) return false;
@@ -792,7 +846,33 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     return Date.now() - viewerJoinedAt < 30000;
   }, [room?.moderation?.muteNewUsers, viewerJoinedAt]);
 
-  const canSendChat = chatAllowedByAccess && !isMuted && !isMutedByTimer;
+  const chatPausedForUser = Boolean(room?.chatPaused && !canModerate);
+  const livePausedForUser = Boolean(room?.isPaused && !canModerate);
+  const canSendChat =
+    chatAllowedByAccess &&
+    !isMuted &&
+    !isMutedByTimer &&
+    !chatPausedForUser &&
+    !livePausedForUser &&
+    !isBanned;
+
+  const chatStatusLabel = room?.isPaused
+    ? "Live paused"
+    : room?.chatPaused
+      ? "Comments paused"
+      : canSendChat
+        ? "Chat is open"
+        : isMutedByTimer
+          ? "Muted for 30s"
+          : "Chat restricted";
+
+  const chatPlaceholder = canSendChat
+    ? "Type..."
+    : room?.isPaused
+      ? "Live paused"
+      : room?.chatPaused
+        ? "Comments paused"
+        : "Chat locked";
 
   const scrollChatToBottom = (behavior: ScrollBehavior = "auto") => {
     if (!chatScrollRef.current) return;
@@ -823,7 +903,15 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     if (!roomId || !room) return;
     if (!chatInput.trim()) return;
     if (!canSendChat) {
-      setChatError("Chat is locked right now.");
+      if (isBanned) {
+        setChatError("You are removed from this live.");
+      } else if (livePausedForUser) {
+        setChatError("Live is paused.");
+      } else if (chatPausedForUser) {
+        setChatError("Comments are paused.");
+      } else {
+        setChatError("Chat is locked right now.");
+      }
       return;
     }
     const now = Date.now();
@@ -832,11 +920,14 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
       return;
     }
     lastMessageAtRef.current = now;
-    const cleaned = sanitizeMessage(
-      chatInput.trim(),
-      room.moderation.filterBadWords,
-    );
+    const trimmed = chatInput.trim();
+    const withReply =
+      replyTarget && !trimmed.startsWith(`@${replyTarget.nickname}`)
+        ? `@${replyTarget.nickname} ${trimmed}`
+        : trimmed;
+    const cleaned = sanitizeMessage(withReply, room.moderation.filterBadWords);
     setChatInput("");
+    setReplyTarget(null);
     setChatError(null);
     try {
       await sendLiveMessage({
@@ -1061,6 +1152,147 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     } catch (error) {
       console.error(error);
       setMenuError("Unable to mute user.");
+    }
+  };
+
+  const resolveUserMeta = (
+    userId: string,
+    fallbackNickname?: string,
+  ): SelectedUser => {
+    const viewer =
+      viewers.find(
+        (item) => (item?.userId ?? item?.id) === userId,
+      ) ?? null;
+    const guest = guests.find((item) => item.userId === userId) ?? null;
+    const nickname =
+      viewer?.nickname || guest?.nickname || fallbackNickname || "User";
+    const photoUrl = viewer?.photoUrl || guest?.photoUrl;
+    return { id: userId, nickname, photoUrl };
+  };
+
+  const openUserOptions = (message: LiveMessage) => {
+    if (!canModerate) return;
+    if (message.type === "system") return;
+    setSelectedMessage(null);
+    setSelectedUser(resolveUserMeta(message.senderId, message.senderNickname));
+  };
+
+  const openMessageOptions = (message: LiveMessage) => {
+    if (!canModerate) return;
+    if (message.type !== "message") return;
+    setSelectedUser(null);
+    setSelectedMessage(message);
+  };
+
+  const handlePinMessage = async (message: LiveMessage) => {
+    if (!roomId || !room) return;
+    try {
+      await updateLiveRoom(roomId, {
+        pinnedMessage: {
+          id: message.id,
+          senderId: message.senderId,
+          senderNickname: message.senderNickname,
+          text: message.text,
+          createdAt: message.createdAt,
+        },
+      });
+      setSelectedMessage(null);
+      setMenuMessage("Comment pinned.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to pin comment.");
+    }
+  };
+
+  const handleUnpinMessage = async () => {
+    if (!roomId) return;
+    try {
+      await updateLiveRoom(roomId, { pinnedMessage: null });
+      setMenuMessage("Pinned comment cleared.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to clear pin.");
+    }
+  };
+
+  const handleRemoveMessage = async (message: LiveMessage) => {
+    if (!roomId) return;
+    try {
+      await deleteLiveMessage(roomId, message.id);
+      if (room?.pinnedMessage?.id === message.id) {
+        await updateLiveRoom(roomId, { pinnedMessage: null });
+      }
+      setSelectedMessage(null);
+      setMenuMessage("Comment removed.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to remove comment.");
+    }
+  };
+
+  const handleReplyToMessage = (message: LiveMessage) => {
+    setReplyTarget(resolveUserMeta(message.senderId, message.senderNickname));
+    setChatInput(`@${message.senderNickname} `);
+    setSelectedMessage(null);
+  };
+
+  const handleToggleModerator = async (targetId: string, makeMod: boolean) => {
+    if (!roomId) return;
+    try {
+      await updateLiveRoom(roomId, {
+        moderatorIds: makeMod ? arrayUnion(targetId) : arrayRemove(targetId),
+      });
+      setMenuMessage(makeMod ? "Moderator added." : "Moderator removed.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to update moderator.");
+    }
+  };
+
+  const handleBanUser = async (targetId: string) => {
+    if (!roomId) return;
+    try {
+      await updateLiveRoom(roomId, {
+        bannedUserIds: arrayUnion(targetId),
+        moderatorIds: arrayRemove(targetId),
+      });
+      await removeViewer(roomId, targetId);
+      setMenuMessage("User banned.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to ban user.");
+    }
+  };
+
+  const handleToggleChatPaused = async () => {
+    if (!roomId || !room || !isHost) return;
+    const next = !room.chatPaused;
+    try {
+      await updateLiveRoom(roomId, { chatPaused: next });
+      await sendLiveSystemMessage({
+        roomId,
+        text: next ? "Host paused comments." : "Host resumed comments.",
+      });
+      setMenuMessage(next ? "Comments paused." : "Comments resumed.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to update chat pause.");
+    }
+  };
+
+  const handleToggleLivePaused = async () => {
+    if (!roomId || !room || !isHost) return;
+    const next = !room.isPaused;
+    try {
+      await updateLiveRoom(roomId, { isPaused: next });
+      await sendLiveSystemMessage({
+        roomId,
+        text: next ? "Host paused the live." : "Live resumed.",
+      });
+      setMenuMessage(next ? "Live paused." : "Live resumed.");
+    } catch (error) {
+      console.error(error);
+      setMenuError("Unable to pause live.");
     }
   };
 
@@ -1531,6 +1763,27 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
     );
   }
 
+  if (isBanned && !isHost) {
+    return (
+      <div className="relative h-screen bg-black text-white flex items-center justify-center">
+        <div className="max-w-sm rounded-3xl border border-white/10 bg-[#141414] p-6 text-center">
+          <h2 className="text-lg font-black uppercase tracking-widest text-rose-400">
+            Removed
+          </h2>
+          <p className="mt-3 text-sm text-gray-400">
+            You have been removed from this live.
+          </p>
+          <button
+            onClick={() => navigate("/discover?view=live")}
+            className="mt-6 rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-black"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!isHost) {
     return (
       <div className="relative h-screen overflow-hidden bg-black text-white">
@@ -1655,10 +1908,15 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
                   <span className="rounded-md bg-kipepeo-pink px-2 py-1 text-[9px] font-black">
                     Live
                   </span>
+                  {room.isPaused && (
+                    <span className="rounded-md bg-white/10 px-2 py-1 text-[9px] font-black text-amber-200">
+                      Paused
+                    </span>
+                  )}
                   <span>{formatCompact(room.viewerCount)}</span>
                 </div>
                 <button
-                  onClick={() => navigate("/discover")}
+                  onClick={() => navigate("/discover?view=live")}
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
                   aria-label="Close live"
                 >
@@ -1698,18 +1956,56 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
               onScroll={handleChatScroll}
               className="absolute bottom-0 left-4 right-16 max-h-[45%] space-y-3 overflow-y-auto pr-2"
             >
-              <div className="fixed">
-                <h2>chats</h2>
-              </div>
+              {room.pinnedMessage && (
+                <div className="mb-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                  <div className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-amber-200">
+                    <i className="fa-solid fa-thumbtack"></i>
+                    <span>Pinned</span>
+                  </div>
+                  <p className="mt-1 font-semibold">
+                    {room.pinnedMessage.senderNickname}
+                  </p>
+                  <p className="text-amber-100/90">
+                    {room.pinnedMessage.text}
+                  </p>
+                </div>
+              )}
               {messages.map((message) => (
                 <div key={message.id} className="flex items-start gap-2 mt-4">
                   <div className="h-9 w-9 overflow-hidden rounded-full border border-white/10 bg-black/60 flex items-center justify-center text-xs font-bold text-white">
                     {message.senderNickname?.[0]?.toUpperCase() ?? "?"}
                   </div>
-                  <div className="rounded-2xl bg-black/50 px-3 py-2 text-xs text-white/90 backdrop-blur">
-                    <p className="text-[10px] uppercase tracking-widest text-white/60">
-                      {message.senderNickname}
-                    </p>
+                  <div
+                    className={`rounded-2xl px-3 py-2 text-xs text-white/90 backdrop-blur ${
+                      message.type === "system"
+                        ? "bg-white/10 text-white/60"
+                        : message.type === "reaction"
+                          ? "bg-kipepeo-pink/20 text-kipepeo-pink text-lg"
+                          : "bg-black/50"
+                    }`}
+                    onClick={() => openMessageOptions(message)}
+                  >
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-white/60">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openUserOptions(message);
+                        }}
+                        className="hover:text-white"
+                        disabled={!canModerate}
+                      >
+                        {message.type === "system"
+                          ? "System"
+                          : message.senderNickname}
+                      </button>
+                      {message.senderId === room.hostId && (
+                        <span className="flex items-center gap-1 text-amber-300">
+                          <i className="fa-solid fa-crown text-[10px]"></i>
+                          Host
+                        </span>
+                      )}
+                    </div>
                     <p className="mt-1">{message.text}</p>
                   </div>
                 </div>
@@ -1740,11 +2036,25 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
           </div>
 
           <div className="px-4 pb-5 space-y-3">
+            {replyTarget && (
+              <div className="flex items-center justify-between rounded-full bg-white/10 px-3 py-1 text-[10px] uppercase tracking-widest text-white/70">
+                <span>
+                  Replying to{" "}
+                  <span className="text-white">{replyTarget.nickname}</span>
+                </span>
+                <button
+                  onClick={() => setReplyTarget(null)}
+                  className="text-white/60 hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             <div className="flex items-center gap-2 rounded-full bg-black/70 px-3 py-2 backdrop-blur">
               <input
                 value={chatInput}
                 onChange={(event) => setChatInput(event.target.value)}
-                placeholder={canSendChat ? "Type..." : "Chat locked"}
+                placeholder={chatPlaceholder}
                 disabled={!canSendChat}
                 className="flex-1 bg-transparent text-sm text-white placeholder-gray-400 focus:outline-none disabled:opacity-60"
                 onKeyDown={(event) => {
@@ -1787,243 +2097,436 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
             </div>
           </div>
         </div>
+        {room.isPaused && !showLiveEnded && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70">
+            <div className="rounded-3xl border border-white/10 bg-black/80 px-6 py-5 text-center">
+              <p className="text-[10px] uppercase tracking-widest text-gray-400">
+                Live Paused
+              </p>
+              <h3 className="mt-2 text-lg font-black">We'll be right back</h3>
+            </div>
+          </div>
+        )}
+        {showLiveEnded && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80">
+            <div className="relative rounded-3xl border border-white/10 bg-[#141414] px-6 py-5 text-center">
+              <button
+                onClick={() => navigate("/discover?view=live")}
+                className="absolute right-3 top-3 h-8 w-8 rounded-full border border-white/10 text-white/70 hover:text-white"
+                aria-label="Close"
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+              <p className="text-[10px] uppercase tracking-widest text-gray-400">
+                Live Ended
+              </p>
+              <h3 className="mt-2 text-lg font-black">This live has ended</h3>
+              <button
+                onClick={() => navigate("/discover?view=live")}
+                className="mt-4 rounded-full bg-white px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+        {selectedUser && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+            onClick={() => setSelectedUser(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#141414] p-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black uppercase tracking-widest">
+                  {selectedUser.nickname}
+                </h3>
+                <button
+                  onClick={() => setSelectedUser(null)}
+                  className="text-xs uppercase tracking-widest text-gray-400"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="mt-4 space-y-2">
+                {canModerate && selectedUser.id !== room.hostId && (
+                  <button
+                    onClick={() => handleMuteUser(selectedUser.id)}
+                    className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                  >
+                    Mute 30s
+                  </button>
+                )}
+                {isHost && selectedUser.id !== room.hostId && (
+                  <button
+                    onClick={() => handleBanUser(selectedUser.id)}
+                    className="w-full rounded-full border border-rose-400/40 px-3 py-2 text-[10px] uppercase tracking-widest text-rose-300"
+                  >
+                    Ban User
+                  </button>
+                )}
+                {isHost && selectedUser.id !== room.hostId && (
+                  <button
+                    onClick={() =>
+                      handleToggleModerator(
+                        selectedUser.id,
+                        !room.moderatorIds?.includes(selectedUser.id),
+                      )
+                    }
+                    className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                  >
+                    {room.moderatorIds?.includes(selectedUser.id)
+                      ? "Remove Moderator"
+                      : "Make Moderator"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        {selectedMessage && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+            onClick={() => setSelectedMessage(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#141414] p-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black uppercase tracking-widest">
+                  Comment Options
+                </h3>
+                <button
+                  onClick={() => setSelectedMessage(null)}
+                  className="text-xs uppercase tracking-widest text-gray-400"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="mt-4 space-y-2">
+                <button
+                  onClick={() => handleReplyToMessage(selectedMessage)}
+                  className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                >
+                  Reply
+                </button>
+                {room.pinnedMessage?.id === selectedMessage.id ? (
+                  <button
+                    onClick={handleUnpinMessage}
+                    className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                  >
+                    Unpin
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handlePinMessage(selectedMessage)}
+                    className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                  >
+                    Pin Comment
+                  </button>
+                )}
+                <button
+                  onClick={() => handleRemoveMessage(selectedMessage)}
+                  className="w-full rounded-full border border-rose-400/40 px-3 py-2 text-[10px] uppercase tracking-widest text-rose-300"
+                >
+                  Remove Comment
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     );
   }
 
   return (
-    <div className="relative flex h-screen flex-col bg-[#0d0d0d] text-white">
-      <style>{CELEBRATION_STYLES}</style>
+    <div className="fixed inset-0 z-[120] bg-black animate-in fade-in duration-300 flex flex-col overflow-hidden">
+      <style>{`
+        ${CELEBRATION_STYLES}
+        @keyframes emojiBurst {
+          0% { transform: translate(0, 0) scale(0.85); opacity: 0.9; }
+          100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(1.4); opacity: 0; }
+        }
+        .mask-gradient { -webkit-mask-image: linear-gradient(to top, black 80%, transparent 100%); mask-image: linear-gradient(to top, black 80%, transparent 100%); }
+      `}</style>
       {achievementOverlay}
       {debugOverlay}
-      <header className="flex items-center justify-between border-b border-white/10 bg-black/60 px-4 py-3">
+
+      <div className="absolute inset-0 z-0">
+        <div
+          className={`grid h-full w-full ${stageGridConfig.gapClass}`}
+          style={stageGridStyle}
+        >
+          {stageParticipants.map((participant) => {
+            const stream =
+              participant.id === user.id
+                ? localStream
+                : remoteStreams[participant.id];
+            const fallbackSrc =
+              participant.id === user.id
+                ? undefined
+                : participant.id === room?.hostId
+                  ? participant.photoUrl
+                  : undefined;
+            return (
+              <VideoTile
+                key={participant.id}
+                label={participant.label}
+                stream={stream}
+                fallbackSrc={fallbackSrc}
+                muted={participant.id === user.id}
+                fullBleed={isSoloStage}
+              />
+            );
+          })}
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80"></div>
+      </div>
+
+      <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
+        {emojiBursts.map((burst) => (
+          <span
+            key={burst.id}
+            className="absolute select-none"
+            style={
+              {
+                left: burst.left,
+                top: burst.top,
+                fontSize: `${burst.size}px`,
+                animation: "emojiBurst 900ms ease-out forwards",
+                "--dx": `${burst.dx}px`,
+                "--dy": `${burst.dy}px`,
+                "--rot": `${burst.rotate}deg`,
+              } as React.CSSProperties
+            }
+          >
+            {burst.emoji}
+          </span>
+        ))}
+      </div>
+
+      <div className="relative z-10 px-6 pt-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate("/discover")}
-            className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/10"
-            aria-label="Back"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
-          </button>
-          <div>
-            <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-gray-400">
-              <span className="rounded-full bg-red-500/80 px-2 py-0.5 text-[9px] font-black text-white">
-                Live
-              </span>
-              <span>{room.viewerCount} watching</span>
-              <span>{liveDuration}</span>
+          <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md p-1 pr-4 rounded-full border border-white/10">
+            {hostPhoto ? (
+              <AppImage
+                src={hostPhoto}
+                alt={hostDisplayName}
+                className="w-8 h-8 rounded-full border border-white/20 object-cover"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full border border-white/20 bg-slate-800 flex items-center justify-center text-[10px] text-white font-black">
+                {hostDisplayName.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div>
+              <p className="text-[10px] font-black text-white leading-none mb-0.5">
+                {hostDisplayName}
+              </p>
+              <p className="text-[8px] text-slate-400 font-bold uppercase">
+                {liveDuration}
+              </p>
             </div>
-            <h1 className="text-sm font-black uppercase tracking-widest text-white">
-              {room.title}
-            </h1>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {isHost && (
-            <button
-              onClick={() => setShowRequests((prev) => !prev)}
-              className="rounded-full border border-white/10 px-3 py-1 text-[10px] uppercase tracking-widest text-gray-200 hover:bg-white/10"
-            >
-              Guest Requests
-            </button>
-          )}
-          <button
-            onClick={() => setShowSettings((prev) => !prev)}
-            className="rounded-full border border-white/10 px-3 py-1 text-[10px] uppercase tracking-widest text-gray-200 hover:bg-white/10"
-          >
-            Settings
-          </button>
-          <button
-            onClick={handleReportLive}
-            className="rounded-full border border-amber-400/30 px-3 py-1 text-[10px] uppercase tracking-widest text-amber-300 hover:bg-amber-500/10"
-          >
-            Report
-          </button>
-          {isHost && (
-            <button
-              onClick={handleEndLive}
-              className="rounded-full bg-red-500/90 px-3 py-1 text-[10px] uppercase tracking-widest text-white"
-            >
-              End Live
-            </button>
+          {room.isPaused && (
+            <span className="rounded-full bg-white/10 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-amber-200">
+              Paused
+            </span>
           )}
         </div>
-      </header>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-xl border border-white/10 flex items-center gap-2">
+              <i className="fa-solid fa-heart text-rose-500 text-[9px]"></i>
+              <span className="text-[10px] font-black text-white">
+                {formatCompact(room.likeCount ?? 0)}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-2">
+            <i className="fa-solid fa-eye text-white text-[10px]"></i>
+            <span className="text-[10px] font-black text-white">
+              {formatCompact(room.viewerCount)}
+            </span>
+          </div>
+
+          <button
+            onClick={() => setShowSettings(true)}
+            className="w-10 h-10 bg-black/40 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/10 active:scale-90 transition-all"
+            aria-label="Live controls"
+          >
+            <i className="fa-solid fa-sliders"></i>
+          </button>
+
+          <button
+            onClick={handleEndLive}
+            className="bg-rose-600 hover:bg-rose-700 px-5 py-2.5 rounded-2xl text-[11px] font-black text-white uppercase tracking-widest shadow-[0_10px_30px_rgba(225,29,72,0.4)] active:scale-90 transition-all border border-white/20"
+          >
+            End
+          </button>
+        </div>
+      </div>
 
       {menuMessage && (
-        <div className="px-4 pt-2 text-[10px] text-emerald-300">
+        <div className="relative z-10 px-6 mt-2 text-[10px] text-emerald-300">
           {menuMessage}
         </div>
       )}
       {menuError && (
-        <div className="px-4 pt-2 text-[10px] text-red-400">{menuError}</div>
+        <div className="relative z-10 px-6 mt-2 text-[10px] text-red-400">
+          {menuError}
+        </div>
       )}
 
-      <div className="flex flex-1 flex-col lg:flex-row">
-        <div className={`flex-1 ${stageGridConfig.paddingClass}`}>
-          <div
-            className={`grid h-full w-full ${stageGridConfig.gapClass}`}
-            style={stageGridStyle}
-          >
-            {stageParticipants.map((participant) => {
-              const stream =
-                participant.id === user.id
-                  ? localStream
-                  : remoteStreams[participant.id];
-              const fallbackSrc =
-                participant.id === user.id
-                  ? undefined
-                  : participant.id === room?.hostId
-                    ? participant.photoUrl
-                    : undefined;
-              return (
-                <VideoTile
-                  key={participant.id}
-                  label={participant.label}
-                  stream={stream}
-                  fallbackSrc={fallbackSrc}
-                  muted={participant.id === user.id}
-                  fullBleed={isSoloStage}
-                />
-              );
-            })}
-          </div>
+      <div className="relative z-10 flex-1 flex flex-col justify-end px-6 overflow-hidden">
+        <div className="fixed top-[10%] mb-4 bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl backdrop-blur-md animate-in slide-in-from-top">
+          <p className="text-rose-500 font-black text-[9px] uppercase mb-1">
+            Stream Title
+          </p>
+          <p className="text-white text-[11px] font-bold">"{room.title}"</p>
         </div>
 
-        <div className="w-full border-t border-white/10 bg-black/50 lg:w-[360px] lg:border-l lg:border-t-0">
-          <div className="flex items-center justify-between px-4 py-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-gray-400">
-                Live Chat
+        <div
+          ref={chatScrollRef}
+          onScroll={handleChatScroll}
+          className="max-h-[300px] overflow-y-auto no-scrollbar space-y-3 mask-gradient pr-2"
+        >
+          {room.pinnedMessage && (
+            <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              <div className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-amber-200">
+                <i className="fa-solid fa-thumbtack"></i>
+                <span>Pinned</span>
+              </div>
+              <p className="mt-1 font-semibold">
+                {room.pinnedMessage.senderNickname}
               </p>
-              <p className="text-[9px] text-gray-500">
-                {canSendChat
-                  ? "Chat is open"
-                  : isMutedByTimer
-                    ? "Muted for 30s"
-                    : "Chat restricted"}
-              </p>
+              <p className="text-amber-100/90">{room.pinnedMessage.text}</p>
             </div>
-            {showNewChatIndicator && (
-              <button
-                onClick={() => scrollChatToBottom("smooth")}
-                className="rounded-full border border-white/10 px-3 py-1 text-[9px] uppercase tracking-widest text-gray-200"
+          )}
+          {messages.slice(-20).map((message) => {
+            const senderName =
+              message.type === "system"
+                ? "System"
+                : message.senderNickname ?? "Guest";
+            const senderColor =
+              message.type === "system"
+                ? "text-slate-400"
+                : getMessageColor(message.senderId);
+            return (
+              <div
+                key={message.id}
+                className="animate-in slide-in-from-left duration-300 flex gap-2 items-start"
+                onClick={() => {
+                  if (message.type === "system") return;
+                  openMessageOptions(message);
+                }}
               >
-                New Messages
-              </button>
-            )}
-          </div>
-          <div
-            ref={chatScrollRef}
-            onScroll={handleChatScroll}
-            className="h-[calc(100vh-300px)] overflow-y-auto px-4 pb-4"
-          >
-            {messages.map((message) => (
-              <div key={message.id} className="mb-3">
-                <div className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-gray-500">
-                  <span>
-                    {message.type === "system"
-                      ? "System"
-                      : message.senderNickname}
-                  </span>
-                  <span>{formatTime(message.createdAt)}</span>
-                  {isHost &&
-                    message.type !== "system" &&
-                    message.senderId !== user.id && (
-                      <button
-                        onClick={() => handleMuteUser(message.senderId)}
-                        className="ml-auto text-[9px] uppercase tracking-widest text-amber-300"
-                      >
-                        Mute
-                      </button>
-                    )}
-                </div>
-                <div
-                  className={`mt-1 rounded-2xl px-3 py-2 text-xs ${
-                    message.type === "system"
-                      ? "bg-white/5 text-gray-300"
-                      : message.type === "reaction"
-                        ? "bg-kipepeo-pink/20 text-kipepeo-pink text-lg"
-                        : "bg-white/10 text-gray-200"
-                  }`}
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (message.type === "system") return;
+                    openUserOptions(message);
+                  }}
+                  className={`font-black text-xs whitespace-nowrap ${senderColor}`}
+                >
+                  {senderName}
+                  {message.senderId === room.hostId && (
+                    <i className="fa-solid fa-crown ml-1 text-[9px] text-amber-300"></i>
+                  )}
+                </button>
+                <span
+                  className={`text-white/90 text-xs font-medium leading-tight ${
+                    message.type === "reaction" ? "text-lg" : ""
+                  } ${message.type === "system" ? "text-white/60" : ""}`}
                 >
                   {message.text}
-                </div>
+                </span>
               </div>
-            ))}
-          </div>
-          <div className="border-t border-white/10 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <input
-                value={chatInput}
-                onChange={(event) => setChatInput(event.target.value)}
-                placeholder="Type a message"
-                disabled={!canSendChat}
-                className="flex-1 rounded-2xl bg-white/5 border border-white/10 px-3 py-2 text-xs focus:outline-none disabled:opacity-60"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    handleSendChat();
-                  }
-                }}
-              />
-              <button
-                onClick={handleSendChat}
-                disabled={!chatInput.trim() || !canSendChat}
-                className="rounded-full bg-kipepeo-pink px-3 py-2 text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-60"
-              >
-                Send
-              </button>
-            </div>
-            {chatError && (
-              <p className="mt-2 text-[10px] text-red-400">{chatError}</p>
-            )}
-            <div className="mt-3 flex items-center gap-2">
-              {REACTION_OPTIONS.map((reaction) => (
-                <button
-                  key={reaction}
-                  onClick={() => handleSendReaction(reaction)}
-                  disabled={!canSendChat}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-base hover:bg-white/10 disabled:opacity-60"
-                  aria-label={`React ${reaction}`}
-                >
-                  {reaction}
-                </button>
-              ))}
-              {!isOnStage && room.allowGuests && (
-                <button
-                  onClick={handleRequestJoin}
-                  disabled={
-                    joinStatus === "pending" ||
-                    room.joinAccess === "invite" ||
-                    (room.joinAccess === "followers" && !isFollowing)
-                  }
-                  className="ml-auto rounded-full border border-white/10 px-3 py-2 text-[9px] uppercase tracking-widest text-gray-200 hover:bg-white/10 disabled:opacity-60"
-                >
-                  {joinStatus === "pending"
-                    ? "Request Sent"
-                    : joinStatus === "approved"
-                      ? "Approved"
-                      : joinStatus === "declined"
-                        ? "Declined"
-                        : "Request to Join"}
-                </button>
-              )}
-            </div>
-          </div>
+            );
+          })}
         </div>
       </div>
+
+      {showNewChatIndicator && (
+        <button
+          onClick={() => scrollChatToBottom("smooth")}
+          className="absolute bottom-32 left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/70 px-4 py-2 text-[10px] uppercase tracking-widest text-white"
+        >
+          New messages
+        </button>
+      )}
+
+      <div className="relative z-10 p-6 flex flex-col gap-4">
+        {replyTarget && (
+          <div className="flex items-center justify-between rounded-full bg-white/10 px-3 py-1 text-[10px] uppercase tracking-widest text-white/70">
+            <span>
+              Replying to{" "}
+              <span className="text-white">{replyTarget.nickname}</span>
+            </span>
+            <button
+              onClick={() => setReplyTarget(null)}
+              className="text-white/60 hover:text-white"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+        <div className="flex items-center gap-4">
+          <div className="flex-1 relative">
+            <input
+              value={chatInput}
+              onChange={(event) => setChatInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  handleSendChat();
+                }
+              }}
+              placeholder={chatPlaceholder}
+              disabled={!canSendChat}
+              className="w-full bg-black/40 backdrop-blur-xl border border-white/10 p-4 rounded-2xl text-white outline-none placeholder:text-white/40 text-sm disabled:opacity-60"
+            />
+          </div>
+          <button
+            onClick={handleSendChat}
+            disabled={!chatInput.trim() || !canSendChat}
+            className="h-14 px-5 rounded-2xl bg-white text-black font-black uppercase tracking-widest text-[10px] shadow-xl active:scale-90 transition-all disabled:opacity-60"
+          >
+            Send
+          </button>
+          <div className="bg-rose-500/10 border border-rose-500/20 p-2 rounded-2xl flex gap-2">
+            {REACTION_OPTIONS.map((reaction) => (
+              <button
+                key={`host-reaction-${reaction}`}
+                onClick={() => handleSendReaction(reaction)}
+                className="text-lg opacity-70 hover:opacity-100 transition-all"
+                aria-label={`React ${reaction}`}
+              >
+                {reaction}
+              </button>
+            ))}
+          </div>
+        </div>
+        {chatError && <p className="text-[10px] text-red-400">{chatError}</p>}
+      </div>
+
+      {room.isPaused && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70">
+          <div className="rounded-3xl border border-white/10 bg-black/80 px-6 py-5 text-center">
+            <p className="text-[10px] uppercase tracking-widest text-gray-400">
+              Live Paused
+            </p>
+            <h3 className="mt-2 text-lg font-black">We'll be right back</h3>
+          </div>
+        </div>
+      )}
 
       {isOnStage && (
         <div className="fixed bottom-4 left-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-2">
@@ -2111,6 +2614,71 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
         </div>
       )}
 
+      {showAudience && isHost && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#141414] p-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black uppercase tracking-widest">
+                Audience
+              </h3>
+              <button
+                onClick={() => setShowAudience(false)}
+                className="text-xs uppercase tracking-widest text-gray-400"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {audienceList.length === 0 ? (
+                <p className="text-xs text-gray-500">No viewers yet.</p>
+              ) : (
+                audienceList.map((viewer) => {
+                  const isMod = room.moderatorIds?.includes(viewer.id);
+                  return (
+                    <div
+                      key={viewer.id}
+                      className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="h-9 w-9 overflow-hidden rounded-full border border-white/10 bg-black/40 flex items-center justify-center text-xs font-bold text-white">
+                          {viewer.nickname?.[0]?.toUpperCase() ?? "?"}
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-white">
+                            {viewer.nickname}
+                          </p>
+                          {isMod && (
+                            <p className="text-[9px] uppercase tracking-widest text-amber-300">
+                              Moderator
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() =>
+                            handleToggleModerator(viewer.id, !isMod)
+                          }
+                          className="rounded-full border border-white/10 px-3 py-1 text-[9px] uppercase tracking-widest text-gray-300"
+                        >
+                          {isMod ? "Remove Mod" : "Make Mod"}
+                        </button>
+                        <button
+                          onClick={() => handleBanUser(viewer.id)}
+                          className="rounded-full border border-rose-400/40 px-3 py-1 text-[9px] uppercase tracking-widest text-rose-300"
+                        >
+                          Ban
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSettings && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 px-4">
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#141414] p-5">
@@ -2155,6 +2723,42 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
                 </span>
               </div>
             </div>
+            {isHost && (
+              <div className="mt-6 space-y-2">
+                <button
+                  onClick={() => {
+                    setShowSettings(false);
+                    setShowRequests(true);
+                  }}
+                  className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200 hover:bg-white/10"
+                >
+                  Guest Requests
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSettings(false);
+                    setShowAudience(true);
+                  }}
+                  className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200 hover:bg-white/10"
+                >
+                  Audience
+                </button>
+                <div className="mt-4 flex items-center gap-2">
+                  <button
+                    onClick={handleToggleChatPaused}
+                    className="flex-1 rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200 hover:bg-white/10"
+                  >
+                    {room.chatPaused ? "Resume Chat" : "Pause Chat"}
+                  </button>
+                  <button
+                    onClick={handleToggleLivePaused}
+                    className="flex-1 rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200 hover:bg-white/10"
+                  >
+                    {room.isPaused ? "Resume Live" : "Pause Live"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2177,6 +2781,116 @@ const LiveRoomPage: React.FC<Props> = ({ user }) => {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {selectedUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setSelectedUser(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#141414] p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black uppercase tracking-widest">
+                {selectedUser.nickname}
+              </h3>
+              <button
+                onClick={() => setSelectedUser(null)}
+                className="text-xs uppercase tracking-widest text-gray-400"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              {canModerate && selectedUser.id !== room.hostId && (
+                <button
+                  onClick={() => handleMuteUser(selectedUser.id)}
+                  className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                >
+                  Mute 30s
+                </button>
+              )}
+              {isHost && selectedUser.id !== room.hostId && (
+                <button
+                  onClick={() => handleBanUser(selectedUser.id)}
+                  className="w-full rounded-full border border-rose-400/40 px-3 py-2 text-[10px] uppercase tracking-widest text-rose-300"
+                >
+                  Ban User
+                </button>
+              )}
+              {isHost && selectedUser.id !== room.hostId && (
+                <button
+                  onClick={() =>
+                    handleToggleModerator(
+                      selectedUser.id,
+                      !room.moderatorIds?.includes(selectedUser.id),
+                    )
+                  }
+                  className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                >
+                  {room.moderatorIds?.includes(selectedUser.id)
+                    ? "Remove Moderator"
+                    : "Make Moderator"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedMessage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setSelectedMessage(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#141414] p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black uppercase tracking-widest">
+                Comment Options
+              </h3>
+              <button
+                onClick={() => setSelectedMessage(null)}
+                className="text-xs uppercase tracking-widest text-gray-400"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 space-y-2">
+              <button
+                onClick={() => handleReplyToMessage(selectedMessage)}
+                className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+              >
+                Reply
+              </button>
+              {room.pinnedMessage?.id === selectedMessage.id ? (
+                <button
+                  onClick={handleUnpinMessage}
+                  className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                >
+                  Unpin
+                </button>
+              ) : (
+                <button
+                  onClick={() => handlePinMessage(selectedMessage)}
+                  className="w-full rounded-full border border-white/10 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-200"
+                >
+                  Pin Comment
+                </button>
+              )}
+              <button
+                onClick={() => handleRemoveMessage(selectedMessage)}
+                className="w-full rounded-full border border-rose-400/40 px-3 py-2 text-[10px] uppercase tracking-widest text-rose-300"
+              >
+                Remove Comment
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

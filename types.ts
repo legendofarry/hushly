@@ -140,6 +140,17 @@ export interface LiveRoom {
   likeCount: number;
   maxGuests: number;
   status: "live" | "ended";
+  chatPaused?: boolean;
+  isPaused?: boolean;
+  moderatorIds?: string[];
+  bannedUserIds?: string[];
+  pinnedMessage?: {
+    id: string;
+    senderId: string;
+    senderNickname: string;
+    text: string;
+    createdAt: number;
+  } | null;
   createdAt: number;
   startedAt?: number | null;
   endedAt?: number | null;

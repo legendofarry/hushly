@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { User, Profile } from "../types";
-import { listenToLiveRooms } from "../../services/liveService";
-import type { LiveRoom } from "../../types";
+import { createLiveRoom, listenToLiveRooms } from "../../services/liveService";
+import type { LiveRoom, UserProfile } from "../../types";
 
 interface Props {
   user: User | null;
+  profile?: UserProfile | null;
   onUpgrade: () => void;
   onProfileClick?: (profile: Profile) => void;
   onExit?: () => void;
@@ -35,10 +37,12 @@ const reactionTypes = [
 
 const LiveSection: React.FC<Props> = ({
   user,
+  profile,
   onUpgrade,
   onProfileClick,
   onExit,
 }) => {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<
     "browse" | "watch" | "setup" | "countdown" | "broadcast" | "summary"
   >("browse");
@@ -47,6 +51,8 @@ const LiveSection: React.FC<Props> = ({
   const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
   const [liveRoomsLoading, setLiveRoomsLoading] = useState(true);
   const [liveRoomsError, setLiveRoomsError] = useState<string | null>(null);
+  const [creatingLive, setCreatingLive] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [activeReactions, setActiveReactions] = useState<Reaction[]>([]);
   const [totalLikes, setTotalLikes] = useState(0);
@@ -219,6 +225,7 @@ const LiveSection: React.FC<Props> = ({
   };
 
   const handleGoLiveInitiate = () => {
+    setCreateError(null);
     if (!user?.isPaid) {
       setShowPremium(true);
     } else {
@@ -227,15 +234,43 @@ const LiveSection: React.FC<Props> = ({
   };
 
   const startCountdown = () => {
+    setCreateError(null);
     setMode("countdown");
     setCountdown(3);
     const interval = setInterval(() => {
       setCountdown((c) => {
         if (c <= 1) {
           clearInterval(interval);
-          setMode("broadcast");
-          setLiveDuration(0);
-          setTotalLikes(0);
+          const hostProfile = profile;
+          if (!hostProfile) {
+            setCreateError("Unable to start live. Profile missing.");
+            setMode("browse");
+            return 0;
+          }
+          setCreatingLive(true);
+          createLiveRoom({
+            host: hostProfile,
+            title: streamTitle,
+            type: "solo",
+            allowGuests: true,
+            chatAccess: "everyone",
+            joinAccess: "everyone",
+            moderation: { filterBadWords: true, muteNewUsers: false },
+            privacy: "public",
+            tags: [streamVibe],
+            maxGuests: 4,
+          })
+            .then((roomId) => {
+              navigate(`/live/${roomId}`);
+            })
+            .catch((error) => {
+              console.error(error);
+              setCreateError("Unable to start live right now.");
+              setMode("browse");
+            })
+            .finally(() => {
+              setCreatingLive(false);
+            });
           return 0;
         }
         return c - 1;
@@ -409,10 +444,10 @@ const LiveSection: React.FC<Props> = ({
         <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#080808] to-transparent z-20">
           <button
             onClick={startCountdown}
-            disabled={!streamTitle}
+            disabled={!streamTitle || creatingLive}
             className="w-full gradient-primary text-white font-black py-6 rounded-[2rem] shadow-2xl shadow-rose-500/20 active:scale-95 transition-all text-lg uppercase tracking-[0.2em] italic disabled:opacity-30"
           >
-            Go Live Now
+            {creatingLive ? "Starting..." : "Go Live Now"}
           </button>
         </div>
       </div>
@@ -744,6 +779,11 @@ const LiveSection: React.FC<Props> = ({
           )}
         </div>
       </div>
+      {createError && (
+        <div className="mx-2 mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-[10px] uppercase tracking-widest text-rose-300">
+          {createError}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
         {liveRoomsLoading && (
@@ -766,9 +806,7 @@ const LiveSection: React.FC<Props> = ({
             <div key={room.id} className="break-inside-avoid mb-2">
               <button
                 onClick={() => {
-                  setSelectedRoom(room);
-                  setMode("watch");
-                  setTotalLikes(0);
+                  navigate(`/live/${room.id}`);
                 }}
                 className={`w-full ${getRoomAspect(index)} bg-slate-900 rounded-[0.8rem] overflow-hidden relative border border-white/5 group shadow-2xl transition-all active:scale-95`}
               >

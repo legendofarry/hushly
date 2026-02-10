@@ -2579,6 +2579,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         ) : view === "live" ? (
           <LiveSection
             user={liveUser}
+            profile={user}
             onUpgrade={handleUpgradePlans}
             onExit={handleExitToDiscover}
           />

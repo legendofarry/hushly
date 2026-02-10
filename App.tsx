@@ -34,6 +34,7 @@ const ManagePaymentsPage = React.lazy(
   () => import("./pages/ManagePaymentsPage"),
 );
 const EscortHomePage = React.lazy(() => import("./pages/EscortHomePage"));
+const LiveRoomPage = React.lazy(() => import("./pages/LiveRoomPage"));
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
@@ -199,6 +200,16 @@ const AppRoutes: React.FC<{
           }
         />
         <Route
+          path="/live/:id"
+          element={
+            user && isVerified ? (
+              <LiveRoomPage user={user} />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
           path="/settings/security"
           element={
             user && isVerified ? (
@@ -240,6 +251,7 @@ const shouldShowNav = (pathname: string, search: string) => {
     const view = params.get("view");
     if (view === "live" || view === "hub") return false;
   }
+  if (path.startsWith("/live")) return false;
   return true;
 };
 
