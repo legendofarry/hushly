@@ -448,7 +448,7 @@ const LiveSection: React.FC<Props> = ({
     const streamCover = isOwner ? null : selectedRoom?.hostPhotoUrl;
     const viewerCount = isOwner
       ? summaryStats.peakViewers
-      : selectedRoom?.viewerCount ?? 0;
+      : (selectedRoom?.viewerCount ?? 0);
     const likeCount = isOwner
       ? totalLikes
       : (selectedRoom?.likeCount ?? 0) + totalLikes;
@@ -466,7 +466,11 @@ const LiveSection: React.FC<Props> = ({
               className="w-full h-full object-cover scale-x-[-1]"
             />
           ) : streamCover ? (
-            <img src={streamCover} className="w-full h-full object-cover" alt="" />
+            <img
+              src={streamCover}
+              className="w-full h-full object-cover"
+              alt=""
+            />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-slate-900 via-black to-slate-950"></div>
           )}
@@ -497,10 +501,10 @@ const LiveSection: React.FC<Props> = ({
                 </p>
               </div>
             </div>
+          </div>
+
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <div className="bg-rose-600 px-2 py-1 rounded-lg text-[9px] font-black text-white uppercase flex items-center gap-1.5 animate-pulse">
-                <div className="w-1 h-1 bg-white rounded-full"></div> LIVE
-              </div>
               <div className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-xl border border-white/10 flex items-center gap-2">
                 <i className="fa-solid fa-heart text-rose-500 text-[9px]"></i>
                 <span className="text-[10px] font-black text-white">
@@ -508,9 +512,7 @@ const LiveSection: React.FC<Props> = ({
                 </span>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-3">
             <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-2">
               <i className="fa-solid fa-eye text-white text-[10px]"></i>
               <span className="text-[10px] font-black text-white">
@@ -522,7 +524,7 @@ const LiveSection: React.FC<Props> = ({
                 onClick={endStream}
                 className="bg-rose-600 hover:bg-rose-700 px-5 py-2.5 rounded-2xl text-[11px] font-black text-white uppercase tracking-widest shadow-[0_10px_30px_rgba(225,29,72,0.4)] active:scale-90 transition-all border border-white/20"
               >
-                End Live
+                End
               </button>
             ) : (
               <button
@@ -555,7 +557,7 @@ const LiveSection: React.FC<Props> = ({
         {/* COMMENTS */}
         <div className="relative z-10 flex-1 flex flex-col justify-end px-6 overflow-hidden">
           {isOwner && (
-            <div className="mb-4 bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl backdrop-blur-md animate-in slide-in-from-top">
+            <div className="fixed top-[10%] mb-4 bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl backdrop-blur-md animate-in slide-in-from-top">
               <p className="text-rose-500 font-black text-[9px] uppercase mb-1">
                 Stream Title
               </p>
