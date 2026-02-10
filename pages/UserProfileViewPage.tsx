@@ -11,6 +11,10 @@ interface Props {
   viewer: UserProfile;
 }
 
+const TTS_API_BASE = import.meta.env.VITE_TTS_API_BASE || "";
+const buildTtsUrl = (path: string) =>
+  TTS_API_BASE ? `${TTS_API_BASE.replace(/\/$/, "")}${path}` : path;
+
 const buildVoiceIntroText = (profile: UserProfile) => {
   const greetings = [
     "Hey, um...",
@@ -74,14 +78,16 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [reportNotice, setReportNotice] = useState<string | null>(null);
   const [reportingVoice, setReportingVoice] = useState(false);
-  const [ttsSupported, setTtsSupported] = useState(false);
-  const [ttsMuted, setTtsMuted] = useState(false);
-  const [ttsPlaying, setTtsPlaying] = useState(false);
-  const [ttsNotice, setTtsNotice] = useState<string | null>(null);
-  const [introText, setIntroText] = useState("");
-  const ttsTimerRef = useRef<number | null>(null);
-  const ttsAutoPlayedRef = useRef<string | null>(null);
-  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const [aiAudioUrl, setAiAudioUrl] = useState<string | null>(null);
+  const [aiAudioLoading, setAiAudioLoading] = useState(false);
+  const [aiAudioError, setAiAudioError] = useState<string | null>(null);
+  const [aiMuted, setAiMuted] = useState(false);
+  const [aiPlaying, setAiPlaying] = useState(false);
+  const aiAudioRef = useRef<HTMLAudioElement | null>(null);
+  const aiAutoPlayedRef = useRef<string | null>(null);
+  const aiAutoTimerRef = useRef<number | null>(null);
+  const aiRequestRef = useRef<AbortController | null>(null);
+  const aiMutedRef = useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -111,30 +117,100 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
     };
   }, [id, viewer.id, navigate]);
 
-  useEffect(() => {
-    const supported =
-      typeof window !== "undefined" &&
-      "speechSynthesis" in window &&
-      "SpeechSynthesisUtterance" in window;
-    setTtsSupported(supported);
-    if (!supported) return;
+  const stopAiAudio = () => {
+    if (aiAutoTimerRef.current) {
+      window.clearTimeout(aiAutoTimerRef.current);
+      aiAutoTimerRef.current = null;
+    }
+    if (aiAudioRef.current) {
+      aiAudioRef.current.pause();
+      aiAudioRef.current.currentTime = 0;
+    }
+    setAiPlaying(false);
+  };
 
-    const loadVoices = () => {
-      voicesRef.current = window.speechSynthesis.getVoices();
-    };
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-    return () => {
-      window.speechSynthesis.onvoiceschanged = null;
-    };
-  }, []);
+  useEffect(() => {
+    aiMutedRef.current = aiMuted;
+    if (aiMuted) {
+      stopAiAudio();
+    }
+  }, [aiMuted]);
 
   useEffect(() => {
     if (!profile) {
-      setIntroText("");
+      setAiAudioUrl(null);
+      setAiAudioError(null);
+      setAiAudioLoading(false);
+      stopAiAudio();
       return;
     }
-    setIntroText(buildVoiceIntroText(profile));
+    const text = buildVoiceIntroText(profile);
+    setAiAudioUrl(null);
+    setAiAudioError(null);
+    setAiAudioLoading(true);
+    aiAutoPlayedRef.current = null;
+    stopAiAudio();
+
+    if (aiRequestRef.current) {
+      aiRequestRef.current.abort();
+    }
+    const controller = new AbortController();
+    aiRequestRef.current = controller;
+    const startedAt = Date.now();
+
+    fetch(buildTtsUrl("/api/tts"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text,
+      }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          const message =
+            payload?.error || payload?.message || "Unable to generate intro.";
+          throw new Error(message);
+        }
+        return payload as { audioUrl?: string };
+      })
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+        if (!payload?.audioUrl) {
+          throw new Error("No audio returned.");
+        }
+        setAiAudioUrl(payload.audioUrl);
+        setAiAudioLoading(false);
+        if (aiAutoPlayedRef.current === profile.id) return;
+        if (aiMutedRef.current) return;
+        const elapsed = Date.now() - startedAt;
+        const delay = Math.max(0, 2000 - elapsed);
+        aiAutoTimerRef.current = window.setTimeout(() => {
+          if (aiAutoPlayedRef.current === profile.id) return;
+          if (aiMutedRef.current) return;
+          aiAutoPlayedRef.current = profile.id;
+          const audio = aiAudioRef.current;
+          if (!audio) return;
+          audio.currentTime = 0;
+          audio.play().catch(() => {
+            setAiAudioError("Tap replay to hear the intro.");
+          });
+        }, delay);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        console.error(error);
+        setAiAudioError("Unable to generate voice intro.");
+        setAiAudioLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+      stopAiAudio();
+    };
   }, [profile?.id]);
 
   useEffect(() => {
@@ -144,77 +220,6 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
     setVoiceDuration(profile.voiceIntroDuration ?? 0);
   }, [profile?.voiceIntroUrl, profile?.voiceIntroDuration]);
 
-  const pickVoice = useCallback(() => {
-    const voices = voicesRef.current;
-    if (!voices.length) return null;
-    const englishVoices = voices.filter((voice) =>
-      voice.lang.toLowerCase().startsWith("en"),
-    );
-    const preferred =
-      englishVoices.find((voice) =>
-        voice.lang.toLowerCase().includes("en-ke"),
-      ) ||
-      englishVoices.find((voice) =>
-        voice.lang.toLowerCase().includes("en-gb"),
-      ) ||
-      englishVoices.find((voice) =>
-        voice.lang.toLowerCase().includes("en-us"),
-      ) ||
-      englishVoices[0];
-    return preferred || voices[0] || null;
-  }, []);
-
-  const cancelTts = useCallback(() => {
-    if (!ttsSupported) return;
-    window.speechSynthesis.cancel();
-    setTtsPlaying(false);
-  }, [ttsSupported]);
-
-  const speakIntro = useCallback(
-    (text: string) => {
-      if (!ttsSupported || ttsMuted || !text) return;
-      cancelTts();
-      setTtsNotice(null);
-      const utterance = new SpeechSynthesisUtterance(text);
-      const voice = pickVoice();
-      if (voice) {
-        utterance.voice = voice;
-      }
-      utterance.rate = 0.92;
-      utterance.pitch = 1.05;
-      utterance.volume = 1;
-      utterance.onstart = () => setTtsPlaying(true);
-      utterance.onend = () => setTtsPlaying(false);
-      utterance.onerror = () => {
-        setTtsPlaying(false);
-        setTtsNotice("Tap replay to hear the intro.");
-      };
-      window.speechSynthesis.speak(utterance);
-    },
-    [cancelTts, pickVoice, ttsMuted, ttsSupported],
-  );
-
-  useEffect(() => {
-    if (!profile || !ttsSupported || ttsMuted || !introText) return;
-    if (ttsAutoPlayedRef.current === profile.id) return;
-    if (ttsTimerRef.current) {
-      window.clearTimeout(ttsTimerRef.current);
-    }
-    const nextId = profile.id;
-    ttsTimerRef.current = window.setTimeout(() => {
-      if (ttsAutoPlayedRef.current === nextId) return;
-      speakIntro(introText);
-      ttsAutoPlayedRef.current = nextId;
-    }, 2000);
-    return () => {
-      if (ttsTimerRef.current) {
-        window.clearTimeout(ttsTimerRef.current);
-        ttsTimerRef.current = null;
-      }
-      cancelTts();
-    };
-  }, [profile?.id, introText, ttsSupported, ttsMuted, speakIntro, cancelTts]);
-
   const formatVoiceTime = (value: number) => {
     const minutes = Math.floor(value / 60);
     const seconds = Math.floor(value % 60);
@@ -222,7 +227,7 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
   };
 
   const toggleVoicePlayback = () => {
-    cancelTts();
+    stopAiAudio();
     if (!audioRef.current) return;
     if (voicePlaying) {
       audioRef.current.pause();
@@ -324,54 +329,64 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
-                        if (!ttsSupported) return;
-                        setTtsMuted((prev) => {
-                          const next = !prev;
-                          if (next) {
-                            cancelTts();
-                            if (ttsTimerRef.current) {
-                              window.clearTimeout(ttsTimerRef.current);
-                              ttsTimerRef.current = null;
-                            }
-                          }
-                          return next;
-                        });
+                        setAiMuted((prev) => !prev);
                       }}
                       className="px-3 py-1 rounded-full border border-white/10 text-[10px] uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/20 transition disabled:opacity-60"
-                      disabled={!ttsSupported}
+                      disabled={aiAudioLoading && !aiAudioUrl}
                     >
-                      {ttsMuted ? "Unmute" : "Mute"}
+                      {aiMuted ? "Unmute" : "Mute"}
                     </button>
                     <button
                       onClick={() => {
-                        if (!profile || !introText) return;
-                        ttsAutoPlayedRef.current = profile.id;
-                        speakIntro(introText);
+                        if (!aiAudioRef.current || !aiAudioUrl) return;
+                        aiAutoPlayedRef.current = profile?.id ?? null;
+                        setAiAudioError(null);
+                        aiAudioRef.current.currentTime = 0;
+                        aiAudioRef.current.play().catch(() => {
+                          setAiAudioError("Tap replay to hear the intro.");
+                        });
                       }}
                       className="px-3 py-1 rounded-full border border-kipepeo-pink/40 text-[10px] uppercase tracking-widest text-kipepeo-pink hover:border-kipepeo-pink hover:text-kipepeo-pink transition"
-                      disabled={!ttsSupported}
+                      disabled={!aiAudioUrl || aiAudioLoading}
                     >
                       Replay
                     </button>
                   </div>
                 </div>
-                {ttsSupported ? (
-                  <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-gray-500">
-                    <span>
-                      {ttsMuted
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-gray-500">
+                  <span>
+                    {aiAudioLoading
+                      ? "Preparing voice..."
+                      : aiMuted
                         ? "Muted"
-                        : ttsPlaying
+                        : aiPlaying
                           ? "Playing..."
-                          : "Auto-plays once after load"}
-                    </span>
-                    {ttsNotice && (
-                      <span className="text-rose-300">{ttsNotice}</span>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500">
-                    Voice intro is not supported on this device.
-                  </p>
+                          : aiAudioUrl
+                            ? "Auto-plays once after load"
+                            : "Voice intro unavailable"}
+                  </span>
+                  {aiAudioError && (
+                    <span className="text-rose-300">{aiAudioError}</span>
+                  )}
+                </div>
+                {aiAudioUrl && (
+                  <audio
+                    ref={aiAudioRef}
+                    src={aiAudioUrl}
+                    preload="auto"
+                    onPlay={() => {
+                      audioRef.current?.pause();
+                      setAiPlaying(true);
+                    }}
+                    onPause={() => setAiPlaying(false)}
+                    onEnded={() => {
+                      setAiPlaying(false);
+                      if (aiAudioRef.current) {
+                        aiAudioRef.current.currentTime = 0;
+                      }
+                    }}
+                    className="hidden"
+                  />
                 )}
               </section>
 
