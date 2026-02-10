@@ -26,7 +26,9 @@ import {
   createUserProfile,
   updateUserEmailVerification,
   nicknameExists,
+  getAllUsers,
 } from "../services/userService";
+import { createDailyDrop } from "../services/dailyDropService";
 import { getFriendlyAuthError } from "../firebaseErrors";
 import AppImage from "../components/AppImage";
 import AudioWaveform from "../components/AudioWaveform";
@@ -52,6 +54,7 @@ const INTEREST_OPTIONS: { value: GenderPreference; label: string }[] = [
 ];
 
 const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
+  const INITIAL_DAILY_DROP_SIZE = 20;
   const [step, setStep] = useState(1);
   const [realName, setRealName] = useState("");
   const [email, setEmail] = useState("");
@@ -463,6 +466,22 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
           authUser = null;
         }
         throw profileError;
+      }
+      try {
+        const users = await getAllUsers();
+        const candidates = users.filter((profile) => profile.id !== newUser.id);
+        for (let i = candidates.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+        }
+        const selected = candidates.slice(0, INITIAL_DAILY_DROP_SIZE);
+        await createDailyDrop({
+          userId: newUser.id,
+          profileIds: selected.map((profile) => profile.id),
+          dropSize: selected.length,
+        });
+      } catch (dropError) {
+        console.error(dropError);
       }
       await sendVerificationEmail(authUser);
       setPendingProfile(newUser);

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { UserProfile } from "../types";
 import { getUserProfile, getUserProfileByEmail } from "../services/userService";
@@ -10,6 +10,57 @@ import AudioWaveform from "../components/AudioWaveform";
 interface Props {
   viewer: UserProfile;
 }
+
+const buildVoiceIntroText = (profile: UserProfile) => {
+  const greetings = [
+    "Hey, um...",
+    "Okay, so...",
+    "Hi there, mmh...",
+    "Hey... so, yeah,",
+  ];
+  const fillers = ["um", "mmh", "okay", "so", "like"];
+  const bioLeads = [
+    "I guess my vibe is",
+    "My bio says",
+    "In my words",
+    "I wrote that",
+  ];
+  const closers = [
+    "Anyway, yeah... that's me.",
+    "Okay, thanks for listening.",
+    "Cool, yeah... that's me.",
+    "Um... yeah, that's me.",
+  ];
+
+  const pick = (items: string[]) =>
+    items[Math.floor(Math.random() * items.length)];
+  const name = profile.nickname || "me";
+  const location = (profile.area || "around here").split(" - ")[0];
+  const intentRaw =
+    profile.intents && profile.intents.length
+      ? profile.intents[0]
+      : "meeting new people";
+  const intentLabel = intentRaw.replace(/\s*\/\s*/g, " or ");
+  const rawBio = (profile.bio || "I like good vibes and honest chats.")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/["“”]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const bioSnippet =
+    rawBio.length > 120
+      ? `${rawBio.slice(0, 120).trim()}...`
+      : rawBio || "I like good vibes and honest chats.";
+
+  const intro = [
+    `${pick(greetings)} I'm ${name}.`,
+    `I'm in ${location}.`,
+    `I'm here for ${intentLabel} vibes.`,
+    `${pick(fillers)} ${pick(bioLeads)}: ${bioSnippet}.`,
+    pick(closers),
+  ];
+
+  return intro.join(" ");
+};
 
 const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
   const { id } = useParams();
@@ -23,6 +74,14 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [reportNotice, setReportNotice] = useState<string | null>(null);
   const [reportingVoice, setReportingVoice] = useState(false);
+  const [ttsSupported, setTtsSupported] = useState(false);
+  const [ttsMuted, setTtsMuted] = useState(false);
+  const [ttsPlaying, setTtsPlaying] = useState(false);
+  const [ttsNotice, setTtsNotice] = useState<string | null>(null);
+  const [introText, setIntroText] = useState("");
+  const ttsTimerRef = useRef<number | null>(null);
+  const ttsAutoPlayedRef = useRef<string | null>(null);
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -53,11 +112,108 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
   }, [id, viewer.id, navigate]);
 
   useEffect(() => {
+    const supported =
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      "SpeechSynthesisUtterance" in window;
+    setTtsSupported(supported);
+    if (!supported) return;
+
+    const loadVoices = () => {
+      voicesRef.current = window.speechSynthesis.getVoices();
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!profile) {
+      setIntroText("");
+      return;
+    }
+    setIntroText(buildVoiceIntroText(profile));
+  }, [profile?.id]);
+
+  useEffect(() => {
     if (!profile?.voiceIntroUrl) return;
     setVoicePlaying(false);
     setVoicePosition(0);
     setVoiceDuration(profile.voiceIntroDuration ?? 0);
   }, [profile?.voiceIntroUrl, profile?.voiceIntroDuration]);
+
+  const pickVoice = useCallback(() => {
+    const voices = voicesRef.current;
+    if (!voices.length) return null;
+    const englishVoices = voices.filter((voice) =>
+      voice.lang.toLowerCase().startsWith("en"),
+    );
+    const preferred =
+      englishVoices.find((voice) =>
+        voice.lang.toLowerCase().includes("en-ke"),
+      ) ||
+      englishVoices.find((voice) =>
+        voice.lang.toLowerCase().includes("en-gb"),
+      ) ||
+      englishVoices.find((voice) =>
+        voice.lang.toLowerCase().includes("en-us"),
+      ) ||
+      englishVoices[0];
+    return preferred || voices[0] || null;
+  }, []);
+
+  const cancelTts = useCallback(() => {
+    if (!ttsSupported) return;
+    window.speechSynthesis.cancel();
+    setTtsPlaying(false);
+  }, [ttsSupported]);
+
+  const speakIntro = useCallback(
+    (text: string) => {
+      if (!ttsSupported || ttsMuted || !text) return;
+      cancelTts();
+      setTtsNotice(null);
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voice = pickVoice();
+      if (voice) {
+        utterance.voice = voice;
+      }
+      utterance.rate = 0.92;
+      utterance.pitch = 1.05;
+      utterance.volume = 1;
+      utterance.onstart = () => setTtsPlaying(true);
+      utterance.onend = () => setTtsPlaying(false);
+      utterance.onerror = () => {
+        setTtsPlaying(false);
+        setTtsNotice("Tap replay to hear the intro.");
+      };
+      window.speechSynthesis.speak(utterance);
+    },
+    [cancelTts, pickVoice, ttsMuted, ttsSupported],
+  );
+
+  useEffect(() => {
+    if (!profile || !ttsSupported || ttsMuted || !introText) return;
+    if (ttsAutoPlayedRef.current === profile.id) return;
+    if (ttsTimerRef.current) {
+      window.clearTimeout(ttsTimerRef.current);
+    }
+    const nextId = profile.id;
+    ttsTimerRef.current = window.setTimeout(() => {
+      if (ttsAutoPlayedRef.current === nextId) return;
+      speakIntro(introText);
+      ttsAutoPlayedRef.current = nextId;
+    }, 2000);
+    return () => {
+      if (ttsTimerRef.current) {
+        window.clearTimeout(ttsTimerRef.current);
+        ttsTimerRef.current = null;
+      }
+      cancelTts();
+    };
+  }, [profile?.id, introText, ttsSupported, ttsMuted, speakIntro, cancelTts]);
 
   const formatVoiceTime = (value: number) => {
     const minutes = Math.floor(value / 60);
@@ -66,6 +222,7 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
   };
 
   const toggleVoicePlayback = () => {
+    cancelTts();
     if (!audioRef.current) return;
     if (voicePlaying) {
       audioRef.current.pause();
@@ -145,23 +302,82 @@ const UserProfileViewPage: React.FC<Props> = ({ viewer }) => {
               <h2 className="text-3xl font-black mb-1 uppercase tracking-tighter">
                 {profile.nickname}
               </h2>
-            <div className="flex items-center space-x-2 flex-wrap justify-center">
-              <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                Age Range: {profile.ageRange}
-              </span>
-              <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                {profile.area}
-              </span>
-              {profile.occupation &&
-                profile.occupationVisibility === "public" && (
-                  <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
-                    {profile.occupation}
-                  </span>
-                )}
-            </div>
+              <div className="flex items-center space-x-2 flex-wrap justify-center">
+                <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                  Age Range: {profile.ageRange}
+                </span>
+                <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                  {profile.area}
+                </span>
+                {profile.occupation &&
+                  profile.occupationVisibility === "public" && (
+                    <span className="text-gray-500 font-black uppercase tracking-widest text-[9px] bg-white/5 px-3 py-1.5 rounded-full border border-white/5">
+                      {profile.occupation}
+                    </span>
+                  )}
+              </div>
             </div>
 
             <div className="space-y-6">
+              <section className="glass rounded-[2rem] p-6 border border-white/5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em]">
+                    AI Voice Intro
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (!ttsSupported) return;
+                        setTtsMuted((prev) => {
+                          const next = !prev;
+                          if (next) {
+                            cancelTts();
+                            if (ttsTimerRef.current) {
+                              window.clearTimeout(ttsTimerRef.current);
+                              ttsTimerRef.current = null;
+                            }
+                          }
+                          return next;
+                        });
+                      }}
+                      className="px-3 py-1 rounded-full border border-white/10 text-[10px] uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/20 transition disabled:opacity-60"
+                      disabled={!ttsSupported}
+                    >
+                      {ttsMuted ? "Unmute" : "Mute"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!profile || !introText) return;
+                        ttsAutoPlayedRef.current = profile.id;
+                        speakIntro(introText);
+                      }}
+                      className="px-3 py-1 rounded-full border border-kipepeo-pink/40 text-[10px] uppercase tracking-widest text-kipepeo-pink hover:border-kipepeo-pink hover:text-kipepeo-pink transition"
+                      disabled={!ttsSupported}
+                    >
+                      Replay
+                    </button>
+                  </div>
+                </div>
+                {ttsSupported ? (
+                  <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-gray-500">
+                    <span>
+                      {ttsMuted
+                        ? "Muted"
+                        : ttsPlaying
+                          ? "Playing..."
+                          : "Auto-plays once after load"}
+                    </span>
+                    {ttsNotice && (
+                      <span className="text-rose-300">{ttsNotice}</span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500">
+                    Voice intro is not supported on this device.
+                  </p>
+                )}
+              </section>
+
               <section>
                 <h3 className="text-xs font-black text-gray-600 uppercase tracking-[0.3em] mb-4 ml-2">
                   Intent

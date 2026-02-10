@@ -497,6 +497,39 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 
   return (
     <div className="min-h-full bg-slate-950 flex flex-col">
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-slate-950/90 px-6 py-4 backdrop-blur-xl">
+        <button
+          onClick={() => navigate("/discover")}
+          className="group flex h-10 w-10 items-center justify-center rounded-full bg-white/5 transition-all hover:bg-white/10 active:scale-90"
+          aria-label="Back"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="text-gray-400 group-hover:text-white"
+          >
+            <path d="M19 12H5" />
+            <path d="M12 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <h1 className="text-sm font-black uppercase tracking-[0.2em] text-white">
+          My Profile
+        </h1>
+        <button
+          onClick={() => setShowLogoutConfirm(true)}
+          className="group flex h-10 w-10 items-center justify-center rounded-full bg-white/5 transition-all hover:bg-white/10 active:scale-90"
+          aria-label="Log out"
+        >
+          <i className="fa-solid fa-ghost text-gray-400 group-hover:text-white"></i>
+        </button>
+      </header>
       {!isOwnProfile && (
         <div className="pt-12 px-6 flex justify-between items-center z-40 bg-slate-950/50 backdrop-blur-md pb-4">
           <button className="w-10 h-10 flex items-center justify-center text-white bg-slate-900 rounded-full border border-white/5">
