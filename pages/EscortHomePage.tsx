@@ -21,6 +21,7 @@ import { OWNER_EMAIL } from "../services/paymentService";
 import AppImage from "../components/AppImage";
 import LottiePlayer from "../components/LottiePlayer";
 import { buildEscortListingDraftAi, detectEscortListingRisk } from "../services/aiService";
+import { BIO_MAX_WORDS, clampBio } from "../services/bioUtils";
 
 interface Props {
   user: UserProfile;
@@ -32,7 +33,7 @@ const buildListingDraft = (profile: UserProfile): EscortListingDraft => ({
   displayName: profile.nickname,
   age: "",
   gender: "",
-  bio: profile.bio || "",
+  bio: clampBio(profile.bio || ""),
   languages: [],
   offers: [],
   offerNotes: "",
@@ -70,7 +71,7 @@ const buildListingDraftFromListing = (
     displayName: listing.displayName || profile.nickname,
     age: listing.age || "",
     gender: listing.gender || "",
-    bio: listing.bio || profile.bio || "",
+    bio: clampBio(listing.bio || profile.bio || ""),
     languages: listing.languages ?? [],
     offers,
     offerNotes: listing.offerNotes ?? "",
@@ -1189,10 +1190,10 @@ const EscortHomePage: React.FC<Props> = ({ user }) => {
                         onChange={(e) =>
                           setListingDraft((prev) => ({
                             ...prev,
-                            bio: e.target.value,
+                            bio: clampBio(e.target.value),
                           }))
                         }
-                        placeholder="Describe your vibe, experience, and what makes you unique..."
+                        placeholder={`Describe your vibe... (max ${BIO_MAX_WORDS} words)`}
                         className="w-full rounded-xl bg-[#0a0a0a] border border-white/10 p-4 text-sm text-white placeholder:text-gray-600 focus:border-kipepeo-pink focus:outline-none transition-colors resize-none"
                       />
                     </div>

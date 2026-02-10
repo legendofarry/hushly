@@ -7,6 +7,7 @@ import {
   type PhotoAiReport,
 } from "../services/cloudinaryService";
 import { nicknameExists, updateUserProfile } from "../services/userService";
+import { BIO_MAX_WORDS, clampBio } from "../services/bioUtils";
 import { AGE_RANGES, IntentType, KENYAN_AREAS, UserProfile } from "../types";
 import AppImage from "../components/AppImage";
 
@@ -24,7 +25,7 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
   >(user.occupationVisibility ?? "private");
   const [ageRange, setAgeRange] = useState(user.ageRange);
   const [area, setArea] = useState(user.area);
-  const [bio, setBio] = useState(user.bio);
+  const [bio, setBio] = useState(clampBio(user.bio || ""));
   const [intents, setIntents] = useState<IntentType[]>(user.intents);
   const [photoUrl, setPhotoUrl] = useState(user.photoUrl);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -151,7 +152,7 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
         occupationVisibility,
         ageRange,
         area,
-        bio: bio.trim(),
+        bio: clampBio(bio),
         intents,
         photoUrl,
       };
@@ -395,8 +396,9 @@ const PersonalInfoPage: React.FC<Props> = ({ user, onUserUpdated }) => {
             </label>
             <textarea
               value={bio}
-              onChange={(e) => setBio(e.target.value)}
+              onChange={(e) => setBio(clampBio(e.target.value))}
               className="w-full h-28 bg-white/5 border border-white/10 rounded-xl p-3 mt-1 focus:border-kipepeo-pink outline-none text-base"
+              placeholder={`Max ${BIO_MAX_WORDS} words`}
             />
           </div>
         </section>

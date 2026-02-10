@@ -5,6 +5,7 @@ import {
   UserProfile,
 } from "../types";
 import type { AiSignals } from "./aiSignals";
+import { clampBio } from "./bioUtils";
 
 const STOPWORDS = new Set([
   "the",
@@ -200,7 +201,9 @@ export const generateBio = (payload: {
     ? payload.intents.join(", ")
     : "good vibes";
   const area = payload.area ? `based in ${payload.area}` : "based in the city";
-  return `${tone.opening} ${payload.nickname} here, ${area}. I'm into ${intents}. ${tone.vibe} ${tone.closing}`;
+  return clampBio(
+    `${tone.opening} ${payload.nickname} here, ${area}. I'm into ${intents}. ${tone.vibe} ${tone.closing}`,
+  );
 };
 
 export const rewriteBio = (payload: { bio: string; tone: string }) => {
@@ -216,7 +219,7 @@ export const rewriteBio = (payload: { bio: string; tone: string }) => {
   }
   const toneKey = normalize(payload.tone);
   const tone = TONE_TEMPLATES[toneKey] ?? TONE_TEMPLATES.confident;
-  return `${tone.opening} ${base} ${tone.closing}`;
+  return clampBio(`${tone.opening} ${base} ${tone.closing}`);
 };
 
 export const semanticSearchProfiles = (query: string, profiles: UserProfile[]) => {
@@ -504,7 +507,9 @@ export const buildEscortListingDraftAi = (payload: {
   ];
 
   return {
-    bio: payload.profile.bio || "Private, discreet, and easy to vibe with.",
+    bio: clampBio(
+      payload.profile.bio || "Private, discreet, and easy to vibe with.",
+    ),
     languages: ["English", "Swahili"],
     offers: baseOffers,
     offerNotes: "Boundaries respected. Discretion guaranteed.",

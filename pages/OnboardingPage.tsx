@@ -33,6 +33,7 @@ import { getFriendlyAuthError } from "../firebaseErrors";
 import AppImage from "../components/AppImage";
 import AudioWaveform from "../components/AudioWaveform";
 import { generateBio, rewriteBio, suggestIntents } from "../services/aiService";
+import { BIO_MAX_WORDS, clampBio } from "../services/bioUtils";
 
 interface Props {
   onComplete: (user: UserProfile) => void;
@@ -220,7 +221,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       ageRange,
       tone: aiTone,
     });
-    setBio(draft);
+    setBio(clampBio(draft));
     setToastMessage("AI drafted your bio.");
     setAiBusy(false);
   };
@@ -228,7 +229,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const handleAiRewriteBio = () => {
     setAiBusy(true);
     const next = rewriteBio({ bio, tone: aiTone });
-    setBio(next);
+    setBio(clampBio(next));
     setToastMessage("AI rewrote your bio.");
     setAiBusy(false);
   };
@@ -535,7 +536,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     area,
     intents: selectedIntents,
     photoUrl: capturedPhoto ?? "",
-    bio: bio || "Ready for the plot.",
+    bio: clampBio(bio || "Ready for the plot."),
     isAnonymous: true,
     isOnline: true,
     ...overrides,
@@ -1045,9 +1046,9 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
             </div>
             <textarea
               value={bio}
-              onChange={(e) => setBio(e.target.value)}
+              onChange={(e) => setBio(clampBio(e.target.value))}
               className="w-full h-32 bg-white/5 border border-white/10 rounded-xl p-4 outline-none mb-4 font-medium text-sm"
-              placeholder="I'm here for..."
+              placeholder={`I'm here for... (max ${BIO_MAX_WORDS} words)`}
             />
 
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-4">

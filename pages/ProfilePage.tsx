@@ -7,6 +7,7 @@ import { OWNER_EMAIL } from "../services/paymentService";
 import { uploadAudioToCloudinary } from "../services/cloudinaryService";
 import { updateUserProfile } from "../services/userService";
 import AudioWaveform from "../components/AudioWaveform";
+import { BIO_MAX_WORDS, clampBio } from "../services/bioUtils";
 
 interface Props {
   user: UserProfile;
@@ -104,7 +105,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   const [editName, setEditName] = useState(user.nickname || "");
   const [editAge, setEditAge] = useState(parsedAge?.min ?? 24);
   const [editLocation, setEditLocation] = useState(userCity);
-  const [editBio, setEditBio] = useState(user.bio || "");
+  const [editBio, setEditBio] = useState(clampBio(user.bio || ""));
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -115,7 +116,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     const nextParsed = parseAgeRange(user.ageRange);
     setEditAge(nextParsed?.min ?? 24);
     setEditLocation(userCity);
-    setEditBio(user.bio || "");
+    setEditBio(clampBio(user.bio || ""));
   }, [user.nickname, user.ageRange, userCity, user.bio]);
 
   useEffect(() => {
@@ -455,7 +456,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
         nickname: editName.trim(),
         ageRange: nextAgeRange,
         area: editLocation,
-        bio: editBio,
+        bio: clampBio(editBio),
       });
       setIsEditing(false);
     } catch (error) {
@@ -1049,10 +1050,10 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
               </label>
               <textarea
                 value={editBio}
-                onChange={(event) => setEditBio(event.target.value)}
+                onChange={(event) => setEditBio(clampBio(event.target.value))}
                 rows={4}
                 className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-rose-500 resize-none transition-all"
-                placeholder="Tell the tribe about yourself..."
+                placeholder={`Tell the tribe about yourself... (max ${BIO_MAX_WORDS} words)`}
               />
             </div>
           </div>

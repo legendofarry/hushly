@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { EscortListing, UserProfile } from "../types";
+import { clampBio } from "./bioUtils";
 
 const COLLECTION = "escort_listings";
 const listingsRef = collection(db, COLLECTION);
@@ -109,6 +110,10 @@ export const saveEscortListing = async (
   >,
 ) => {
   const listingRef = doc(db, COLLECTION, user.id);
+  const sanitizedListing = {
+    ...listing,
+    bio: typeof listing.bio === "string" ? clampBio(listing.bio) : listing.bio,
+  };
   await setDoc(
     listingRef,
     {
@@ -116,7 +121,7 @@ export const saveEscortListing = async (
       ownerNickname: user.nickname,
       ownerPhotoUrl: user.photoUrl,
       ownerArea: user.area,
-      ...listing,
+      ...sanitizedListing,
       isActive: true,
       updatedAt: serverTimestamp(),
       createdAt: serverTimestamp(),

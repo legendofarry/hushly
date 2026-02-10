@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../firebase";
 import { DEFAULT_USER_SETTINGS, UserProfile, UserSettings } from "../types";
+import { clampBio } from "./bioUtils";
 
 const USERS_COLLECTION = "user";
 const SETTINGS_COLLECTION = "user_settings";
@@ -68,6 +69,10 @@ const stripUndefined = (value: any): any => {
 
 export const createUserProfile = async (user: UserProfile) => {
   const userRef = doc(db, USERS_COLLECTION, user.id);
+  const sanitizedUser = {
+    ...user,
+    bio: typeof user.bio === "string" ? clampBio(user.bio) : user.bio,
+  };
   const nicknameLower = user.nicknameLower ?? normalizeNickname(user.nickname);
   const nicknameRef = publicNicknameDocRef(nicknameLower);
   await runTransaction(db, async (tx) => {
@@ -91,7 +96,7 @@ export const createUserProfile = async (user: UserProfile) => {
     tx.set(
       userRef,
       stripUndefined({
-        ...user,
+        ...sanitizedUser,
         nicknameLower,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -156,6 +161,9 @@ export const updateUserProfile = async (
   const userRef = doc(db, USERS_COLLECTION, userId);
   const sanitizedUpdates: Partial<UserProfile> = { ...updates };
   const hasNicknameUpdate = typeof updates.nickname === "string";
+  if (typeof updates.bio === "string") {
+    sanitizedUpdates.bio = clampBio(updates.bio);
+  }
   if (typeof updates.nickname === "string") {
     sanitizedUpdates.nicknameLower = normalizeNickname(updates.nickname);
   }

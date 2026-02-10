@@ -803,11 +803,11 @@ const LiveSection: React.FC<Props> = ({
   }
 
   return (
-    <div className="p-6 h-full flex flex-col bg-slate-950 animate-in fade-in duration-500 no-scrollbar">
-      <div className="flex items-center justify-between mb-8">
+    <div className="py-6 px-2 h-full flex flex-col bg-slate-950 animate-in fade-in duration-500 no-scrollbar">
+      <div className="flex items-center justify-between mb-8 px-2">
         <div>
           <h2 className="text-xs font-black text-rose-500 uppercase tracking-[0.4em]">
-            Live Safari
+            Hush Live
           </h2>
         </div>
         <div className="flex items-center gap-2">
@@ -822,25 +822,9 @@ const LiveSection: React.FC<Props> = ({
           {onExit && (
             <button
               onClick={onExit}
-              className="bg-white/5 border border-white/10 px-4 py-2 rounded-full text-[10px] font-black uppercase text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2"
+              className="w-10 h-10 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center justify-center text-rose-500 active:scale-90 transition-all hover:bg-rose-500 hover:text-white"
             >
-              Exit
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="feather feather-log-out"
-              >
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                <polyline points="16 17 21 12 16 7" />
-                <line x1="21" y1="12" x2="9" y2="12" />
-              </svg>
+              <i className="fa-solid fa-arrow-right-from-bracket"></i>
             </button>
           )}
         </div>
@@ -866,13 +850,13 @@ const LiveSection: React.FC<Props> = ({
               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
 
               <div className="absolute top-4 left-4 flex items-center gap-1.5">
-                <div className="bg-rose-600 px-2 py-0.5 rounded-lg text-[7px] font-black uppercase text-white flex items-center gap-1 shadow-lg">
+                <div className="bg-rose-600 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase text-white flex items-center gap-1 shadow-lg">
                   <div className="w-1 h-1 bg-white rounded-full animate-ping"></div>{" "}
                   LIVE
                 </div>
               </div>
 
-              <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-lg text-[7px] font-black text-white border border-white/10 flex items-center gap-1">
+              <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-black text-white border border-white/10 flex items-center gap-1">
                 <i className="fa-solid fa-eye text-[8px] text-slate-400"></i>{" "}
                 {stream.viewers} fans
               </div>
