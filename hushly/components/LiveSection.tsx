@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { User, Profile } from "../types";
+import { listenToLiveRooms } from "../../services/liveService";
+import type { LiveRoom } from "../../types";
 
 interface Props {
   user: User | null;
@@ -23,15 +25,6 @@ interface Reaction {
   left: number;
 }
 
-const gifts = [
-  { name: "Safari Hat", icon: "🤠", price: 100 },
-  { name: "Lion King", icon: "🦁", price: 500 },
-  { name: "Nyama Choma", icon: "🍖", price: 250 },
-  { name: "Tusker", icon: "🍺", price: 150 },
-  { name: "Golden Heart", icon: "💛", price: 50 },
-  { name: "VIP Crown", icon: "👑", price: 1000 },
-];
-
 const reactionTypes = [
   { emoji: "❤️", label: "Love", color: "#f43f5e" },
   { emoji: "🔥", label: "Fire", color: "#fb923c" },
@@ -50,25 +43,26 @@ const LiveSection: React.FC<Props> = ({
     "browse" | "watch" | "setup" | "countdown" | "broadcast" | "summary"
   >("browse");
   const [showPremium, setShowPremium] = useState(false);
-  const [selectedStream, setSelectedStream] = useState<any>(null);
-  const [showGiftTray, setShowGiftTray] = useState(false);
+  const [selectedRoom, setSelectedRoom] = useState<LiveRoom | null>(null);
+  const [liveRooms, setLiveRooms] = useState<LiveRoom[]>([]);
+  const [liveRoomsLoading, setLiveRoomsLoading] = useState(true);
+  const [liveRoomsError, setLiveRoomsError] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [activeReactions, setActiveReactions] = useState<Reaction[]>([]);
   const [totalLikes, setTotalLikes] = useState(0);
   const [liveDuration, setLiveDuration] = useState(0);
   const [countdown, setCountdown] = useState(3);
+  const [commentDraft, setCommentDraft] = useState("");
 
   // Setup Preferences
   const [streamTitle, setStreamTitle] = useState("");
   const [streamVibe, setStreamVibe] = useState("Casual Chat");
   const [isTitleGenerating, setIsTitleGenerating] = useState(false);
-  const [enableGifts, setEnableGifts] = useState(true);
 
   // Summary Stats
   const [summaryStats, setSummaryStats] = useState({
     peakViewers: 0,
     totalLikes: 0,
-    giftsReceived: 0,
   });
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -90,82 +84,6 @@ const LiveSection: React.FC<Props> = ({
     },
     { id: "v3", name: "Night Party", icon: "fa-music", color: "bg-purple-500" },
     { id: "v4", name: "VIP Lounge", icon: "fa-crown", color: "bg-amber-500" },
-  ];
-
-  // HUGE ASPECT RATIO CONTRAST: Tower (9:25) vs Landscape (16:10)
-  const streams = [
-    {
-      id: "s1",
-      user: "Wangari",
-      viewers: 124,
-      likes: 4200,
-      title: "Chatting with fans! 🇰🇪",
-      thumb: "https://picsum.photos/400/1100?random=20",
-      age: 23,
-      location: "Nairobi",
-      photos: ["https://picsum.photos/400/1100?random=20"],
-      aspect: "aspect-[9/25]",
-    },
-    {
-      id: "s2",
-      user: "Kamau",
-      viewers: 56,
-      likes: 890,
-      title: "Late night vibes only",
-      thumb: "https://picsum.photos/600/375?random=21",
-      age: 26,
-      location: "Mombasa",
-      photos: ["https://picsum.photos/600/375?random=21"],
-      aspect: "aspect-[16/10]",
-    },
-    {
-      id: "s3",
-      user: "Shiela",
-      viewers: 890,
-      likes: 12500,
-      title: "Ask me anything! 💋",
-      thumb: "https://picsum.photos/400/1100?random=22",
-      age: 24,
-      location: "Eldoret",
-      photos: ["https://picsum.photos/400/1100?random=22"],
-      aspect: "aspect-[9/25]",
-    },
-    {
-      id: "s4",
-      user: "Njeri",
-      viewers: 42,
-      likes: 310,
-      title: "Art & Chill",
-      thumb: "https://picsum.photos/600/375?random=23",
-      age: 25,
-      location: "Kisumu",
-      photos: ["https://picsum.photos/600/375?random=23"],
-      aspect: "aspect-[16/10]",
-    },
-    {
-      id: "s5",
-      user: "Zuri",
-      viewers: 215,
-      likes: 3400,
-      title: "Music & Vibes 🎵",
-      thumb: "https://picsum.photos/400/1100?random=24",
-      age: 22,
-      location: "Thika",
-      photos: ["https://picsum.photos/400/1100?random=24"],
-      aspect: "aspect-[9/25]",
-    },
-    {
-      id: "s6",
-      user: "Brian",
-      viewers: 18,
-      likes: 120,
-      title: "Workout Routine",
-      thumb: "https://picsum.photos/600/375?random=25",
-      age: 28,
-      location: "Nakuru",
-      photos: ["https://picsum.photos/600/375?random=25"],
-      aspect: "aspect-[16/10]",
-    },
   ];
 
   const mockComments = [
@@ -190,6 +108,34 @@ const LiveSection: React.FC<Props> = ({
       setIsTitleGenerating(false);
     }, 300);
   };
+
+  useEffect(() => {
+    setLiveRoomsLoading(true);
+    const unsubscribe = listenToLiveRooms(
+      (rooms) => {
+        setLiveRooms(rooms);
+        setLiveRoomsLoading(false);
+        setLiveRoomsError(null);
+      },
+      () => {
+        setLiveRoomsLoading(false);
+        setLiveRoomsError("Unable to load live rooms.");
+      },
+    );
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "watch") return;
+    if (!selectedRoom) return;
+    const latest = liveRooms.find((room) => room.id === selectedRoom.id);
+    if (!latest) {
+      setSelectedRoom(null);
+      setMode("browse");
+      return;
+    }
+    setSelectedRoom(latest);
+  }, [liveRooms, mode, selectedRoom]);
   useEffect(() => {
     if (mode === "watch" || mode === "broadcast") {
       const interval = setInterval(() => {
@@ -206,7 +152,6 @@ const LiveSection: React.FC<Props> = ({
   useEffect(() => {
     if (mode === "broadcast" || mode === "watch") {
       const interval = setInterval(() => {
-        const isGift = Math.random() > 0.95;
         const newComment: Comment = {
           id: Math.random().toString(),
           user: [
@@ -218,25 +163,15 @@ const LiveSection: React.FC<Props> = ({
             "Zawadi",
             "Babu",
           ][Math.floor(Math.random() * 7)],
-          text: isGift
-            ? "sent a Safari Hat! 🤠"
-            : mockComments[Math.floor(Math.random() * mockComments.length)],
-          color: isGift
-            ? "text-amber-400"
-            : [
-                "text-rose-400",
-                "text-sky-400",
-                "text-amber-400",
-                "text-emerald-400",
-              ][Math.floor(Math.random() * 4)],
-          isSystem: isGift,
+          text: mockComments[Math.floor(Math.random() * mockComments.length)],
+          color: [
+            "text-rose-400",
+            "text-sky-400",
+            "text-amber-400",
+            "text-emerald-400",
+          ][Math.floor(Math.random() * 4)],
         };
         setComments((prev) => [...prev.slice(-15), newComment]);
-        if (isGift && mode === "broadcast")
-          setSummaryStats((s) => ({
-            ...s,
-            giftsReceived: s.giftsReceived + 1,
-          }));
       }, 3000);
       return () => clearInterval(interval);
     }
@@ -333,6 +268,23 @@ const LiveSection: React.FC<Props> = ({
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
+  const getRoomAspect = (index: number) =>
+    index % 2 === 0 ? "aspect-[9/25]" : "aspect-[16/10]";
+
+  const handleSendComment = () => {
+    if (mode !== "watch") return;
+    const text = commentDraft.trim();
+    if (!text) return;
+    const newComment: Comment = {
+      id: Math.random().toString(),
+      user: user?.name || user?.nickname || "You",
+      text,
+      color: "text-white",
+    };
+    setComments((prev) => [...prev.slice(-15), newComment]);
+    setCommentDraft("");
+  };
+
   if (showPremium) {
     return (
       <div className="p-8 h-full flex flex-col items-center justify-center bg-slate-950 text-center animate-in fade-in zoom-in duration-300">
@@ -343,8 +295,8 @@ const LiveSection: React.FC<Props> = ({
           UNLEASH THE <span className="text-rose-500">STAR</span>
         </h2>
         <p className="text-slate-400 mb-10 leading-relaxed font-medium px-4">
-          Broadcasting is for the elite. Verified members can receive virtual
-          gifts redeemable for cash and get featured in the Discovery Room.
+          Broadcasting is for the elite. Verified members get featured in the
+          Discovery Room and enjoy priority placement.
         </p>
         <div className="w-full space-y-4">
           <button
@@ -487,7 +439,19 @@ const LiveSection: React.FC<Props> = ({
 
   if (mode === "broadcast" || mode === "watch") {
     const isOwner = mode === "broadcast";
-    const streamUser = isOwner ? user : selectedStream;
+    const streamName = isOwner
+      ? user?.name || user?.nickname || "You"
+      : selectedRoom?.hostNickname || "Live Host";
+    const streamAvatar = isOwner
+      ? user?.photos?.[0]
+      : selectedRoom?.hostPhotoUrl;
+    const streamCover = isOwner ? null : selectedRoom?.hostPhotoUrl;
+    const viewerCount = isOwner
+      ? summaryStats.peakViewers
+      : selectedRoom?.viewerCount ?? 0;
+    const likeCount = isOwner
+      ? totalLikes
+      : (selectedRoom?.likeCount ?? 0) + totalLikes;
 
     return (
       <div className="fixed inset-0 z-[120] bg-black animate-in fade-in duration-300 flex flex-col overflow-hidden">
@@ -501,31 +465,35 @@ const LiveSection: React.FC<Props> = ({
               muted
               className="w-full h-full object-cover scale-x-[-1]"
             />
+          ) : streamCover ? (
+            <img src={streamCover} className="w-full h-full object-cover" alt="" />
           ) : (
-            <img
-              src={selectedStream?.thumb}
-              className="w-full h-full object-cover"
-              alt=""
-            />
+            <div className="w-full h-full bg-gradient-to-br from-slate-900 via-black to-slate-950"></div>
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80"></div>
         </div>
 
         {/* TOP BAR */}
-        <div className="relative z-10 px-6 pt-14 flex items-center justify-between">
+        <div className="relative z-10 px-6 pt-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md p-1 pr-4 rounded-full border border-white/10">
-              <img
-                src={streamUser?.photos?.[0]}
-                className="w-8 h-8 rounded-full border border-white/20 object-cover"
-                alt=""
-              />
+              {streamAvatar ? (
+                <img
+                  src={streamAvatar}
+                  className="w-8 h-8 rounded-full border border-white/20 object-cover"
+                  alt=""
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full border border-white/20 bg-slate-800 flex items-center justify-center text-[10px] text-white font-black">
+                  {streamName.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div>
                 <p className="text-[10px] font-black text-white leading-none mb-0.5">
-                  {streamUser?.name}
+                  {streamName}
                 </p>
                 <p className="text-[8px] text-slate-400 font-bold uppercase">
-                  {isOwner ? formatDuration(liveDuration) : "1.2k views"}
+                  {isOwner ? formatDuration(liveDuration) : "Live now"}
                 </p>
               </div>
             </div>
@@ -536,7 +504,7 @@ const LiveSection: React.FC<Props> = ({
               <div className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-xl border border-white/10 flex items-center gap-2">
                 <i className="fa-solid fa-heart text-rose-500 text-[9px]"></i>
                 <span className="text-[10px] font-black text-white">
-                  {isOwner ? totalLikes : selectedStream?.likes + totalLikes}
+                  {likeCount}
                 </span>
               </div>
             </div>
@@ -546,7 +514,7 @@ const LiveSection: React.FC<Props> = ({
             <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-2">
               <i className="fa-solid fa-eye text-white text-[10px]"></i>
               <span className="text-[10px] font-black text-white">
-                {isOwner ? summaryStats.peakViewers : selectedStream?.viewers}
+                {viewerCount}
               </span>
             </div>
             {isOwner ? (
@@ -585,7 +553,7 @@ const LiveSection: React.FC<Props> = ({
         </div>
 
         {/* COMMENTS */}
-        <div className="relative z-10 flex-1 flex flex-col justify-end px-6 pb-24 overflow-hidden">
+        <div className="relative z-10 flex-1 flex flex-col justify-end px-6 overflow-hidden">
           {isOwner && (
             <div className="mb-4 bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl backdrop-blur-md animate-in slide-in-from-top">
               <p className="text-rose-500 font-black text-[9px] uppercase mb-1">
@@ -635,19 +603,27 @@ const LiveSection: React.FC<Props> = ({
           <div className="flex items-center gap-4">
             <div className="flex-1 relative">
               <input
+                value={commentDraft}
+                onChange={(event) => setCommentDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleSendComment();
+                  }
+                }}
                 placeholder="Type a message..."
                 className="w-full bg-black/40 backdrop-blur-xl border border-white/10 p-4 rounded-2xl text-white outline-none placeholder:text-white/40 text-sm"
               />
             </div>
-            {enableGifts && !isOwner && (
+            {!isOwner && (
               <button
-                onClick={() => setShowGiftTray(true)}
-                className="w-14 h-14 bg-amber-500 rounded-2xl flex items-center justify-center text-white shadow-xl active:scale-90"
+                onClick={handleSendComment}
+                className="h-14 px-5 rounded-2xl bg-white text-black font-black uppercase tracking-widest text-[10px] shadow-xl active:scale-90 transition-all"
               >
-                <i className="fa-solid fa-gift text-xl"></i>
+                Send
               </button>
             )}
-            {isOwner ? (
+            {isOwner && (
               <div className="bg-rose-500/10 border border-rose-500/20 p-2 rounded-2xl flex gap-2">
                 {reactionTypes.slice(0, 3).map((r) => (
                   <div
@@ -658,63 +634,9 @@ const LiveSection: React.FC<Props> = ({
                   </div>
                 ))}
               </div>
-            ) : (
-              <button
-                onClick={() => spawnReaction("❤️", "#f43f5e")}
-                className="w-14 h-14 bg-rose-500 rounded-2xl flex items-center justify-center text-white shadow-xl active:scale-90"
-              >
-                <i className="fa-solid fa-heart text-xl"></i>
-              </button>
             )}
           </div>
         </div>
-
-        {showGiftTray && (
-          <div
-            className="absolute inset-0 z-[130] bg-black/60 backdrop-blur-sm flex items-end animate-in fade-in"
-            onClick={() => setShowGiftTray(false)}
-          >
-            <div
-              className="w-full bg-slate-900 rounded-t-[3rem] p-8 animate-in slide-in-from-bottom border-t border-white/10"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-white font-black uppercase tracking-widest italic">
-                  Safari <span className="text-amber-500">Gifts</span>
-                </h3>
-                <button
-                  onClick={() => setShowGiftTray(false)}
-                  className="text-slate-500 font-black text-xs uppercase"
-                >
-                  Close
-                </button>
-              </div>
-              <div className="grid grid-cols-3 gap-4 mb-8">
-                {gifts.map((g) => (
-                  <button
-                    key={g.name}
-                    onClick={() => {
-                      alert(`Sent ${g.name}!`);
-                      setShowGiftTray(false);
-                      spawnReaction("🙌", "#a855f7");
-                    }}
-                    className="bg-slate-950 border border-white/5 p-4 rounded-3xl flex flex-col items-center gap-2 active:scale-95 group"
-                  >
-                    <span className="text-3xl group-hover:scale-125 transition-transform">
-                      {g.icon}
-                    </span>
-                    <span className="text-[10px] text-white font-black uppercase">
-                      {g.name}
-                    </span>
-                    <span className="text-[10px] text-amber-500 font-black">
-                      Ksh {g.price}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         <style>{`
             @keyframes reaction-float { 
@@ -775,15 +697,6 @@ const LiveSection: React.FC<Props> = ({
                 Broadcast Time
               </p>
             </div>
-            <div className="bg-slate-900 border border-white/5 p-8 rounded-[3rem] flex flex-col items-center group active:scale-95 transition-all shadow-xl">
-              <i className="fa-solid fa-gift text-amber-500 text-xl mb-3"></i>
-              <p className="text-3xl font-black text-white leading-none mb-1">
-                {summaryStats.giftsReceived}
-              </p>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
-                Gifts Recv.
-              </p>
-            </div>
           </div>
 
           <div className="w-full space-y-4">
@@ -830,45 +743,68 @@ const LiveSection: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* HUGE ASPECT RATIO CONTRAST: Tower vs Wide Card */}
-      <div className="columns-2 gap-[0.5rem] flex-1 overflow-y-auto no-scrollbar pb-24">
-        {streams.map((stream) => (
-          <div key={stream.id} className="break-inside-avoid mb-2">
-            <button
-              onClick={() => {
-                setSelectedStream(stream);
-                setMode("watch");
-                setTotalLikes(0);
-              }}
-              className={`w-full ${stream.aspect} bg-slate-900 rounded-[0.8rem] overflow-hidden relative border border-white/5 group shadow-2xl transition-all active:scale-95`}
-            >
-              <img
-                src={stream.thumb}
-                className="w-full h-full object-cover transition-transform duration-[4s] group-hover:scale-110"
-                alt=""
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
-
-              <div className="absolute top-4 left-4 flex items-center gap-1.5">
-                <div className="bg-rose-600 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase text-white flex items-center gap-1 shadow-lg">
-                  <div className="w-1 h-1 bg-white rounded-full animate-ping"></div>{" "}
-                  LIVE
-                </div>
-              </div>
-
-              <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-black text-white border border-white/10 flex items-center gap-1">
-                <i className="fa-solid fa-eye text-[8px] text-slate-400"></i>{" "}
-                {stream.viewers} fans
-              </div>
-
-              <div className="absolute bottom-5 left-5 right-5 text-left">
-                <p className="text-white font-black text-[12px] mb-0.5 truncate">
-                  {stream.user}, {stream.age}
-                </p>
-              </div>
-            </button>
+      <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
+        {liveRoomsLoading && (
+          <div className="px-4 py-6 text-xs uppercase tracking-widest text-slate-500 font-black">
+            Loading live rooms...
           </div>
-        ))}
+        )}
+        {liveRoomsError && (
+          <div className="px-4 py-6 text-xs uppercase tracking-widest text-rose-400 font-black">
+            {liveRoomsError}
+          </div>
+        )}
+        {!liveRoomsLoading && !liveRoomsError && liveRooms.length === 0 && (
+          <div className="px-4 py-10 text-center text-slate-500 text-xs uppercase tracking-[0.3em] font-black">
+            No one is live right now.
+          </div>
+        )}
+        <div className="columns-2 gap-[0.5rem]">
+          {liveRooms.map((room, index) => (
+            <div key={room.id} className="break-inside-avoid mb-2">
+              <button
+                onClick={() => {
+                  setSelectedRoom(room);
+                  setMode("watch");
+                  setTotalLikes(0);
+                }}
+                className={`w-full ${getRoomAspect(index)} bg-slate-900 rounded-[0.8rem] overflow-hidden relative border border-white/5 group shadow-2xl transition-all active:scale-95`}
+              >
+                {room.hostPhotoUrl ? (
+                  <img
+                    src={room.hostPhotoUrl}
+                    className="w-full h-full object-cover transition-transform duration-[4s] group-hover:scale-110"
+                    alt=""
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-slate-900 via-black to-slate-950"></div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
+
+                <div className="absolute top-4 left-4 flex items-center gap-1.5">
+                  <div className="bg-rose-600 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase text-white flex items-center gap-1 shadow-lg">
+                    <div className="w-1 h-1 bg-white rounded-full animate-ping"></div>{" "}
+                    LIVE
+                  </div>
+                </div>
+
+                <div className="absolute top-4 right-4 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-lg text-[10px] font-black text-white border border-white/10 flex items-center gap-1">
+                  <i className="fa-solid fa-eye text-[8px] text-slate-400"></i>{" "}
+                  {room.viewerCount} fans
+                </div>
+
+                <div className="absolute bottom-5 left-5 right-5 text-left space-y-1">
+                  <p className="text-white font-black text-[12px] truncate">
+                    {room.hostNickname}
+                  </p>
+                  <p className="text-[10px] text-slate-300 truncate">
+                    {room.title}
+                  </p>
+                </div>
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
