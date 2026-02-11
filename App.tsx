@@ -35,6 +35,9 @@ const ManagePaymentsPage = React.lazy(
 );
 const EscortHomePage = React.lazy(() => import("./pages/EscortHomePage"));
 const LiveRoomPage = React.lazy(() => import("./pages/LiveRoomPage"));
+const PaymentScreen = React.lazy(
+  () => import("./hushly/components/PaymentScreen"),
+);
 import { clearSession, setSession } from "./services/authService";
 import {
   getUserProfile,
@@ -160,6 +163,19 @@ const AppRoutes: React.FC<{
           }
         />
         <Route
+          path="/pricing"
+          element={
+            user && isVerified ? (
+              <PaymentScreen
+                onBack={() => navigate(-1)}
+                onSuccess={() => navigate("/profile")}
+              />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
           path="/likes"
           element={
             user && isVerified ? (
@@ -246,6 +262,7 @@ const shouldShowNav = (pathname: string, search: string) => {
   if (path.startsWith("/users/")) return false;
   if (path.startsWith("/chats")) return false;
   if (path.startsWith("/profile")) return false;
+  if (path.startsWith("/pricing")) return false;
   if (path.startsWith("/discover")) {
     const params = new URLSearchParams(search);
     const view = params.get("view");

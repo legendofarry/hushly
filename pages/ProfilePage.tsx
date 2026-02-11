@@ -1,11 +1,19 @@
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LiveAchievement, UserProfile } from "../types";
+import {
+  DEFAULT_USER_SETTINGS,
+  LiveAchievement,
+  UserProfile,
+  UserSettings,
+} from "../types";
 import AppImage from "../components/AppImage";
 import { OWNER_EMAIL } from "../services/paymentService";
 import { uploadAudioToCloudinary } from "../services/cloudinaryService";
-import { updateUserProfile } from "../services/userService";
+import {
+  getUserSettings,
+  updateUserProfile,
+  updateUserSettings,
+} from "../services/userService";
 import AudioWaveform from "../components/AudioWaveform";
 import { BIO_MAX_WORDS, clampBio } from "../services/bioUtils";
 import { listenToHostLiveAchievements } from "../services/liveAchievementService";
@@ -51,7 +59,11 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   const isOwnProfile = true;
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locError, setLocError] = useState<{
     title: string;
@@ -60,15 +72,20 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   } | null>(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showAppSettings, setShowAppSettings] = useState(false);
+  const [appSettings, setAppSettings] = useState<UserSettings>(
+    DEFAULT_USER_SETTINGS,
+  );
+  const [appSettingsLoading, setAppSettingsLoading] = useState(false);
+  const [appSettingsSaving, setAppSettingsSaving] = useState(false);
+  const [appSettingsError, setAppSettingsError] = useState<string | null>(null);
 
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showLocationMap, setShowLocationMap] = useState(false);
   const [aiInsight, setAiInsight] = useState<string>("");
   const [isLoadingInsight, setIsLoadingInsight] = useState(false);
 
-  const [voiceIntroUrl, setVoiceIntroUrl] = useState(
-    user.voiceIntroUrl ?? "",
-  );
+  const [voiceIntroUrl, setVoiceIntroUrl] = useState(user.voiceIntroUrl ?? "");
   const [voiceIntroDuration, setVoiceIntroDuration] = useState(
     user.voiceIntroDuration ?? 0,
   );
@@ -94,7 +111,10 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   const MIN_VOICE_SECONDS = 10;
   const MAX_VOICE_SECONDS = 20;
 
-  const parsedAge = useMemo(() => parseAgeRange(user.ageRange), [user.ageRange]);
+  const parsedAge = useMemo(
+    () => parseAgeRange(user.ageRange),
+    [user.ageRange],
+  );
   const userCity = useMemo(() => {
     const area = (user.area || "Nairobi").trim();
     return area.split(" - ")[0] || "Nairobi";
@@ -105,10 +125,31 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     const span = parsedAge.max - parsedAge.min;
     return Number.isFinite(span) ? span : 4;
   }, [parsedAge]);
+  const mapCoords = useMemo(() => {
+    const hasExact =
+      typeof user.locationLat === "number" &&
+      Number.isFinite(user.locationLat) &&
+      typeof user.locationLng === "number" &&
+      Number.isFinite(user.locationLng);
+    if (hasExact) {
+      return {
+        lat: user.locationLat as number,
+        lon: user.locationLng as number,
+      };
+    }
+    const coords = CITY_COORDS[userCity] || CITY_COORDS.Nairobi;
+    return { lat: coords.lat, lon: coords.lon };
+  }, [user.locationLat, user.locationLng, userCity]);
 
   const [editName, setEditName] = useState(user.nickname || "");
   const [editAge, setEditAge] = useState(parsedAge?.min ?? 24);
   const [editLocation, setEditLocation] = useState(userCity);
+  const [editLocationLat, setEditLocationLat] = useState<number | null>(
+    user.locationLat ?? null,
+  );
+  const [editLocationLng, setEditLocationLng] = useState<number | null>(
+    user.locationLng ?? null,
+  );
   const [editBio, setEditBio] = useState(clampBio(user.bio || ""));
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -120,8 +161,17 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     const nextParsed = parseAgeRange(user.ageRange);
     setEditAge(nextParsed?.min ?? 24);
     setEditLocation(userCity);
+    setEditLocationLat(user.locationLat ?? null);
+    setEditLocationLng(user.locationLng ?? null);
     setEditBio(clampBio(user.bio || ""));
-  }, [user.nickname, user.ageRange, userCity, user.bio]);
+  }, [
+    user.nickname,
+    user.ageRange,
+    userCity,
+    user.bio,
+    user.locationLat,
+    user.locationLng,
+  ]);
 
   useEffect(() => {
     if (!user.id) return;
@@ -131,6 +181,46 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     );
     return () => unsubscribe();
   }, [user.id]);
+
+  useEffect(() => {
+    if (!showAppSettings) return;
+    let active = true;
+    setAppSettingsLoading(true);
+    setAppSettingsError(null);
+    getUserSettings(user.id)
+      .then((settings) => {
+        if (!active) return;
+        setAppSettings(settings);
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!active) return;
+        setAppSettingsError("Unable to load settings.");
+      })
+      .finally(() => {
+        if (active) setAppSettingsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [showAppSettings, user.id]);
+
+  const handleAppSettingUpdate = (updates: Partial<UserSettings>) => {
+    if (appSettingsSaving) return;
+    const previous = appSettings;
+    setAppSettings({ ...appSettings, ...updates });
+    setAppSettingsSaving(true);
+    setAppSettingsError(null);
+    updateUserSettings(user.id, updates)
+      .catch((error) => {
+        console.error(error);
+        setAppSettings(previous);
+        setAppSettingsError("Unable to save settings.");
+      })
+      .finally(() => {
+        setAppSettingsSaving(false);
+      });
+  };
 
   useEffect(() => {
     setVoiceIntroUrl(user.voiceIntroUrl ?? "");
@@ -148,8 +238,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     };
   }, [voicePreviewUrl]);
 
-  const isOwner =
-    user.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
+  const isOwner = user.email?.toLowerCase() === OWNER_EMAIL.toLowerCase();
   const premiumActive =
     Boolean(user.isPremium) &&
     (!user.premiumExpiresAt || user.premiumExpiresAt > Date.now());
@@ -354,6 +443,8 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
+        setEditLocationLat(latitude);
+        setEditLocationLng(longitude);
         let closestCity: string | null = null;
         let closestDistance = Number.POSITIVE_INFINITY;
 
@@ -392,20 +483,43 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 
   const startCamera = async () => {
     try {
+      setCameraError(null);
+      setCameraReady(false);
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", aspectRatio: 1 },
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
       setIsCameraOpen(true);
     } catch (error) {
       console.error("Error accessing camera:", error);
-      alert("Could not access camera. Please check permissions.");
+      setCameraError("Could not access camera. Please check permissions.");
+      setIsCameraOpen(true);
     }
   };
+
+  useEffect(() => {
+    if (!isCameraOpen) return;
+    const stream = streamRef.current;
+    const video = videoRef.current;
+    if (!stream || !video) return;
+    video.srcObject = stream;
+    const handleReady = () => setCameraReady(true);
+    const handleError = () =>
+      setCameraError("Camera stream failed. Please try again.");
+    video.addEventListener("loadedmetadata", handleReady);
+    video.addEventListener("canplay", handleReady);
+    video.addEventListener("error", handleError);
+    video
+      .play()
+      .then(() => setCameraReady(true))
+      .catch(() => {});
+    return () => {
+      video.removeEventListener("loadedmetadata", handleReady);
+      video.removeEventListener("canplay", handleReady);
+      video.removeEventListener("error", handleError);
+    };
+  }, [isCameraOpen]);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -414,6 +528,8 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     }
     setIsCameraOpen(false);
     setCapturedImage(null);
+    setCameraReady(false);
+    setCameraError(null);
   };
 
   const capturePhoto = () => {
@@ -421,6 +537,11 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       const context = canvas.getContext("2d");
+
+      if (!video.videoWidth || !video.videoHeight) {
+        setCameraError("Camera is still loading. Try again in a moment.");
+        return;
+      }
 
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -448,6 +569,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   };
 
   const handleSaveProfile = async () => {
+    if (profileSaving) return;
     if (!editName.trim()) {
       alert("Name cannot be empty!");
       return;
@@ -463,18 +585,32 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     } else {
       nextAgeRange = formatAgeRange(minAge, minAge + (ageSpan ?? 4));
     }
+    const nextLocationLat =
+      typeof editLocationLat === "number" && Number.isFinite(editLocationLat)
+        ? editLocationLat
+        : null;
+    const nextLocationLng =
+      typeof editLocationLng === "number" && Number.isFinite(editLocationLng)
+        ? editLocationLng
+        : null;
 
     try {
+      setProfileSaveError(null);
+      setProfileSaving(true);
       await updateUserProfile(user.id, {
         nickname: editName.trim(),
         ageRange: nextAgeRange,
         area: editLocation,
+        locationLat: nextLocationLat,
+        locationLng: nextLocationLng,
         bio: clampBio(editBio),
       });
       setIsEditing(false);
     } catch (error) {
       console.error(error);
-      alert("Unable to save profile right now.");
+      setProfileSaveError("Unable to save profile right now.");
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -496,14 +632,12 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   }, []);
 
   const getOsmUrl = () => {
-    const coords = CITY_COORDS[userCity] || CITY_COORDS.Nairobi;
-    const { lat, lon } = coords;
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - 0.02}%2C${lat - 0.02}%2C${lon + 0.02}%2C${lat + 0.02}&layer=mapnik&marker=${lat}%2C${lon}`;
+    const { lat, lon } = mapCoords;
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - 0.02}%2C${lat - 0.02}%2C${lon + 0.02}%2C${lat + 0.02}&layer=mapnik`;
   };
 
   const handleCopyCoords = () => {
-    const coords = CITY_COORDS[userCity] || CITY_COORDS.Nairobi;
-    navigator.clipboard.writeText(`${coords.lat}, ${coords.lon}`);
+    navigator.clipboard.writeText(`${mapCoords.lat}, ${mapCoords.lon}`);
     alert("Coordinates copied to clipboard!");
   };
 
@@ -561,11 +695,11 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
           My Profile
         </h1>
         <button
-          onClick={() => setShowLogoutConfirm(true)}
-          className="group flex h-10 w-10 items-center justify-center rounded-full bg-white/5 transition-all hover:bg-white/10 active:scale-90"
-          aria-label="Log out"
+          onClick={() => setShowAppSettings(true)}
+          className="appSettings group flex h-10 w-10 items-center justify-center transition-all hover:bg-white/10 active:scale-90"
+          aria-label="App settings"
         >
-          <i className="fa-solid fa-ghost text-gray-400 group-hover:text-white"></i>
+          <i className="fa-solid fa-bars-staggered"></i>
         </button>
       </header>
       {!isOwnProfile && (
@@ -598,7 +732,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
           {isOwnProfile && (
             <button
               onClick={startCamera}
-              className="absolute bottom-0 right-0 w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center text-rose-500 shadow-xl active:scale-90 transition-transform"
+              className="retakePhoto absolute bottom-0 right-0 w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center text-rose-500 shadow-xl active:scale-90 transition-transform"
             >
               <i className="fa-solid fa-camera"></i>
             </button>
@@ -719,7 +853,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
       <div className="space-y-6 mb-24 px-4">
         {isOwnProfile && !isPaid && (
           <button
-            onClick={() => navigate("/discover?view=plans")}
+            onClick={() => navigate("/pricing")}
             className="w-full gradient-primary p-6 rounded-3xl flex items-center justify-between shadow-2xl shadow-rose-500/20 transition-all active:scale-95"
           >
             <div className="flex items-center gap-4">
@@ -727,11 +861,30 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                 <i className="fa-solid fa-crown text-xl"></i>
               </div>
               <div className="text-left">
-                <p className="text-white font-black uppercase tracking-tighter">
-                  Get Gold Status
-                </p>
+                <p className="text-white font-black uppercase">Go Gold</p>
                 <p className="text-white/70 text-xs">
                   Unlock all premium features
+                </p>
+              </div>
+            </div>
+            <i className="fa-solid fa-chevron-right text-white"></i>
+          </button>
+        )}
+        {isOwnProfile && isPaid && (
+          <button
+            onClick={handleOpenAnalytics}
+            className="w-full gradient-primary p-6 rounded-3xl flex items-center justify-between shadow-2xl shadow-rose-500/20 transition-all active:scale-95"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-white">
+                <i className="fa-solid fa-chart-line text-xl"></i>
+              </div>
+              <div className="text-left">
+                <p className="text-white font-black uppercase tracking-tighter">
+                  View Insights & Analytics
+                </p>
+                <p className="text-white/70 text-xs">
+                  Track your safari momentum
                 </p>
               </div>
             </div>
@@ -847,16 +1000,18 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 
         {isOwnProfile && (
           <div className="bg-slate-900 rounded-3xl divide-y divide-slate-800 border border-slate-800">
-            <button
-              onClick={handleOpenAnalytics}
-              className="w-full flex items-center justify-between p-5 text-left text-white font-medium hover:bg-slate-800/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <i className="fa-solid fa-chart-line text-slate-500"></i> View
-                Insights & Analytics
-              </div>
-              <i className="fa-solid fa-chevron-right text-xs text-slate-700"></i>
-            </button>
+            {!isPaid && (
+              <button
+                onClick={handleOpenAnalytics}
+                className="w-full flex items-center justify-between p-5 text-left text-white font-medium hover:bg-slate-800/50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <i className="fa-solid fa-chart-line text-slate-500"></i> View
+                  Insights & Analytics
+                </div>
+                <i className="fa-solid fa-chevron-right text-xs text-slate-700"></i>
+              </button>
+            )}
             <button
               onClick={() => setShowLogoutConfirm(true)}
               className="w-full flex items-center justify-between p-5 text-left text-rose-500 font-bold hover:bg-slate-800/50 transition-colors"
@@ -882,13 +1037,8 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                     <i className="fa-solid fa-question text-[10px] text-white"></i>
                   </div>
                 </div>
-
-                <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">
-                  Leaving the <span className="text-rose-500">Tribe?</span>
-                </h3>
                 <p className="text-slate-400 text-sm mb-8 leading-relaxed font-medium px-2">
-                  Your Safari session will end. Are you sure you want to
-                  disappear like a ghost?
+                  Your session will end. Are you sure you want to disappear?
                 </p>
 
                 <div className="space-y-3">
@@ -896,13 +1046,13 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                     onClick={performLogout}
                     className="w-full bg-rose-500 text-white font-black py-4 rounded-2xl shadow-xl transition-all active:scale-95 uppercase tracking-widest text-xs"
                   >
-                    Logout Now
+                    Yes i'm sure
                   </button>
                   <button
                     onClick={() => setShowLogoutConfirm(false)}
                     className="w-full bg-slate-800 text-slate-400 font-black py-4 rounded-2xl border border-white/5 transition-all active:scale-95 uppercase tracking-widest text-xs"
                   >
-                    Stay Active
+                    No
                   </button>
                 </div>
               </>
@@ -914,6 +1064,226 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                 <p className="text-white font-black uppercase tracking-widest text-xs animate-pulse">
                   Clearing Safari tracks...
                 </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showAppSettings && isOwnProfile && (
+        <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="relative w-full max-w-xl bg-[#0c0c0f] border border-white/10 rounded-[2.5rem] p-6 shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-black uppercase tracking-widest text-white">
+                App Settings
+              </h3>
+              <button
+                onClick={() => setShowAppSettings(false)}
+                className="h-10 w-10 rounded-full border border-white/10 text-white/70 hover:text-white"
+                aria-label="Close settings"
+              >
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            {appSettingsLoading ? (
+              <div className="mt-6 text-sm text-slate-400">Loading...</div>
+            ) : (
+              <div className="mt-6 space-y-4">
+                {appSettingsError && (
+                  <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs uppercase tracking-widest text-rose-300">
+                    {appSettingsError}
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <button
+                    onClick={() =>
+                      handleAppSettingUpdate({
+                        discoverable: !appSettings.discoverable,
+                      })
+                    }
+                    disabled={appSettingsSaving}
+                    className="w-full flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left text-sm text-white disabled:opacity-60"
+                  >
+                    <div>
+                      <p className="font-semibold">Discoverable</p>
+                      <p className="text-xs text-slate-400">
+                        Let others see you in the drop.
+                      </p>
+                    </div>
+                    <span
+                      className={`h-6 w-11 rounded-full border ${
+                        appSettings.discoverable
+                          ? "bg-rose-500/90 border-rose-400"
+                          : "bg-white/10 border-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white transition-transform ${
+                          appSettings.discoverable
+                            ? "translate-x-5"
+                            : "translate-x-1"
+                        }`}
+                      />
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      handleAppSettingUpdate({
+                        showOnlineStatus: !appSettings.showOnlineStatus,
+                      })
+                    }
+                    disabled={appSettingsSaving}
+                    className="w-full flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left text-sm text-white disabled:opacity-60"
+                  >
+                    <div>
+                      <p className="font-semibold">Show Online Status</p>
+                      <p className="text-xs text-slate-400">
+                        Let others see when you are online.
+                      </p>
+                    </div>
+                    <span
+                      className={`h-6 w-11 rounded-full border ${
+                        appSettings.showOnlineStatus
+                          ? "bg-rose-500/90 border-rose-400"
+                          : "bg-white/10 border-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white transition-transform ${
+                          appSettings.showOnlineStatus
+                            ? "translate-x-5"
+                            : "translate-x-1"
+                        }`}
+                      />
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      handleAppSettingUpdate({
+                        allowMessageRequests: !appSettings.allowMessageRequests,
+                      })
+                    }
+                    disabled={appSettingsSaving}
+                    className="w-full flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left text-sm text-white disabled:opacity-60"
+                  >
+                    <div>
+                      <p className="font-semibold">Message Requests</p>
+                      <p className="text-xs text-slate-400">
+                        Allow people to message you first.
+                      </p>
+                    </div>
+                    <span
+                      className={`h-6 w-11 rounded-full border ${
+                        appSettings.allowMessageRequests
+                          ? "bg-rose-500/90 border-rose-400"
+                          : "bg-white/10 border-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white transition-transform ${
+                          appSettings.allowMessageRequests
+                            ? "translate-x-5"
+                            : "translate-x-1"
+                        }`}
+                      />
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      handleAppSettingUpdate({
+                        readReceipts: !appSettings.readReceipts,
+                      })
+                    }
+                    disabled={appSettingsSaving}
+                    className="w-full flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left text-sm text-white disabled:opacity-60"
+                  >
+                    <div>
+                      <p className="font-semibold">Read Receipts</p>
+                      <p className="text-xs text-slate-400">
+                        Show when messages are read.
+                      </p>
+                    </div>
+                    <span
+                      className={`h-6 w-11 rounded-full border ${
+                        appSettings.readReceipts
+                          ? "bg-rose-500/90 border-rose-400"
+                          : "bg-white/10 border-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white transition-transform ${
+                          appSettings.readReceipts
+                            ? "translate-x-5"
+                            : "translate-x-1"
+                        }`}
+                      />
+                    </span>
+                  </button>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white">
+                    <p className="font-semibold">Location Precision</p>
+                    <p className="text-xs text-slate-400 mb-3">
+                      Choose how specific your location appears.
+                    </p>
+                    <div className="flex gap-2">
+                      {(["city", "neighborhood"] as const).map((value) => (
+                        <button
+                          key={value}
+                          onClick={() =>
+                            handleAppSettingUpdate({
+                              locationPrecision: value,
+                            })
+                          }
+                          disabled={appSettingsSaving}
+                          className={`flex-1 rounded-full px-3 py-2 text-[10px] uppercase tracking-widest border ${
+                            appSettings.locationPrecision === value
+                              ? "border-rose-400 text-rose-300"
+                              : "border-white/10 text-slate-300"
+                          }`}
+                        >
+                          {value === "city" ? "City" : "Neighborhood"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      handleAppSettingUpdate({
+                        dataSharing: !appSettings.dataSharing,
+                      })
+                    }
+                    disabled={appSettingsSaving}
+                    className="w-full flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left text-sm text-white disabled:opacity-60"
+                  >
+                    <div>
+                      <p className="font-semibold">Data Sharing</p>
+                      <p className="text-xs text-slate-400">
+                        Allow anonymous usage analytics.
+                      </p>
+                    </div>
+                    <span
+                      className={`h-6 w-11 rounded-full border ${
+                        appSettings.dataSharing
+                          ? "bg-rose-500/90 border-rose-400"
+                          : "bg-white/10 border-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`block h-5 w-5 translate-y-0.5 rounded-full bg-white transition-transform ${
+                          appSettings.dataSharing
+                            ? "translate-x-5"
+                            : "translate-x-1"
+                        }`}
+                      />
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -989,7 +1359,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
 
           <div className="p-6 bg-slate-950 border-t border-white/5">
             <button
-              onClick={() => navigate("/discover?view=plans")}
+              onClick={() => navigate("/pricing")}
               className="w-full bg-white text-slate-950 font-black py-4 rounded-2xl shadow-xl transition-all active:scale-95 text-xs uppercase tracking-widest"
             >
               Boost Visibility with Gold
@@ -1003,7 +1373,8 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
           <div className="flex items-center justify-between mb-8">
             <button
               onClick={() => setIsEditing(false)}
-              className="text-slate-500 font-bold uppercase text-xs"
+              disabled={profileSaving}
+              className="text-slate-500 font-bold uppercase text-xs disabled:opacity-50"
             >
               Cancel
             </button>
@@ -1012,13 +1383,25 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
             </h3>
             <button
               onClick={handleSaveProfile}
-              className="text-rose-500 font-black uppercase text-xs"
+              disabled={profileSaving}
+              className="text-rose-500 font-black uppercase text-xs disabled:opacity-60"
             >
-              Save
+              {profileSaving ? "Saving..." : "Save"}
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto no-scrollbar space-y-6">
+            {profileSaveError && (
+              <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-[10px] uppercase tracking-widest text-rose-300">
+                {profileSaveError}
+              </div>
+            )}
+            {profileSaving && !profileSaveError && (
+              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] uppercase tracking-widest text-slate-300 flex items-center gap-2">
+                <i className="fa-solid fa-spinner fa-spin"></i>
+                Updating profile...
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
                 Display Name
@@ -1070,7 +1453,9 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                   >
                     <i
                       className={`fa-solid ${
-                        isLocating ? "fa-spinner fa-spin" : "fa-location-crosshairs"
+                        isLocating
+                          ? "fa-spinner fa-spin"
+                          : "fa-location-crosshairs"
                       }`}
                     ></i>
                   </button>
@@ -1159,12 +1544,23 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
             {!capturedImage && (
               <div className="absolute inset-0 border-[40px] border-black/40 rounded-full pointer-events-none"></div>
             )}
+            {!capturedImage && !cameraReady && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-xs uppercase tracking-widest">
+                Loading camera…
+              </div>
+            )}
           </div>
 
           <div className="w-full max-w-sm space-y-4">
+            {cameraError && (
+              <div className="rounded-2xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs uppercase tracking-widest text-rose-300">
+                {cameraError}
+              </div>
+            )}
             {!capturedImage ? (
               <button
                 onClick={capturePhoto}
+                disabled={!cameraReady}
                 className="w-20 h-20 rounded-full bg-white border-8 border-slate-300/50 mx-auto flex items-center justify-center active:scale-90 transition-transform"
               >
                 <div className="w-12 h-12 rounded-full bg-rose-500"></div>
@@ -1246,7 +1642,9 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
               />
             )}
 
-            {voiceError && <p className="text-[10px] text-red-400">{voiceError}</p>}
+            {voiceError && (
+              <p className="text-[10px] text-red-400">{voiceError}</p>
+            )}
 
             <div className="flex items-center gap-3">
               <button

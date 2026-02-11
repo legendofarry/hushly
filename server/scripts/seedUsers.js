@@ -44,7 +44,7 @@ const DEFAULT_USER_SETTINGS = {
   loginAlerts: true,
 };
 
-const seedUsers = [
+const baseSeeds = [
   {
     nickname: "Amina",
     realName: "Amina Ali",
@@ -564,6 +564,168 @@ const seedUsers = [
       "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=600&q=80",
   },
 ];
+
+const maleNames = [
+  "Ayo",
+  "Biko",
+  "Chike",
+  "Dayo",
+  "Eli",
+  "Faruq",
+  "Gideon",
+  "Hassan",
+  "Ibrahim",
+  "Jules",
+  "Kairo",
+  "Liam",
+  "Malik",
+  "Neo",
+  "Omar",
+  "Pius",
+  "Rico",
+  "Samir",
+  "Timo",
+  "Zane",
+];
+const femaleNames = [
+  "Asha",
+  "Binta",
+  "Chioma",
+  "Dina",
+  "Eshe",
+  "Farida",
+  "Gigi",
+  "Hani",
+  "Imani",
+  "Jada",
+  "Kali",
+  "Layla",
+  "Mara",
+  "Nala",
+  "Oma",
+  "Pia",
+  "Raya",
+  "Sade",
+  "Tara",
+  "Zuri",
+];
+const lastNames = [
+  "Ali",
+  "Achieng",
+  "Kamau",
+  "Mensah",
+  "Njeri",
+  "Okello",
+  "Otieno",
+  "Wanjiku",
+  "Mwangi",
+  "Kibet",
+  "Hassan",
+  "Noor",
+  "Mutiso",
+  "Wekesa",
+  "Nderitu",
+  "Maina",
+  "Atieno",
+  "Omondi",
+  "Odhiambo",
+  "Chebet",
+];
+const areas = ["Nairobi", "Mombasa", "Kisumu", "Nakuru", "Eldoret", "Thika", "Malindi", "Kitale"];
+const intentsPool = [
+  "Friends",
+  "Chill Buddies",
+  "Casual Meetups",
+  "Relationships",
+  "Plans & Hangouts",
+];
+const ageRanges = [
+  "20-25",
+  "21-27",
+  "22-28",
+  "23-29",
+  "24-30",
+  "25-31",
+  "26-32",
+  "27-33",
+];
+const malePhotos = [
+  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=600&q=80",
+  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80",
+  "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=600&q=80",
+  "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=600&q=80",
+  "https://images.unsplash.com/photo-1488161628813-04466f872be2?auto=format&fit=crop&w=600&q=80",
+];
+const femalePhotos = [
+  "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?auto=format&fit=crop&w=600&q=80",
+  "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=600&q=80",
+  "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=600&q=80",
+  "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80",
+  "https://images.unsplash.com/photo-1485893086445-ed75865251e0?auto=format&fit=crop&w=600&q=80",
+];
+const bioSnippets = [
+  "Good energy, soft laugh, real vibes.",
+  "Coffee, music, and honest conversation.",
+  "Low drama, high ambition.",
+  "Here for calm connection and laughter.",
+  "Let’s keep it simple and genuine.",
+];
+
+const buildSeedUsers = (targetCount = 100) => {
+  const seeds = [...baseSeeds];
+  const usedNicknames = new Set(seeds.map((u) => u.nickname.toLowerCase()));
+  let index = 1;
+
+  const makeNickname = (base, suffix) => {
+    const candidate = suffix ? `${base}${suffix}` : base;
+    if (!usedNicknames.has(candidate.toLowerCase())) {
+      return candidate;
+    }
+    return null;
+  };
+
+  while (seeds.length < targetCount) {
+    const gender = seeds.length % 2 === 0 ? "male" : "female";
+    const first =
+      gender === "male"
+        ? maleNames[seeds.length % maleNames.length]
+        : femaleNames[seeds.length % femaleNames.length];
+    const last = lastNames[seeds.length % lastNames.length];
+    let nickname = makeNickname(first, "");
+    if (!nickname) {
+      nickname = makeNickname(first, String(index)) || `${first}${index}`;
+    }
+    usedNicknames.add(nickname.toLowerCase());
+    const email = `seed.user${String(seeds.length + 1).padStart(3, "0")}@hushly.app`;
+    const area = areas[seeds.length % areas.length];
+    const intent = intentsPool[seeds.length % intentsPool.length];
+    const ageRange = ageRanges[seeds.length % ageRanges.length];
+    const bio = bioSnippets[seeds.length % bioSnippets.length];
+    const photoUrl =
+      gender === "male"
+        ? malePhotos[seeds.length % malePhotos.length]
+        : femalePhotos[seeds.length % femalePhotos.length];
+
+    seeds.push({
+      nickname,
+      realName: `${first} ${last}`,
+      email,
+      password: `HushlySeed#2026${String.fromCharCode(65 + (seeds.length % 26))}`,
+      gender,
+      interestedIn: gender === "male" ? ["female"] : ["male"],
+      ageRange,
+      area,
+      intents: [intent],
+      bio,
+      photoUrl,
+    });
+    index += 1;
+  }
+
+  return seeds;
+};
+
+const seedUsers = buildSeedUsers(100);
 
 const normalizeNickname = (value) => value.trim().toLowerCase();
 

@@ -14,7 +14,7 @@ const HushlyShell: React.FC<Props> = ({
   unreadNotifications = 0,
 }) => {
   return (
-    <div className="relative min-h-screen font-sans selection:bg-rose-500/30 selection:text-white bg-slate-950 privacy-lock">
+    <div className="relative min-h-screen font-sans selection:bg-rose-500/30 selection:text-white  privacy-lock">
       <BackgroundHearts />
       <div
         className={`relative z-10 min-h-screen transition-all ${

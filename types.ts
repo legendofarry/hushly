@@ -31,6 +31,8 @@ export interface UserProfile {
   ageRange: string; // e.g. "20-25"
   bio: string;
   area: string; // Area/City only
+  locationLat?: number | null;
+  locationLng?: number | null;
   intents: IntentType[];
   photoUrl: string; // Live selfie
   isAnonymous: boolean;

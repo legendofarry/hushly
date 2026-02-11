@@ -251,10 +251,7 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     openContextMenu(conversation, event.clientX, event.clientY);
   };
 
-  const handleTouchStart = (
-    event: React.TouchEvent,
-    conversation: any,
-  ) => {
+  const handleTouchStart = (event: React.TouchEvent, conversation: any) => {
     if (event.touches.length !== 1) return;
     const touch = event.touches[0];
     touchStartRef.current = { x: touch.clientX, y: touch.clientY };
@@ -295,9 +292,7 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     setIsUpdating(true);
     setMenuError(null);
     try {
-      const archived = Boolean(
-        contextMenu.conversation?.archivedBy?.[user.id],
-      );
+      const archived = Boolean(contextMenu.conversation?.archivedBy?.[user.id]);
       await setConversationArchived(
         contextMenu.conversation.id,
         user.id,
@@ -324,7 +319,6 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
         user.id,
         !pinned,
       );
-      setMenuMessage(pinned ? "Chat unpinned." : "Chat pinned.");
     } catch (error) {
       console.error(error);
       setMenuError("Unable to update pin.");
@@ -340,11 +334,7 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     setMenuError(null);
     try {
       const muted = Boolean(contextMenu.conversation?.mutedBy?.[user.id]);
-      await setConversationMuted(
-        contextMenu.conversation.id,
-        user.id,
-        !muted,
-      );
+      await setConversationMuted(contextMenu.conversation.id, user.id, !muted);
       setMenuMessage(muted ? "Notifications unmuted." : "Chat muted.");
     } catch (error) {
       console.error(error);
@@ -450,8 +440,12 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     if (!notificationTouchStartRef.current || event.touches.length !== 1)
       return;
     const touch = event.touches[0];
-    const deltaX = Math.abs(touch.clientX - notificationTouchStartRef.current.x);
-    const deltaY = Math.abs(touch.clientY - notificationTouchStartRef.current.y);
+    const deltaX = Math.abs(
+      touch.clientX - notificationTouchStartRef.current.x,
+    );
+    const deltaY = Math.abs(
+      touch.clientY - notificationTouchStartRef.current.y,
+    );
     if (deltaX > 10 || deltaY > 10) {
       if (notificationLongPressRef.current) {
         window.clearTimeout(notificationLongPressRef.current);
@@ -484,7 +478,9 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
     }
   };
 
-  const handleToggleNotificationRead = async (notification: AppNotification) => {
+  const handleToggleNotificationRead = async (
+    notification: AppNotification,
+  ) => {
     setIsUpdating(true);
     setMenuError(null);
     try {
@@ -781,9 +777,6 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
               <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">
                 {showArchived ? "Archived Chats" : "Recent Chats"}
               </h2>
-              <p className="mt-1 text-[10px] uppercase tracking-widest text-gray-600">
-                Hold or right click for options
-              </p>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-white/5 bg-white/[0.03] p-1">
               <button
@@ -835,9 +828,7 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                 const isUnread = isConversationUnread(conversation);
                 const isPinned = Boolean(conversation?.pinnedBy?.[user.id]);
                 const isMuted = Boolean(conversation?.mutedBy?.[user.id]);
-                const isArchived = Boolean(
-                  conversation?.archivedBy?.[user.id],
-                );
+                const isArchived = Boolean(conversation?.archivedBy?.[user.id]);
 
                 return (
                   <div
@@ -894,8 +885,8 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                             {profile.nickname ?? "Unknown"}
                           </h3>
                           {isPinned && (
-                            <span className="text-[9px] uppercase tracking-widest text-kipepeo-pink">
-                              Pinned
+                            <span className="text-kipepeo-pink text-[10px]">
+                              <i className="fa-solid fa-thumbtack"></i>
                             </span>
                           )}
                           {isArchived && (
@@ -948,9 +939,7 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
           ) : (
             <div className="flex flex-col items-center justify-center py-24 text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/5 grayscale">
-                <span className="text-3xl">
-                  {showArchived ? "🗂️" : "👻"}
-                </span>
+                <span className="text-3xl">{showArchived ? "🗂️" : "👻"}</span>
               </div>
               <h3 className="text-lg font-black text-gray-300">
                 {showArchived ? "No archived chats" : "No chats yet"}
@@ -985,13 +974,6 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
               <p className="text-xs font-bold uppercase tracking-widest text-gray-300">
                 Chat Options
               </p>
-              <p className="mt-1 text-[10px] text-gray-500">
-                {contextMenu.conversation?.memberProfiles?.[
-                  (contextMenu.conversation.members ?? []).find(
-                    (id: string) => id !== user.id,
-                  ) ?? ""
-                ]?.nickname ?? "Conversation"}
-              </p>
             </div>
             <div className="py-1">
               <button
@@ -1023,14 +1005,6 @@ const ChatListPage: React.FC<Props> = ({ user }) => {
                   ? "Unarchive"
                   : "Archive"}
                 <span className="text-[9px] text-gray-500">Hide</span>
-              </button>
-              <button
-                onClick={handleMarkUnread}
-                disabled={isUpdating}
-                className="flex w-full items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-widest text-gray-200 hover:bg-white/5 disabled:opacity-60"
-              >
-                Mark Unread
-                <span className="text-[9px] text-gray-500">Reminder</span>
               </button>
               <button
                 onClick={handleDeleteConversation}

@@ -1,6 +1,19 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  limit,
+  onSnapshot,
+  query,
+  runTransaction,
+  where,
+} from "firebase/firestore";
 import { User, Game, WeekendPlan, RSVP, Profile } from "../types";
 import { GAMES, MOCK_PROFILES, KENYA_LOCATIONS } from "../constants";
+import { db } from "../../firebase";
 
 interface Props {
   user: User | null;
@@ -15,6 +28,15 @@ const GameHub: React.FC<Props> = ({
   onViewProfile,
   onUpgrade,
 }) => {
+  const LOVE_QUIZ_ID = "g1";
+  const LOVE_QUIZ_QUEUE_TTL_MS = 2 * 60 * 1000;
+  type LoveQuizStatus = "idle" | "searching" | "matched" | "playing";
+  type LoveQuizOpponent = {
+    id: string;
+    name: string;
+    photoUrl?: string | null;
+  };
+
   const [activeTab, setActiveTab] = useState<"arcade" | "weekend">("arcade");
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [plans, setPlans] = useState<WeekendPlan[]>([]);
@@ -25,6 +47,14 @@ const GameHub: React.FC<Props> = ({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showGoldRequired, setShowGoldRequired] = useState(false);
   const [showRsvpConfirmation, setShowRsvpConfirmation] = useState(false);
+  const [loveQuizStatus, setLoveQuizStatus] =
+    useState<LoveQuizStatus>("idle");
+  const [loveQuizError, setLoveQuizError] = useState<string | null>(null);
+  const [loveQuizOpponent, setLoveQuizOpponent] =
+    useState<LoveQuizOpponent | null>(null);
+  const loveQuizQueueIdRef = useRef<string | null>(null);
+  const loveQuizUnsubRef = useRef<(() => void) | null>(null);
+  const loveQuizRetryTimerRef = useRef<number | null>(null);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState("");
@@ -37,6 +67,7 @@ const GameHub: React.FC<Props> = ({
   const [planDate, setPlanDate] = useState("");
   const [planLoc, setPlanLoc] = useState("");
   const [planImage, setPlanImage] = useState<string | null>(null);
+  const isLoveQuiz = selectedGame?.id === LOVE_QUIZ_ID;
 
   useEffect(() => {
     // Mock initial plans
@@ -249,6 +280,225 @@ const GameHub: React.FC<Props> = ({
     }
   };
 
+  const stopLoveQuizListener = useCallback(() => {
+    if (loveQuizUnsubRef.current) {
+      loveQuizUnsubRef.current();
+      loveQuizUnsubRef.current = null;
+    }
+  }, []);
+
+  const clearLoveQuizRetry = useCallback(() => {
+    if (loveQuizRetryTimerRef.current) {
+      window.clearInterval(loveQuizRetryTimerRef.current);
+      loveQuizRetryTimerRef.current = null;
+    }
+  }, []);
+
+  const resetLoveQuizState = useCallback(() => {
+    setLoveQuizStatus("idle");
+    setLoveQuizError(null);
+    setLoveQuizOpponent(null);
+  }, []);
+
+  const cancelLoveQuizMatchmaking = useCallback(() => {
+    stopLoveQuizListener();
+    clearLoveQuizRetry();
+    const queueId = loveQuizQueueIdRef.current;
+    loveQuizQueueIdRef.current = null;
+    if (queueId) {
+      void deleteDoc(doc(collection(db, "game_queue"), queueId)).catch(
+        (error) => {
+          console.error(error);
+        },
+      );
+    }
+    resetLoveQuizState();
+  }, [clearLoveQuizRetry, resetLoveQuizState, stopLoveQuizListener]);
+
+  const attemptLoveQuizMatch = useCallback(
+    async (queueId: string) => {
+      if (!user || !selectedGame) return;
+      const queueRef = collection(db, "game_queue");
+      const candidates = await getDocs(
+        query(queueRef, where("status", "==", "waiting"), limit(10)),
+      );
+      const now = Date.now();
+      const sorted = candidates.docs
+        .map((docSnap) => ({
+          docSnap,
+          createdAt: docSnap.data().createdAt ?? 0,
+        }))
+        .sort((a, b) => a.createdAt - b.createdAt);
+      const opponentDoc = sorted
+        .map((item) => item.docSnap)
+        .find(
+          (docSnap) =>
+            docSnap.data().gameId === selectedGame.id &&
+            docSnap.id !== queueId &&
+            docSnap.data().userId !== user.id &&
+            now - (docSnap.data().createdAt ?? 0) < LOVE_QUIZ_QUEUE_TTL_MS,
+        );
+      if (!opponentDoc) return;
+
+      await runTransaction(db, async (tx) => {
+        const currentRef = doc(queueRef, queueId);
+        const opponentRef = doc(queueRef, opponentDoc.id);
+        const currentSnap = await tx.get(currentRef);
+        const opponentSnap = await tx.get(opponentRef);
+        if (!currentSnap.exists() || !opponentSnap.exists()) return;
+        const currentData = currentSnap.data() as any;
+        const opponentData = opponentSnap.data() as any;
+        if (currentData.status !== "waiting") return;
+        if (opponentData.status !== "waiting") return;
+        if (currentData.userId === opponentData.userId) return;
+
+        const matchRef = doc(collection(db, "game_matches"));
+        const matchPayload = {
+          gameId: selectedGame.id,
+          participants: [currentData.userId, opponentData.userId],
+          createdAt: Date.now(),
+        };
+        tx.set(matchRef, matchPayload);
+
+        const baseUpdate = {
+          status: "matched",
+          matchId: matchRef.id,
+          matchedAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        tx.update(currentRef, {
+          ...baseUpdate,
+          opponentId: opponentData.userId,
+          opponentName: opponentData.userName ?? "Match",
+          opponentPhoto: opponentData.userPhoto ?? "",
+        });
+        tx.update(opponentRef, {
+          ...baseUpdate,
+          opponentId: currentData.userId,
+          opponentName: user.name ?? "Match",
+          opponentPhoto: user.photos?.[0] ?? "",
+        });
+      });
+    },
+    [selectedGame, user],
+  );
+
+  const startLoveQuizMatchmaking = useCallback(async () => {
+    if (!user || !selectedGame) return;
+    if (selectedGame.id !== LOVE_QUIZ_ID) return;
+    if (loveQuizQueueIdRef.current) return;
+
+    stopLoveQuizListener();
+    clearLoveQuizRetry();
+    setLoveQuizError(null);
+    setLoveQuizOpponent(null);
+    setLoveQuizStatus("searching");
+    try {
+      const queueRef = collection(db, "game_queue");
+      const queueDoc = await addDoc(queueRef, {
+        gameId: selectedGame.id,
+        userId: user.id,
+        userName: user.name,
+        userPhoto: user.photos?.[0] ?? "",
+        status: "waiting",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      loveQuizQueueIdRef.current = queueDoc.id;
+
+      loveQuizUnsubRef.current = onSnapshot(
+        queueDoc,
+        (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.data() as any;
+          if (data.status === "matched") {
+            if (data.opponentId) {
+              setLoveQuizOpponent({
+                id: data.opponentId,
+                name: data.opponentName ?? "Match",
+                photoUrl: data.opponentPhoto ?? null,
+              });
+            }
+            setLoveQuizStatus("matched");
+          }
+        },
+        (error) => {
+          console.error(error);
+          setLoveQuizError("Unable to find a match right now.");
+        },
+      );
+
+      await attemptLoveQuizMatch(queueDoc.id);
+    } catch (error) {
+      console.error(error);
+      setLoveQuizError("Unable to start matchmaking right now.");
+      resetLoveQuizState();
+    }
+  }, [
+    LOVE_QUIZ_ID,
+    attemptLoveQuizMatch,
+    clearLoveQuizRetry,
+    selectedGame,
+    stopLoveQuizListener,
+    user,
+    resetLoveQuizState,
+  ]);
+
+  const handleExitGame = useCallback(() => {
+    if (selectedGame?.id === LOVE_QUIZ_ID) {
+      cancelLoveQuizMatchmaking();
+    }
+    setSelectedGame(null);
+  }, [LOVE_QUIZ_ID, cancelLoveQuizMatchmaking, selectedGame]);
+
+  useEffect(() => {
+    if (!selectedGame || selectedGame.id !== LOVE_QUIZ_ID) {
+      cancelLoveQuizMatchmaking();
+      return;
+    }
+    if (!user) {
+      resetLoveQuizState();
+      setLoveQuizError("Log in to play.");
+      return;
+    }
+    resetLoveQuizState();
+    void startLoveQuizMatchmaking();
+  }, [
+    LOVE_QUIZ_ID,
+    cancelLoveQuizMatchmaking,
+    resetLoveQuizState,
+    selectedGame,
+    startLoveQuizMatchmaking,
+    user,
+  ]);
+
+  useEffect(() => {
+    if (loveQuizStatus !== "searching") return;
+    if (!loveQuizQueueIdRef.current) return;
+    loveQuizRetryTimerRef.current = window.setInterval(() => {
+      if (loveQuizQueueIdRef.current) {
+        void attemptLoveQuizMatch(loveQuizQueueIdRef.current);
+      }
+    }, 4000);
+    return () => {
+      clearLoveQuizRetry();
+    };
+  }, [attemptLoveQuizMatch, clearLoveQuizRetry, loveQuizStatus]);
+
+  useEffect(() => {
+    if (loveQuizStatus !== "matched") return;
+    const timer = window.setTimeout(() => {
+      setLoveQuizStatus("playing");
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [loveQuizStatus]);
+
+  useEffect(() => {
+    return () => {
+      cancelLoveQuizMatchmaking();
+    };
+  }, [cancelLoveQuizMatchmaking]);
+
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-slate-950 overflow-hidden font-['Outfit']">
       <div className="relative px-6 pt-6 pb-4 z-10">
@@ -257,17 +507,8 @@ const GameHub: React.FC<Props> = ({
             <div className="w-12 h-12 bg-indigo-500 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.5)] border-t border-white/30">
               <i className="fa-solid fa-ghost text-white text-2xl animate-bounce"></i>
             </div>
-            <div>
-              <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">
-                HUSHLY<span className="text-indigo-400">HUB</span>
-              </h2>
-            </div>
           </div>
           <div className="flex gap-2">
-            <div className="bg-slate-900 border border-indigo-500/30 px-3 py-1 rounded-xl flex items-center gap-2">
-              <i className="fa-solid fa-coins text-amber-400 text-xs"></i>
-              <span className="text-xs font-black text-white">450</span>
-            </div>
             <button
               onClick={onExit}
               className="w-10 h-10 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center justify-center text-rose-500 active:scale-90 transition-all hover:bg-rose-500 hover:text-white"
@@ -317,26 +558,29 @@ const GameHub: React.FC<Props> = ({
                       {user?.name}
                     </h3>
                     <p className="text-indigo-400 text-xs font-bold uppercase tracking-[0.2em] mb-3">
-                      Mall Resident
+                      Resident
                     </p>
-                    <button className="bg-white/5 hover:bg-white/10 px-4 py-2 rounded-xl text-[10px] font-black text-white uppercase tracking-widest border border-white/5 transition-all">
-                      Global Chat
-                    </button>
                   </div>
                 </div>
 
                 <div className="mt-8 flex gap-4">
                   <div className="flex-1 bg-slate-950/40 p-4 rounded-2xl border border-white/5">
                     <p className="text-slate-500 text-[9px] font-black uppercase mb-1">
-                      Rank
+                      Swipes Remaining
                     </p>
-                    <p className="text-white font-black">Diamond III</p>
+                    {console.log(user)}
+                    <p className="text-white font-black">
+                      {" "}
+                      {user?.dailySwipesRemaining}
+                    </p>
                   </div>
                   <div className="flex-1 bg-slate-950/40 p-4 rounded-2xl border border-white/5">
                     <p className="text-slate-500 text-[9px] font-black uppercase mb-1">
-                      Win Rate
+                      Followers
                     </p>
-                    <p className="text-white font-black">68%</p>
+                    <p className="text-white font-black">
+                      {user.followerCount}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -641,7 +885,7 @@ const GameHub: React.FC<Props> = ({
 
           <div className="relative flex justify-between items-center mb-16 z-10">
             <button
-              onClick={() => setSelectedGame(null)}
+              onClick={handleExitGame}
               className="text-slate-400 font-black uppercase tracking-widest text-xs flex items-center gap-2"
             >
               <i className="fa-solid fa-arrow-left"></i> Exit Game
@@ -664,39 +908,161 @@ const GameHub: React.FC<Props> = ({
               {selectedGame.name}
             </h3>
             <p className="text-slate-400 mb-12 max-w-xs font-medium leading-relaxed">
-              Connect and bond! Send a match an invite to this{" "}
-              <span className="text-white">1-on-1 Safari challenge.</span>
+              {isLoveQuiz ? (
+                <>
+                  We will pair you with the first available player for a{" "}
+                  <span className="text-white">1-on-1 Love Quiz.</span>
+                </>
+              ) : (
+                <>
+                  Connect and bond! Send a match an invite to this{" "}
+                  <span className="text-white">1-on-1 Safari challenge.</span>
+                </>
+              )}
             </p>
 
-            <div className="w-full space-y-4 mb-12 max-w-md">
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em] mb-4">
-                Choose Your Opponent
-              </p>
-              {[1, 2, 3].map((i) => (
-                <button
-                  key={i}
-                  className="w-full bg-slate-900 p-5 rounded-[2rem] border border-white/5 flex items-center gap-4 transition-all hover:border-indigo-500/50 active:scale-95 text-left group"
-                >
-                  <div className="relative">
-                    <img
-                      src={`https://picsum.photos/100/100?random=${i + 40}`}
-                      className="w-12 h-12 rounded-2xl grayscale group-hover:grayscale-0 transition-all"
-                      alt=""
-                    />
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900"></div>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-white font-black text-lg">Match #{i}</p>
-                    <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
-                      Nairobi, Kenya
+            {isLoveQuiz ? (
+              <div className="w-full space-y-4 mb-12 max-w-md">
+                {loveQuizStatus === "idle" && (
+                  <div className="bg-slate-900/70 border border-white/5 rounded-[2rem] p-6 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 mx-auto flex items-center justify-center text-indigo-400 mb-4">
+                      <i className="fa-solid fa-signal"></i>
+                    </div>
+                    <p className="text-white font-black uppercase tracking-widest text-xs">
+                      Connecting To The Arena...
                     </p>
+                    <p className="text-slate-500 text-[10px] mt-2 font-medium">
+                      Preparing your 1-on-1 match.
+                    </p>
+                    {loveQuizError && (
+                      <div className="mt-4 space-y-3">
+                        <p className="text-[10px] text-rose-400 font-bold uppercase tracking-widest">
+                          {loveQuizError}
+                        </p>
+                        <button
+                          onClick={startLoveQuizMatchmaking}
+                          className="w-full bg-indigo-500 text-white font-black py-3 rounded-xl active:scale-95 transition-all uppercase tracking-widest text-[10px]"
+                        >
+                          Retry Matchmaking
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center text-white shadow-lg">
-                    <i className="fa-solid fa-paper-plane text-xs"></i>
+                )}
+
+                {loveQuizStatus === "searching" && (
+                  <div className="bg-slate-900/70 border border-white/5 rounded-[2rem] p-6 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 mx-auto flex items-center justify-center text-indigo-400 mb-4">
+                      <i className="fa-solid fa-spinner fa-spin text-2xl"></i>
+                    </div>
+                    <p className="text-white font-black uppercase tracking-widest text-xs">
+                      Waiting For Another Player...
+                    </p>
+                    <p className="text-slate-500 text-[10px] mt-2 font-medium">
+                      We will pair the first two available people.
+                    </p>
+                    {loveQuizError && (
+                      <p className="mt-3 text-[10px] text-rose-400 font-bold uppercase tracking-widest">
+                        {loveQuizError}
+                      </p>
+                    )}
+                    <button
+                      onClick={cancelLoveQuizMatchmaking}
+                      className="mt-6 w-full bg-white/5 text-slate-300 font-black py-3 rounded-xl active:scale-95 transition-all uppercase tracking-widest text-[10px] border border-white/10"
+                    >
+                      Cancel Search
+                    </button>
                   </div>
-                </button>
-              ))}
-            </div>
+                )}
+
+                {loveQuizStatus === "matched" && (
+                  <div className="bg-slate-900/70 border border-white/5 rounded-[2rem] p-6 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 mx-auto flex items-center justify-center text-emerald-400 mb-4">
+                      <i className="fa-solid fa-link"></i>
+                    </div>
+                    <p className="text-white font-black uppercase tracking-widest text-xs">
+                      Match Found
+                    </p>
+                    <p className="text-slate-400 text-[10px] mt-2 font-medium">
+                      Starting Love Quiz...
+                    </p>
+                    {loveQuizOpponent && (
+                      <div className="mt-4 flex items-center justify-center gap-3">
+                        {loveQuizOpponent.photoUrl ? (
+                          <img
+                            src={loveQuizOpponent.photoUrl}
+                            className="w-12 h-12 rounded-2xl object-cover border border-white/10"
+                            alt=""
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-white font-black">
+                            {loveQuizOpponent.name?.[0] ?? "?"}
+                          </div>
+                        )}
+                        <div className="text-left">
+                          <p className="text-white font-black text-sm">
+                            {loveQuizOpponent.name}
+                          </p>
+                          <p className="text-[10px] uppercase tracking-widest text-slate-500">
+                            1-on-1 Match
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {loveQuizStatus === "playing" && (
+                  <div className="bg-slate-900/70 border border-white/5 rounded-[2rem] p-6 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-rose-500/20 mx-auto flex items-center justify-center text-rose-400 mb-4">
+                      <i className="fa-solid fa-heart-pulse"></i>
+                    </div>
+                    <p className="text-white font-black uppercase tracking-widest text-xs">
+                      Love Quiz Live
+                    </p>
+                    <p className="text-slate-400 text-[10px] mt-2 font-medium">
+                      Your 1-on-1 session is ready.
+                    </p>
+                    <button
+                      onClick={handleExitGame}
+                      className="mt-6 w-full bg-white/5 text-slate-300 font-black py-3 rounded-xl active:scale-95 transition-all uppercase tracking-widest text-[10px] border border-white/10"
+                    >
+                      Exit Match
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-full space-y-4 mb-12 max-w-md">
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em] mb-4">
+                  Choose Your Opponent
+                </p>
+                {[1, 2, 3].map((i) => (
+                  <button
+                    key={i}
+                    className="w-full bg-slate-900 p-5 rounded-[2rem] border border-white/5 flex items-center gap-4 transition-all hover:border-indigo-500/50 active:scale-95 text-left group"
+                  >
+                    <div className="relative">
+                      <img
+                        src={`https://picsum.photos/100/100?random=${i + 40}`}
+                        className="w-12 h-12 rounded-2xl grayscale group-hover:grayscale-0 transition-all"
+                        alt=""
+                      />
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900"></div>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-white font-black text-lg">Match #{i}</p>
+                      <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
+                        Nairobi, Kenya
+                      </p>
+                    </div>
+                    <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center text-white shadow-lg">
+                      <i className="fa-solid fa-paper-plane text-xs"></i>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

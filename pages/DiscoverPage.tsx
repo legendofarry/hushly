@@ -100,15 +100,10 @@ const HUB_EXIT_SPLASH_DURATION_MS = 2000;
 
 const resolveViewFromSearch = (
   search: string,
-): "discover" | "live" | "hub" | "plans" | "portal" => {
+): "discover" | "live" | "hub" | "portal" => {
   const params = new URLSearchParams(search);
   const view = params.get("view");
-  if (
-    view === "live" ||
-    view === "hub" ||
-    view === "plans" ||
-    view === "portal"
-  ) {
+  if (view === "live" || view === "hub" || view === "portal") {
     return view;
   }
   return "discover";
@@ -946,12 +941,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   );
 
   const updateView = useCallback(
-    (nextView: "discover" | "live" | "hub" | "plans" | "portal") => {
+    (nextView: "discover" | "live" | "hub" | "portal") => {
       if (view === "hub" && nextView !== "hub") {
         if (hubExitTimerRef.current) {
           window.clearTimeout(hubExitTimerRef.current);
         }
-        triggerHubSplash("Goodbye from the Hub", "See you again soon.");
+        triggerHubSplash("See you again soon.");
         hubExitTimerRef.current = window.setTimeout(() => {
           applyViewChange(nextView);
           hubExitTimerRef.current = null;
@@ -967,8 +962,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     [updateView],
   );
   const handleUpgradePlans = useCallback(
-    () => updateView("plans"),
-    [updateView],
+    () => navigate("/pricing"),
+    [navigate],
   );
   const hubSections = useMemo(
     () => [
@@ -1150,15 +1145,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     [],
   );
   const tabIndex =
-    view === "discover"
-      ? 0
-      : view === "live"
-        ? 1
-        : view === "hub"
-          ? 2
-          : view === "plans"
-            ? 3
-            : 0;
+    view === "discover" ? 0 : view === "live" ? 1 : view === "hub" ? 2 : 0;
 
   const handleStartChat = async (target: UserProfile) => {
     try {
@@ -2084,7 +2071,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               <div
                 className="absolute top-1 bottom-1 rounded-lg bg-white/10 shadow-sm transition-all duration-300 ease-out"
                 style={{
-                  width: "calc(25% - 8px)",
+                  width: "calc(33.333% - 8px)",
                   transform: `translateX(calc(${tabIndex * 100}% + ${tabIndex * 4}px))`,
                 }}
               />
@@ -2105,12 +2092,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "hub" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
               >
                 Hub
-              </button>
-              <button
-                onClick={() => updateView("plans")}
-                className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-widest text-center transition-colors ${view === "plans" ? "text-white" : "text-gray-500 hover:text-gray-300"}`}
-              >
-                Weekend
               </button>
             </div>
           )}
