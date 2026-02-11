@@ -903,8 +903,8 @@ const GameHub: React.FC<Props> = ({
         if (data.status === "finished") {
           setLoveQuizStatus("finished");
           void applyMatchRewards(loveQuizMatchId, data);
-        } else if (data.status === "playing") {
-          setLoveQuizStatus((prev) => (prev === "matched" ? prev : "playing"));
+        } else {
+          setLoveQuizStatus("playing");
         }
       },
       (error) => {
@@ -937,6 +937,16 @@ const GameHub: React.FC<Props> = ({
     startLoveQuizMatchmaking,
     user,
   ]);
+
+  useEffect(() => {
+    if (!isLoveQuiz || !user) return;
+    if (loveQuizStatus !== "idle") return;
+    if (loveQuizQueueIdRef.current) return;
+    const timer = window.setTimeout(() => {
+      void startLoveQuizMatchmaking();
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [isLoveQuiz, loveQuizStatus, startLoveQuizMatchmaking, user]);
 
   useEffect(() => {
     if (loveQuizStatus !== "searching") return;
