@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import {
   addDoc,
   collection,
@@ -9,6 +15,7 @@ import {
   onSnapshot,
   query,
   runTransaction,
+  setDoc,
   where,
 } from "firebase/firestore";
 import { User, Game, WeekendPlan, RSVP, Profile } from "../types";
@@ -30,12 +37,117 @@ const GameHub: React.FC<Props> = ({
 }) => {
   const LOVE_QUIZ_ID = "g1";
   const LOVE_QUIZ_QUEUE_TTL_MS = 2 * 60 * 1000;
-  type LoveQuizStatus = "idle" | "searching" | "matched" | "playing";
+  const LOVE_QUIZ_ROUND_COUNT = 5;
+  type LoveQuizStatus =
+    | "idle"
+    | "searching"
+    | "matched"
+    | "playing"
+    | "finished";
+  type LoveQuizQuestion = {
+    id: string;
+    prompt: string;
+    options: string[];
+  };
+  type LoveQuizMatch = {
+    gameId: string;
+    participants: string[];
+    hostId: string;
+    status: "playing" | "finished";
+    questions: LoveQuizQuestion[];
+    currentIndex: number;
+    answers?: Record<string, Record<string, number>>;
+    points?: Record<string, number>;
+    result?: {
+      compatibility: number;
+      matchCount: number;
+      total: number;
+      winnerId?: string | null;
+    };
+    createdAt: number;
+    updatedAt?: number;
+    finishedAt?: number;
+  };
   type LoveQuizOpponent = {
     id: string;
     name: string;
     photoUrl?: string | null;
   };
+  type HubProfile = {
+    userId: string;
+    points: number;
+    wins: number;
+    losses: number;
+    gamesPlayed: number;
+    streak: number;
+    lastMatchId?: string | null;
+    lastMatchAt?: number | null;
+    createdAt?: number;
+    updatedAt?: number;
+  };
+
+  const LOVE_QUIZ_QUESTIONS: LoveQuizQuestion[] = [
+    {
+      id: "q1",
+      prompt: "What is your perfect first date vibe?",
+      options: [
+        "Coffee + walk",
+        "Rooftop drinks",
+        "Game arcade",
+        "Sunset picnic",
+      ],
+    },
+    {
+      id: "q2",
+      prompt: "Pick a weekend plan.",
+      options: ["Road trip", "Beach day", "Netflix & snacks", "Night market"],
+    },
+    {
+      id: "q3",
+      prompt: "Your ideal texting style?",
+      options: [
+        "Quick & playful",
+        "Deep conversations",
+        "Voice notes",
+        "Slow replies",
+      ],
+    },
+    {
+      id: "q4",
+      prompt: "Choose a love language.",
+      options: [
+        "Quality time",
+        "Acts of service",
+        "Words of affirmation",
+        "Physical touch",
+      ],
+    },
+    {
+      id: "q5",
+      prompt: "What is your energy in a group?",
+      options: [
+        "Life of the party",
+        "Chill observer",
+        "Connector",
+        "Comedy relief",
+      ],
+    },
+    {
+      id: "q6",
+      prompt: "Pick a late-night snack.",
+      options: ["Chips", "Pizza slice", "Fruit bowl", "Mandazi"],
+    },
+    {
+      id: "q7",
+      prompt: "What is your vibe when the playlist hits?",
+      options: ["Dance floor", "Head nod", "Sing along", "DJ mode"],
+    },
+    {
+      id: "q8",
+      prompt: "Choose your dream getaway.",
+      options: ["Coastal stay", "City break", "Nature cabin", "Desert retreat"],
+    },
+  ];
 
   const [activeTab, setActiveTab] = useState<"arcade" | "weekend">("arcade");
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -47,14 +159,24 @@ const GameHub: React.FC<Props> = ({
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showGoldRequired, setShowGoldRequired] = useState(false);
   const [showRsvpConfirmation, setShowRsvpConfirmation] = useState(false);
-  const [loveQuizStatus, setLoveQuizStatus] =
-    useState<LoveQuizStatus>("idle");
+  const [loveQuizStatus, setLoveQuizStatus] = useState<LoveQuizStatus>("idle");
   const [loveQuizError, setLoveQuizError] = useState<string | null>(null);
   const [loveQuizOpponent, setLoveQuizOpponent] =
     useState<LoveQuizOpponent | null>(null);
+  const [loveQuizMatchId, setLoveQuizMatchId] = useState<string | null>(null);
+  const [loveQuizMatch, setLoveQuizMatch] = useState<LoveQuizMatch | null>(
+    null,
+  );
+  const [loveQuizSubmitting, setLoveQuizSubmitting] = useState(false);
+  const [hubProfile, setHubProfile] = useState<HubProfile | null>(null);
+  const [hubProfileLoading, setHubProfileLoading] = useState(false);
+  const [hubProfileError, setHubProfileError] = useState<string | null>(null);
+  const [showHubProfile, setShowHubProfile] = useState(false);
   const loveQuizQueueIdRef = useRef<string | null>(null);
   const loveQuizUnsubRef = useRef<(() => void) | null>(null);
   const loveQuizRetryTimerRef = useRef<number | null>(null);
+  const loveQuizMatchUnsubRef = useRef<(() => void) | null>(null);
+  const hubProfileUpdateLockRef = useRef<string | null>(null);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState("");
@@ -68,6 +190,66 @@ const GameHub: React.FC<Props> = ({
   const [planLoc, setPlanLoc] = useState("");
   const [planImage, setPlanImage] = useState<string | null>(null);
   const isLoveQuiz = selectedGame?.id === LOVE_QUIZ_ID;
+  const loveQuizOpponentId = useMemo(() => {
+    if (!loveQuizMatch || !user) return null;
+    return loveQuizMatch.participants.find((id) => id !== user.id) ?? null;
+  }, [loveQuizMatch, user]);
+  const loveQuizCurrentQuestion = useMemo(() => {
+    if (!loveQuizMatch) return null;
+    return loveQuizMatch.questions?.[loveQuizMatch.currentIndex ?? 0] ?? null;
+  }, [loveQuizMatch]);
+  const loveQuizMyAnswer = useMemo(() => {
+    if (!loveQuizCurrentQuestion || !user || !loveQuizMatch?.answers)
+      return null;
+    const value = loveQuizMatch.answers[loveQuizCurrentQuestion.id]?.[user.id];
+    return value === undefined ? null : value;
+  }, [loveQuizCurrentQuestion, loveQuizMatch, user]);
+  const loveQuizOpponentAnswer = useMemo(() => {
+    if (
+      !loveQuizCurrentQuestion ||
+      !loveQuizOpponentId ||
+      !loveQuizMatch?.answers
+    )
+      return null;
+    const value =
+      loveQuizMatch.answers[loveQuizCurrentQuestion.id]?.[loveQuizOpponentId];
+    return value === undefined ? null : value;
+  }, [loveQuizCurrentQuestion, loveQuizMatch, loveQuizOpponentId]);
+  const loveQuizMyPoints = useMemo(() => {
+    if (!loveQuizMatch || !user) return 0;
+    return loveQuizMatch.points?.[user.id] ?? 0;
+  }, [loveQuizMatch, user]);
+  const loveQuizOpponentPoints = useMemo(() => {
+    if (!loveQuizMatch || !loveQuizOpponentId) return 0;
+    return loveQuizMatch.points?.[loveQuizOpponentId] ?? 0;
+  }, [loveQuizMatch, loveQuizOpponentId]);
+  const loveQuizTotal = useMemo(() => {
+    return loveQuizMatch?.questions?.length ?? LOVE_QUIZ_ROUND_COUNT;
+  }, [LOVE_QUIZ_ROUND_COUNT, loveQuizMatch]);
+  const loveQuizCurrentNumber = useMemo(() => {
+    if (!loveQuizMatch) return 1;
+    const index = loveQuizMatch.currentIndex ?? 0;
+    return Math.min(index + 1, loveQuizTotal);
+  }, [loveQuizMatch, loveQuizTotal]);
+  const loveQuizProgress = useMemo(() => {
+    if (!loveQuizMatch) return 0;
+    const index = loveQuizMatch.currentIndex ?? 0;
+    return Math.min((index / loveQuizTotal) * 100, 100);
+  }, [loveQuizMatch, loveQuizTotal]);
+  const hubStats = useMemo(() => {
+    const points = hubProfile?.points ?? 0;
+    const wins = hubProfile?.wins ?? 0;
+    const losses = hubProfile?.losses ?? 0;
+    const gamesPlayed = hubProfile?.gamesPlayed ?? 0;
+    const streak = hubProfile?.streak ?? 0;
+    const winRate =
+      gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : 0;
+    return { points, wins, losses, gamesPlayed, streak, winRate };
+  }, [hubProfile]);
+  const hubLastMatchLabel = useMemo(() => {
+    if (!hubProfile?.lastMatchAt) return "No matches yet";
+    return new Date(hubProfile.lastMatchAt).toLocaleString();
+  }, [hubProfile?.lastMatchAt]);
 
   useEffect(() => {
     // Mock initial plans
@@ -121,6 +303,59 @@ const GameHub: React.FC<Props> = ({
     ];
     setPlans(mockPlans);
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setHubProfile(null);
+      setHubProfileLoading(false);
+      return;
+    }
+    const profileRef = doc(db, "hub_profiles", user.id);
+    setHubProfileLoading(true);
+    setHubProfileError(null);
+    const unsubscribe = onSnapshot(
+      profileRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          const defaults: HubProfile = {
+            userId: user.id,
+            points: 0,
+            wins: 0,
+            losses: 0,
+            gamesPlayed: 0,
+            streak: 0,
+            lastMatchAt: null,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          void setDoc(profileRef, defaults, { merge: true });
+          setHubProfile(defaults);
+          setHubProfileLoading(false);
+          return;
+        }
+        setHubProfile({
+          userId: user.id,
+          points: 0,
+          wins: 0,
+          losses: 0,
+          gamesPlayed: 0,
+          streak: 0,
+          ...(snapshot.data() as HubProfile),
+        });
+        setHubProfileLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        setHubProfileError("Unable to load hub profile.");
+        setHubProfileLoading(false);
+      },
+    );
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    hubProfileUpdateLockRef.current = null;
+  }, [user?.id]);
 
   const filteredPlans = useMemo(() => {
     let result = plans.filter((plan) => {
@@ -287,6 +522,13 @@ const GameHub: React.FC<Props> = ({
     }
   }, []);
 
+  const stopLoveQuizMatchListener = useCallback(() => {
+    if (loveQuizMatchUnsubRef.current) {
+      loveQuizMatchUnsubRef.current();
+      loveQuizMatchUnsubRef.current = null;
+    }
+  }, []);
+
   const clearLoveQuizRetry = useCallback(() => {
     if (loveQuizRetryTimerRef.current) {
       window.clearInterval(loveQuizRetryTimerRef.current);
@@ -294,14 +536,29 @@ const GameHub: React.FC<Props> = ({
     }
   }, []);
 
+  const buildLoveQuizQuestions = useCallback(() => {
+    const pool = [...LOVE_QUIZ_QUESTIONS];
+    for (let i = pool.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const temp = pool[i];
+      pool[i] = pool[j];
+      pool[j] = temp;
+    }
+    return pool.slice(0, LOVE_QUIZ_ROUND_COUNT);
+  }, [LOVE_QUIZ_QUESTIONS, LOVE_QUIZ_ROUND_COUNT]);
+
   const resetLoveQuizState = useCallback(() => {
     setLoveQuizStatus("idle");
     setLoveQuizError(null);
     setLoveQuizOpponent(null);
+    setLoveQuizMatchId(null);
+    setLoveQuizMatch(null);
+    setLoveQuizSubmitting(false);
   }, []);
 
   const cancelLoveQuizMatchmaking = useCallback(() => {
     stopLoveQuizListener();
+    stopLoveQuizMatchListener();
     clearLoveQuizRetry();
     const queueId = loveQuizQueueIdRef.current;
     loveQuizQueueIdRef.current = null;
@@ -313,7 +570,12 @@ const GameHub: React.FC<Props> = ({
       );
     }
     resetLoveQuizState();
-  }, [clearLoveQuizRetry, resetLoveQuizState, stopLoveQuizListener]);
+  }, [
+    clearLoveQuizRetry,
+    resetLoveQuizState,
+    stopLoveQuizListener,
+    stopLoveQuizMatchListener,
+  ]);
 
   const attemptLoveQuizMatch = useCallback(
     async (queueId: string) => {
@@ -353,10 +615,21 @@ const GameHub: React.FC<Props> = ({
         if (currentData.userId === opponentData.userId) return;
 
         const matchRef = doc(collection(db, "game_matches"));
-        const matchPayload = {
+        const questions = buildLoveQuizQuestions();
+        const matchPayload: LoveQuizMatch = {
           gameId: selectedGame.id,
           participants: [currentData.userId, opponentData.userId],
+          hostId: currentData.userId,
+          status: "playing",
+          questions,
+          currentIndex: 0,
+          answers: {},
+          points: {
+            [currentData.userId]: 0,
+            [opponentData.userId]: 0,
+          },
           createdAt: Date.now(),
+          updatedAt: Date.now(),
         };
         tx.set(matchRef, matchPayload);
 
@@ -380,7 +653,7 @@ const GameHub: React.FC<Props> = ({
         });
       });
     },
-    [selectedGame, user],
+    [LOVE_QUIZ_QUEUE_TTL_MS, buildLoveQuizQuestions, selectedGame, user],
   );
 
   const startLoveQuizMatchmaking = useCallback(async () => {
@@ -412,6 +685,7 @@ const GameHub: React.FC<Props> = ({
           if (!snap.exists()) return;
           const data = snap.data() as any;
           if (data.status === "matched") {
+            setLoveQuizMatchId(data.matchId ?? null);
             if (data.opponentId) {
               setLoveQuizOpponent({
                 id: data.opponentId,
@@ -431,8 +705,8 @@ const GameHub: React.FC<Props> = ({
       await attemptLoveQuizMatch(queueDoc.id);
     } catch (error) {
       console.error(error);
-      setLoveQuizError("Unable to start matchmaking right now.");
       resetLoveQuizState();
+      setLoveQuizError("Unable to start matchmaking right now.");
     }
   }, [
     LOVE_QUIZ_ID,
@@ -444,12 +718,204 @@ const GameHub: React.FC<Props> = ({
     resetLoveQuizState,
   ]);
 
+  const applyMatchRewards = useCallback(
+    async (matchId: string, match: LoveQuizMatch) => {
+      if (!user) return;
+      if (hubProfileUpdateLockRef.current === matchId) return;
+      hubProfileUpdateLockRef.current = matchId;
+      try {
+        const profileRef = doc(db, "hub_profiles", user.id);
+        await runTransaction(db, async (tx) => {
+          const profileSnap = await tx.get(profileRef);
+          const profileData = (
+            profileSnap.exists() ? profileSnap.data() : {}
+          ) as Partial<HubProfile>;
+          if (profileData.lastMatchId === matchId) return;
+          const pointsEarned = match.points?.[user.id] ?? 0;
+          const wins = profileData.wins ?? 0;
+          const losses = profileData.losses ?? 0;
+          const gamesPlayed = profileData.gamesPlayed ?? 0;
+          const streak = profileData.streak ?? 0;
+          const winnerId = match.result?.winnerId ?? null;
+          const isWinner = winnerId === user.id;
+          const isTie = !winnerId;
+          const nextWins = wins + (isWinner ? 1 : 0);
+          const nextLosses = losses + (!isWinner && !isTie ? 1 : 0);
+          const nextStreak = isWinner ? streak + 1 : isTie ? streak : 0;
+          const nextPoints = (profileData.points ?? 0) + pointsEarned;
+          tx.set(
+            profileRef,
+            {
+              userId: user.id,
+              points: nextPoints,
+              wins: nextWins,
+              losses: nextLosses,
+              gamesPlayed: gamesPlayed + 1,
+              streak: nextStreak,
+              lastMatchId: matchId,
+              lastMatchAt: Date.now(),
+              updatedAt: Date.now(),
+              createdAt: profileData.createdAt ?? Date.now(),
+            },
+            { merge: true },
+          );
+        });
+      } catch (error) {
+        console.error(error);
+        setHubProfileError("Unable to update hub profile.");
+      }
+    },
+    [user],
+  );
+
+  const submitLoveQuizAnswer = useCallback(
+    async (optionIndex: number) => {
+      if (!user || !loveQuizMatchId) return;
+      setLoveQuizSubmitting(true);
+      try {
+        const matchRef = doc(db, "game_matches", loveQuizMatchId);
+        await runTransaction(db, async (tx) => {
+          const matchSnap = await tx.get(matchRef);
+          if (!matchSnap.exists()) return;
+          const data = matchSnap.data() as LoveQuizMatch;
+          if (data.status !== "playing") return;
+          const questions = data.questions ?? [];
+          const currentIndex = data.currentIndex ?? 0;
+          const currentQuestion = questions[currentIndex];
+          if (!currentQuestion) return;
+
+          const answers = { ...(data.answers ?? {}) };
+          const questionAnswers = { ...(answers[currentQuestion.id] ?? {}) };
+          if (questionAnswers[user.id] !== undefined) return;
+          questionAnswers[user.id] = optionIndex;
+          answers[currentQuestion.id] = questionAnswers;
+
+          const participants = data.participants ?? [];
+          const points = { ...(data.points ?? {}) };
+          participants.forEach((id) => {
+            if (points[id] === undefined) points[id] = 0;
+          });
+
+          let nextIndex = currentIndex;
+          let nextStatus: LoveQuizMatch["status"] = data.status;
+          let result = data.result ?? undefined;
+          let finishedAt = data.finishedAt ?? undefined;
+
+          const bothAnswered = participants.every(
+            (id) => questionAnswers[id] !== undefined,
+          );
+          if (bothAnswered) {
+            participants.forEach((id) => {
+              points[id] += 10;
+            });
+            if (
+              participants.length === 2 &&
+              questionAnswers[participants[0]] ===
+                questionAnswers[participants[1]]
+            ) {
+              participants.forEach((id) => {
+                points[id] += 10;
+              });
+            }
+
+            nextIndex = currentIndex + 1;
+
+            if (nextIndex >= questions.length) {
+              let matchCount = 0;
+              questions.forEach((question) => {
+                const qa = answers[question.id] ?? {};
+                if (
+                  participants.length === 2 &&
+                  qa[participants[0]] !== undefined &&
+                  qa[participants[1]] !== undefined &&
+                  qa[participants[0]] === qa[participants[1]]
+                ) {
+                  matchCount += 1;
+                }
+              });
+              const total = questions.length || 1;
+              const compatibility = Math.round((matchCount / total) * 100);
+              let winnerId: string | null = null;
+              if (
+                participants.length === 2 &&
+                points[participants[0]] !== points[participants[1]]
+              ) {
+                winnerId =
+                  points[participants[0]] > points[participants[1]]
+                    ? participants[0]
+                    : participants[1];
+              }
+              if (winnerId) {
+                points[winnerId] += 50;
+              } else {
+                participants.forEach((id) => {
+                  points[id] += 20;
+                });
+              }
+              result = {
+                compatibility,
+                matchCount,
+                total,
+                winnerId,
+              };
+              nextStatus = "finished";
+              finishedAt = Date.now();
+            }
+          }
+
+          tx.update(matchRef, {
+            answers,
+            points,
+            currentIndex: nextIndex,
+            status: nextStatus,
+            result: result ?? null,
+            finishedAt: finishedAt ?? null,
+            updatedAt: Date.now(),
+          });
+        });
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoveQuizSubmitting(false);
+      }
+    },
+    [loveQuizMatchId, user],
+  );
+
   const handleExitGame = useCallback(() => {
     if (selectedGame?.id === LOVE_QUIZ_ID) {
       cancelLoveQuizMatchmaking();
     }
     setSelectedGame(null);
   }, [LOVE_QUIZ_ID, cancelLoveQuizMatchmaking, selectedGame]);
+
+  useEffect(() => {
+    stopLoveQuizMatchListener();
+    setLoveQuizMatch(null);
+    if (!loveQuizMatchId || !user) return;
+    const matchRef = doc(db, "game_matches", loveQuizMatchId);
+    loveQuizMatchUnsubRef.current = onSnapshot(
+      matchRef,
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const data = snapshot.data() as LoveQuizMatch;
+        setLoveQuizMatch(data);
+        if (data.status === "finished") {
+          setLoveQuizStatus("finished");
+          void applyMatchRewards(loveQuizMatchId, data);
+        } else if (data.status === "playing") {
+          setLoveQuizStatus((prev) => (prev === "matched" ? prev : "playing"));
+        }
+      },
+      (error) => {
+        console.error(error);
+        setLoveQuizError("Unable to load match.");
+      },
+    );
+    return () => {
+      stopLoveQuizMatchListener();
+    };
+  }, [applyMatchRewards, loveQuizMatchId, stopLoveQuizMatchListener, user]);
 
   useEffect(() => {
     if (!selectedGame || selectedGame.id !== LOVE_QUIZ_ID) {
@@ -488,7 +954,7 @@ const GameHub: React.FC<Props> = ({
   useEffect(() => {
     if (loveQuizStatus !== "matched") return;
     const timer = window.setTimeout(() => {
-      setLoveQuizStatus("playing");
+      setLoveQuizStatus((prev) => (prev === "matched" ? "playing" : prev));
     }, 1200);
     return () => window.clearTimeout(timer);
   }, [loveQuizStatus]);
@@ -542,13 +1008,16 @@ const GameHub: React.FC<Props> = ({
                 <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl rounded-full"></div>
                 <div className="flex items-center gap-6 relative z-10">
                   <div className="relative">
-                    <div className="w-20 h-20 rounded-[2rem] border-4 border-indigo-500 p-1 bg-slate-950 shadow-2xl">
+                    <button
+                      onClick={() => setShowHubProfile(true)}
+                      className="w-20 h-20 rounded-[2rem] border-4 border-indigo-500 p-1 bg-slate-950 shadow-2xl active:scale-95 transition-transform"
+                    >
                       <img
                         src={user?.photos[0]}
                         className="w-full h-full rounded-[1.5rem] object-cover"
                         alt=""
                       />
-                    </div>
+                    </button>
                     <div className="absolute -bottom-2 -right-2 bg-emerald-500 px-2 py-0.5 rounded-lg border-2 border-slate-950 text-[8px] font-black text-white uppercase tracking-tighter">
                       Online
                     </div>
@@ -568,7 +1037,6 @@ const GameHub: React.FC<Props> = ({
                     <p className="text-slate-500 text-[9px] font-black uppercase mb-1">
                       Swipes Remaining
                     </p>
-                    {console.log(user)}
                     <p className="text-white font-black">
                       {" "}
                       {user?.dailySwipesRemaining}
@@ -879,6 +1347,120 @@ const GameHub: React.FC<Props> = ({
         </div>
       )}
 
+      {showHubProfile && (
+        <div className="fixed inset-0 z-[220] bg-slate-950/95 backdrop-blur-xl flex flex-col animate-in fade-in duration-300">
+          <header className="p-6 flex items-center justify-between border-b border-white/5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 flex items-center justify-center text-indigo-400">
+                <i className="fa-solid fa-id-badge"></i>
+              </div>
+              <div>
+                <h3 className="text-white font-black uppercase tracking-widest">
+                  Hub Profile
+                </h3>
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black">
+                  Your arcade stats
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowHubProfile(false)}
+              className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-white border border-white/10 active:scale-95"
+            >
+              <i className="fa-solid fa-xmark"></i>
+            </button>
+          </header>
+
+          <div className="flex-1 overflow-y-auto no-scrollbar p-6 space-y-6">
+            {hubProfileLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                <i className="fa-solid fa-spinner fa-spin text-2xl mb-3"></i>
+                <p className="text-[10px] font-black uppercase tracking-widest">
+                  Loading Hub Profile...
+                </p>
+              </div>
+            ) : hubProfileError ? (
+              <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-[10px] uppercase tracking-widest text-rose-300">
+                {hubProfileError}
+              </div>
+            ) : (
+              <>
+                <div className="bg-gradient-to-br from-indigo-500/10 to-rose-500/10 border border-white/5 rounded-[2.5rem] p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest text-slate-500 font-black">
+                        Total Points
+                      </p>
+                      <p className="text-3xl font-black text-white">
+                        {hubStats.points}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase tracking-widest text-slate-500 font-black">
+                        Win Rate
+                      </p>
+                      <p className="text-2xl font-black text-indigo-300">
+                        {hubStats.winRate}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="bg-slate-950/60 rounded-2xl p-3 border border-white/5">
+                      <p className="text-[9px] uppercase tracking-widest text-slate-500 font-black">
+                        Wins
+                      </p>
+                      <p className="text-white font-black text-lg">
+                        {hubStats.wins}
+                      </p>
+                    </div>
+                    <div className="bg-slate-950/60 rounded-2xl p-3 border border-white/5">
+                      <p className="text-[9px] uppercase tracking-widest text-slate-500 font-black">
+                        Losses
+                      </p>
+                      <p className="text-white font-black text-lg">
+                        {hubStats.losses}
+                      </p>
+                    </div>
+                    <div className="bg-slate-950/60 rounded-2xl p-3 border border-white/5">
+                      <p className="text-[9px] uppercase tracking-widest text-slate-500 font-black">
+                        Streak
+                      </p>
+                      <p className="text-white font-black text-lg">
+                        {hubStats.streak}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900/60 border border-white/5 rounded-[2.5rem] p-6">
+                  <h4 className="text-sm font-black text-white uppercase tracking-widest mb-3">
+                    Arcade Summary
+                  </h4>
+                  <div className="flex items-center justify-between text-sm text-slate-300">
+                    <span>Games Played</span>
+                    <span className="font-black text-white">
+                      {hubStats.gamesPlayed}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-slate-300 mt-2">
+                    <span>Points Balance</span>
+                    <span className="font-black text-emerald-400">
+                      {hubStats.points}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-slate-300 mt-2">
+                    <span>Last Match</span>
+                    <span className="font-black text-white text-xs">
+                      {hubLastMatchLabel}
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {selectedGame && (
         <div className="fixed inset-0 z-[110] bg-slate-950/95 backdrop-blur-xl flex flex-col p-8 animate-in slide-in-from-bottom duration-500 overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-indigo-500/20 via-transparent to-transparent opacity-50"></div>
@@ -1013,15 +1595,148 @@ const GameHub: React.FC<Props> = ({
                 )}
 
                 {loveQuizStatus === "playing" && (
+                  <div className="bg-slate-900/70 border border-white/5 rounded-[2rem] p-6 text-left">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center text-rose-400">
+                          <i className="fa-solid fa-heart-pulse"></i>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
+                            Love Quiz
+                          </p>
+                          <p className="text-white font-black text-sm">
+                            Question {loveQuizCurrentNumber}/{loveQuizTotal}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
+                          Points
+                        </p>
+                        <p className="text-white font-black text-sm">
+                          {loveQuizMyPoints}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="h-1.5 w-full rounded-full bg-white/5 overflow-hidden mb-5">
+                      <div
+                        className="h-full bg-gradient-to-r from-rose-500 to-indigo-400"
+                        style={{ width: `${loveQuizProgress}%` }}
+                      />
+                    </div>
+
+                    {loveQuizCurrentQuestion ? (
+                      <>
+                        <div className="bg-slate-950/60 border border-white/5 rounded-2xl p-4 mb-4">
+                          <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-2">
+                            Pick one
+                          </p>
+                          <h4 className="text-white font-black text-lg leading-snug">
+                            {loveQuizCurrentQuestion.prompt}
+                          </h4>
+                        </div>
+
+                        <div className="space-y-3">
+                          {loveQuizCurrentQuestion.options.map(
+                            (option, index) => {
+                              const isSelected = loveQuizMyAnswer === index;
+                              const isLocked = loveQuizMyAnswer !== null;
+                              return (
+                                <button
+                                  key={option}
+                                  onClick={() => submitLoveQuizAnswer(index)}
+                                  disabled={loveQuizSubmitting || isLocked}
+                                  className={`w-full rounded-2xl border p-4 text-left text-sm font-semibold transition-all active:scale-95 ${
+                                    isSelected
+                                      ? "border-rose-400 bg-rose-500/10 text-white"
+                                      : "border-white/5 bg-slate-950/40 text-slate-300 hover:border-rose-500/40"
+                                  } ${isLocked ? "opacity-80" : ""}`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span>{option}</span>
+                                    {isSelected && (
+                                      <i className="fa-solid fa-check text-rose-400 text-xs"></i>
+                                    )}
+                                  </div>
+                                </button>
+                              );
+                            },
+                          )}
+                        </div>
+
+                        <div className="mt-4 text-center text-[10px] uppercase tracking-widest font-black text-slate-500">
+                          {loveQuizMyAnswer !== null &&
+                          loveQuizOpponentAnswer === null
+                            ? "Waiting for your match..."
+                            : loveQuizMyAnswer !== null &&
+                                loveQuizOpponentAnswer !== null
+                              ? "Answer locked. Moving on..."
+                              : "Answer to earn points"}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center text-slate-500 text-xs">
+                        Loading question...
+                      </div>
+                    )}
+
+                    <div className="mt-6 flex items-center justify-between text-[10px] uppercase tracking-widest text-slate-400">
+                      <span>
+                        {loveQuizOpponent?.name ?? "Match"}:{" "}
+                        <span className="text-white font-black">
+                          {loveQuizOpponentPoints}
+                        </span>
+                      </span>
+                      <span>
+                        You:{" "}
+                        <span className="text-white font-black">
+                          {loveQuizMyPoints}
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {loveQuizStatus === "finished" && loveQuizMatch && (
                   <div className="bg-slate-900/70 border border-white/5 rounded-[2rem] p-6 text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-rose-500/20 mx-auto flex items-center justify-center text-rose-400 mb-4">
-                      <i className="fa-solid fa-heart-pulse"></i>
+                    <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 mx-auto flex items-center justify-center text-emerald-400 mb-4">
+                      <i className="fa-solid fa-trophy"></i>
                     </div>
                     <p className="text-white font-black uppercase tracking-widest text-xs">
-                      Love Quiz Live
+                      Match Complete
                     </p>
                     <p className="text-slate-400 text-[10px] mt-2 font-medium">
-                      Your 1-on-1 session is ready.
+                      Compatibility:{" "}
+                      <span className="text-white font-black">
+                        {loveQuizMatch.result?.compatibility ?? 0}%
+                      </span>
+                    </p>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-left">
+                      <div className="bg-slate-950/60 border border-white/5 rounded-2xl p-4">
+                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">
+                          Your Points
+                        </p>
+                        <p className="text-white font-black text-lg">
+                          {loveQuizMyPoints}
+                        </p>
+                      </div>
+                      <div className="bg-slate-950/60 border border-white/5 rounded-2xl p-4">
+                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">
+                          {loveQuizOpponent?.name ?? "Match"}
+                        </p>
+                        <p className="text-white font-black text-lg">
+                          {loveQuizOpponentPoints}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-[10px] uppercase tracking-widest text-slate-500 font-black">
+                      {loveQuizMatch.result?.winnerId
+                        ? loveQuizMatch.result?.winnerId === user?.id
+                          ? "You won! Bonus points added."
+                          : "Your match won this round."
+                        : "It's a tie! Bonus points shared."}
                     </p>
                     <button
                       onClick={handleExitGame}
@@ -1051,7 +1766,9 @@ const GameHub: React.FC<Props> = ({
                       <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-slate-900"></div>
                     </div>
                     <div className="flex-1">
-                      <p className="text-white font-black text-lg">Match #{i}</p>
+                      <p className="text-white font-black text-lg">
+                        Match #{i}
+                      </p>
                       <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">
                         Nairobi, Kenya
                       </p>
