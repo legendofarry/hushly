@@ -55,15 +55,16 @@ const INTEREST_OPTIONS: { value: GenderPreference; label: string }[] = [
 ];
 
 const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
-  const INITIAL_DAILY_DROP_SIZE = 20;
+  const INITIAL_DAILY_DROP_SIZE = 30;
   const [step, setStep] = useState(1);
   const [realName, setRealName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
   const [occupation, setOccupation] = useState("");
-  const [occupationVisibility, setOccupationVisibility] =
-    useState<"public" | "private">("private");
+  const [occupationVisibility, setOccupationVisibility] = useState<
+    "public" | "private"
+  >("private");
   const [gender, setGender] = useState<Gender | "">("");
   const [interestedIn, setInterestedIn] = useState<GenderPreference[]>([]);
   const [ageRange, setAgeRange] = useState(AGE_RANGES[1]);
@@ -71,7 +72,9 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
   const [bio, setBio] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  const [photoAiReport, setPhotoAiReport] = useState<PhotoAiReport | null>(null);
+  const [photoAiReport, setPhotoAiReport] = useState<PhotoAiReport | null>(
+    null,
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -81,14 +84,18 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
   const [verificationUser, setVerificationUser] = useState<User | null>(null);
   const [isResending, setIsResending] = useState(false);
-  const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(null);
+  const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(
+    null,
+  );
   const [resendCooldown, setResendCooldown] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [aiTone, setAiTone] = useState("playful");
   const [aiBusy, setAiBusy] = useState(false);
   const [showAgeGate, setShowAgeGate] = useState(false);
   const [ageGateChecked, setAgeGateChecked] = useState(false);
-  const [ageGateProfile, setAgeGateProfile] = useState<UserProfile | null>(null);
+  const [ageGateProfile, setAgeGateProfile] = useState<UserProfile | null>(
+    null,
+  );
   const selfieInputRef = useRef<HTMLInputElement | null>(null);
   const [voiceIntroBlob, setVoiceIntroBlob] = useState<Blob | null>(null);
   const [voiceIntroUrl, setVoiceIntroUrl] = useState<string | null>(null);
@@ -131,7 +138,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
 
   const validateNickname = (value: string) => {
     if (!value.trim()) return "Nickname is required.";
-    if (value.trim().length < 3) return "Nickname must be at least 3 characters.";
+    if (value.trim().length < 3)
+      return "Nickname must be at least 3 characters.";
     return null;
   };
 
@@ -564,8 +572,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         true,
         normalizeEmail(verificationUser.email ?? baseProfile.email),
       );
-      const accepted =
-        localStorage.getItem("hushly_age_gate_main") === "1";
+      const accepted = localStorage.getItem("hushly_age_gate_main") === "1";
       if (accepted) {
         onComplete(readyProfile);
         return;
@@ -608,7 +615,10 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
             <span className="text-white font-bold">
               {verificationUser.email ?? "your email"}
             </span>
-            . Please verify to continue.
+            . Please verify to continue.{" "}
+            <span className="text-rose-800 font-bold">
+              Be sure to check your spam folder as well!
+            </span>
           </p>
           <div className="space-y-3">
             <button
@@ -1148,7 +1158,9 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
               if (password.length < 6) {
                 const nextError = validatePassword(password);
                 setPasswordError(nextError);
-                setErrorMessage(nextError ?? "Password must be at least 6 characters.");
+                setErrorMessage(
+                  nextError ?? "Password must be at least 6 characters.",
+                );
                 return;
               }
               if (passwordError) {
@@ -1184,10 +1196,16 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
           disabled={isUploading || isSaving || isCheckingNickname}
           className="w-full py-5 bg-white text-black font-black rounded-[2rem] text-sm uppercase tracking-widest animate-pulse-glow disabled:opacity-60"
         >
-          {step === 5 ? (isSaving ? "Saving..." : "Vibe Check (Finish)") : "Continue"}
+          {step === 5
+            ? isSaving
+              ? "Saving..."
+              : "Vibe Check (Finish)"
+            : "Continue"}
         </button>
         {errorMessage && (
-          <p className="mt-3 text-[10px] text-red-400 text-center">{errorMessage}</p>
+          <p className="mt-3 text-[10px] text-red-400 text-center">
+            {errorMessage}
+          </p>
         )}
       </div>
 

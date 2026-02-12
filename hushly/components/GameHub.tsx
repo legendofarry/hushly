@@ -797,9 +797,12 @@ const GameHub: React.FC<Props> = ({
           </button>
           <div className="absolute inset-0">
             {selectedGame.id === "hush-quiz" ? (
-              <HushQuiz />
+              <HushQuiz userId={user?.id ?? ""} />
             ) : selectedGame.id === "date-night" ? (
-              <DateNightStory defaultName={user?.name ?? ""} />
+              <DateNightStory
+                defaultName={user?.name ?? ""}
+                userId={user?.id ?? ""}
+              />
             ) : (
               <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-xs font-black uppercase tracking-widest">
                 Game unavailable.

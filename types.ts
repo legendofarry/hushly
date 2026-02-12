@@ -210,7 +210,22 @@ export interface DailyDrop {
   lastDropAt: number;
   profileIds: string[];
   actionedIds: string[];
+  compatibilityIds?: string[];
   dropSize: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface GameAnswers {
+  userId: string;
+  hushQuiz?: {
+    answers?: Record<string, "A" | "B">;
+    updatedAt?: number;
+  };
+  dateNight?: {
+    traits?: string[];
+    updatedAt?: number;
+  };
   createdAt?: number;
   updatedAt?: number;
 }

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
+import { recordHushQuizAnswer } from "../../../services/gameAnswerService";
 
-export default function HushQuiz() {
+export default function HushQuiz({ userId = "" }) {
   const [currentCard, setCurrentCard] = useState(0);
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -196,6 +197,14 @@ export default function HushQuiz() {
     const choice = direction === 'left' 
       ? scenarios[currentCard].optionA 
       : scenarios[currentCard].optionB;
+    const choiceKey = direction === "left" ? "A" : "B";
+    if (userId) {
+      void recordHushQuizAnswer(
+        userId,
+        String(scenarios[currentCard].id),
+        choiceKey,
+      );
+    }
     
     const newScore = score + choice.points;
     const newStreak = streak + 1;

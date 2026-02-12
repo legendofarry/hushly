@@ -22,7 +22,6 @@ const DotLottieWC = 'dotlottie-wc' as any;
 
 const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick }) => {
   const [index, setIndex] = useState(0);
-  const [isSimulation, setIsSimulation] = useState(false);
   const [showStarBurst, setShowStarBurst] = useState(false);
   const [burstKey, setBurstKey] = useState(0); 
   const [countdown, setCountdown] = useState('');
@@ -65,18 +64,13 @@ const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick 
   }, [user]);
 
   const handleAction = (dir: 'left' | 'right') => {
-    if (isSimulation) {
-      setIndex(prev => prev + 1);
-      return;
-    }
-    
     if (!user || user.dailySwipesRemaining <= 0) return;
     onSwipe(dir);
     setIndex(prev => prev + 1);
   };
 
   const handleStarAction = () => {
-    if (!user || (user.dailySwipesRemaining <= 0 && !isSimulation)) return;
+    if (!user || user.dailySwipesRemaining <= 0) return;
     
     // Performance optimization: reduce particle count to 50 for smoother rendering
     setBurstKey(prev => prev + 1);
@@ -84,6 +78,7 @@ const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick 
     
     // Snappier transition: change profile sooner
     setTimeout(() => {
+      onSwipe('right');
       setIndex(prev => prev + 1);
     }, 400);
 
@@ -95,7 +90,7 @@ const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick 
 
   if (!user) return null;
 
-  if ((user.dailySwipesRemaining <= 0 && !isSimulation) || filteredProfiles.length === 0) {
+  if (user.dailySwipesRemaining <= 0 || filteredProfiles.length === 0) {
     return (
       <div className="h-full relative flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-700">
         <div className="relative z-10 w-fit h-fit flex items-center justify-center mb-2 overflow-visible">
@@ -116,22 +111,12 @@ const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick 
             : 'Check back later as your drop refreshes.'}
         </p>
         
-        {user.dailySwipesRemaining <= 0 && !isSimulation && (
+        {user.dailySwipesRemaining <= 0 && (
           <div className="relative z-10 bg-slate-900/40 backdrop-blur-md px-8 py-6 rounded-3xl border border-white/5 shadow-2xl mb-10 w-full max-w-xs mx-auto">
              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">Refueling Safari</p>
              <p className="text-4xl font-black text-rose-500 font-mono tracking-tighter">{countdown || '24:00:00'}</p>
           </div>
         )}
-
-        <div className="relative z-10 w-full max-w-xs space-y-4">
-          <button 
-            onClick={() => setIsSimulation(true)}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl border border-white/5 transition-all active:scale-95 flex items-center justify-center gap-3 uppercase text-xs tracking-widest"
-          >
-            <i className="fa-solid fa-wand-magic-sparkles text-indigo-400"></i>
-            Ghost Mode
-          </button>
-        </div>
       </div>
     );
   }
@@ -175,31 +160,15 @@ const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick 
 
       <div className="flex items-center justify-between mb-4 relative z-10">
         <div className="flex items-center gap-2">
-          {isSimulation ? (
-             <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-               <i className="fa-solid fa-ghost text-white text-sm"></i>
-             </div>
-          ) : (
-             <div className="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
-               <i className="fa-solid fa-fire text-white text-sm"></i>
-             </div>
-          )}
-          <span className="font-bold text-lg">{isSimulation ? 'Ghost Mode' : 'Discovery'}</span>
-        </div>
-        
-        {isSimulation ? (
-          <button 
-            onClick={() => setIsSimulation(false)}
-            className="bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 text-[10px] font-black uppercase text-white tracking-widest active:scale-95 transition-all"
-          >
-            Return to Base
-          </button>
-        ) : (
-          <div className="bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
-            <span className="text-xs font-bold text-rose-500">{user.dailySwipesRemaining}</span>
-            <span className="text-[10px] text-slate-500 ml-1 uppercase">Drop Left</span>
+          <div className="w-8 h-8 gradient-primary rounded-lg flex items-center justify-center">
+            <i className="fa-solid fa-fire text-white text-sm"></i>
           </div>
-        )}
+          <span className="font-bold text-lg">Discovery</span>
+        </div>
+        <div className="bg-slate-900 px-3 py-1 rounded-full border border-slate-800">
+          <span className="text-xs font-bold text-rose-500">{user.dailySwipesRemaining}</span>
+          <span className="text-[10px] text-slate-500 ml-1 uppercase">Drop Left</span>
+        </div>
       </div>
 
       {currentProfile && (
@@ -212,12 +181,6 @@ const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick 
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
             
-            {isSimulation && (
-              <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-indigo-500/20 backdrop-blur-md px-6 py-2 rounded-full border border-indigo-500/50 flex items-center gap-2">
-                <i className="fa-solid fa-wand-sparkles text-indigo-400 text-xs"></i>
-                <span className="text-[10px] text-white font-black uppercase tracking-widest whitespace-nowrap">No one will know about your activity</span>
-              </div>
-            )}
 
             <div className="absolute bottom-6 left-6 right-6">
               <div className="flex items-center gap-2 mb-1 cursor-pointer">

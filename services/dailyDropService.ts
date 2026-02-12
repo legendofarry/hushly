@@ -24,6 +24,9 @@ const mapDailyDrop = (userId: string, data: any): DailyDrop => {
     lastDropAt: Number(data?.lastDropAt ?? 0),
     profileIds: Array.isArray(data?.profileIds) ? data.profileIds : [],
     actionedIds: Array.isArray(data?.actionedIds) ? data.actionedIds : [],
+    compatibilityIds: Array.isArray(data?.compatibilityIds)
+      ? data.compatibilityIds
+      : [],
     dropSize: Number(data?.dropSize ?? data?.profileIds?.length ?? 0),
     createdAt,
     updatedAt,
@@ -63,6 +66,7 @@ export const createDailyDrop = async (payload: {
   profileIds: string[];
   dropSize: number;
   filters?: Record<string, unknown>;
+  compatibilityIds?: string[];
 }) => {
   const now = Date.now();
   await setDoc(
@@ -74,6 +78,7 @@ export const createDailyDrop = async (payload: {
       actionedIds: [],
       dropSize: payload.dropSize,
       filters: payload.filters ?? null,
+      compatibilityIds: payload.compatibilityIds ?? [],
       createdAt: now,
       updatedAt: now,
     },

@@ -12,6 +12,7 @@ import confetti from "canvas-confetti"; // Import the confetti library
 import {
   AppNotification,
   DailyDrop,
+  GameAnswers,
   PaymentRequest,
   UserProfile,
   WeekendPlan,
@@ -81,6 +82,10 @@ import {
   listenToDailyDrop,
   markDailyDropAction,
 } from "../services/dailyDropService";
+import {
+  getGameAnswers,
+  getGameAnswersByIds,
+} from "../services/gameAnswerService";
 
 declare global {
   namespace JSX {
@@ -94,7 +99,10 @@ const MPESA_FORMAT_REGEX =
   /[A-Z0-9]{8,12}\s+Confirmed\.\s+Ksh\s*\d{1,3}(?:,\d{3})*(?:\.\d{2})?\s+sent\s+to\s+.+?\s+on\s+\d{1,2}\/\d{1,2}\/\d{2,4}\s+at\s+\d{1,2}:\d{2}\s?(?:AM|PM)\./i;
 
 const DAILY_DROP_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_DAILY_DROP_SIZE = 12;
+const DEFAULT_DAILY_DROP_SIZE = 30;
+const COMPATIBILITY_SAMPLE_SIZE = 80;
+const MAX_COMPATIBILITY_MATCHES = 6;
+const COMPATIBILITY_MIN_SCORE = 0.45;
 const HUB_SPLASH_DURATION_MS = 5000;
 const HUB_EXIT_SPLASH_DURATION_MS = 2000;
 
@@ -147,6 +155,35 @@ const matchesAgeRange = (
   return parsed.max >= min && parsed.min <= max;
 };
 
+const computeCompatibilityScore = (me: GameAnswers, other: GameAnswers) => {
+  const scores: number[] = [];
+  const myQuiz = me.hushQuiz?.answers ?? {};
+  const theirQuiz = other.hushQuiz?.answers ?? {};
+  const sharedQuizIds = Object.keys(myQuiz).filter((id) => id in theirQuiz);
+  if (sharedQuizIds.length > 0) {
+    const matches = sharedQuizIds.filter(
+      (id) => myQuiz[id] === theirQuiz[id],
+    ).length;
+    scores.push(matches / sharedQuizIds.length);
+  }
+
+  const myTraits = new Set(me.dateNight?.traits ?? []);
+  const theirTraits = new Set(other.dateNight?.traits ?? []);
+  if (myTraits.size > 0 && theirTraits.size > 0) {
+    let intersection = 0;
+    myTraits.forEach((trait) => {
+      if (theirTraits.has(trait)) intersection += 1;
+    });
+    const union = new Set([...myTraits, ...theirTraits]).size;
+    if (union > 0) {
+      scores.push(intersection / union);
+    }
+  }
+
+  if (!scores.length) return 0;
+  return scores.reduce((total, score) => total + score, 0) / scores.length;
+};
+
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -179,7 +216,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [headerToggle, setHeaderToggle] = useState(true);
   const [showStarBurst, setShowStarBurst] = useState(false);
   const [burstKey, setBurstKey] = useState(0);
-  const [isSimulation, setIsSimulation] = useState(false);
   const [countdown, setCountdown] = useState("");
   const [aiQuery, setAiQuery] = useState("");
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -519,18 +555,44 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     [remainingDropProfiles, matchesDiscoverFilters],
   );
 
+  const compatibilityProfiles = useMemo(() => {
+    if (!dailyDrop?.compatibilityIds?.length) return [];
+    return dailyDrop.compatibilityIds
+      .map((id) => profileMap.get(id))
+      .filter((profile): profile is UserProfile => Boolean(profile));
+  }, [dailyDrop?.compatibilityIds, profileMap]);
+
+  const remainingCompatibilityProfiles = useMemo(
+    () =>
+      compatibilityProfiles.filter((profile) => !actionedSet.has(profile.id)),
+    [compatibilityProfiles, actionedSet],
+  );
+
+  const visibleCompatibilityProfiles = useMemo(
+    () => remainingCompatibilityProfiles.filter(matchesDiscoverFilters),
+    [remainingCompatibilityProfiles, matchesDiscoverFilters],
+  );
+
+  const dropTotal = dailyDrop?.profileIds.length ?? 0;
+  const dropRemaining = remainingDropProfiles.length;
+  const compatibilityRemaining = remainingCompatibilityProfiles.length;
+  const dropCompleted = Boolean(dailyDrop) && dropRemaining === 0;
+
+  const deckProfiles = useMemo(
+    () =>
+      dropRemaining > 0 ? visibleDropProfiles : visibleCompatibilityProfiles,
+    [dropRemaining, visibleDropProfiles, visibleCompatibilityProfiles],
+  );
+
   const filteredProfiles = useMemo(() => {
-    if (!visibleDropProfiles.length) return [];
-    if (!deferredQuery) return visibleDropProfiles;
-    const semanticMatches = semanticSearchProfiles(
-      deferredQuery,
-      visibleDropProfiles,
-    );
+    if (!deckProfiles.length) return [];
+    if (!deferredQuery) return deckProfiles;
+    const semanticMatches = semanticSearchProfiles(deferredQuery, deckProfiles);
     const semanticIds = new Set(semanticMatches.map((item) => item.profile.id));
     const candidates =
       semanticIds.size > 0
-        ? visibleDropProfiles.filter((profile) => semanticIds.has(profile.id))
-        : visibleDropProfiles;
+        ? deckProfiles.filter((profile) => semanticIds.has(profile.id))
+        : deckProfiles;
     const ranked = rankProfiles({
       user,
       profiles: candidates,
@@ -538,7 +600,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       semanticQuery: deferredQuery,
     });
     return ranked.map((item) => item.profile);
-  }, [visibleDropProfiles, deferredQuery, deferredSignals, user]);
+  }, [deckProfiles, deferredQuery, deferredSignals, user]);
 
   const matchReasons = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -548,31 +610,18 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     return map;
   }, [filteredProfiles, deferredSignals, user]);
 
-  const simulationProfiles = useMemo(() => {
-    if (visibleDropProfiles.length) return visibleDropProfiles;
-    return eligibleProfiles;
-  }, [visibleDropProfiles, eligibleProfiles]);
-
-  const activeProfiles = isSimulation ? simulationProfiles : filteredProfiles;
-
-  const dropTotal = dailyDrop?.profileIds.length ?? 0;
-  const dropRemaining = remainingDropProfiles.length;
-  const dropCompleted =
-    Boolean(dailyDrop) && dropTotal > 0 && dropRemaining === 0;
-  const dropCountValue = dailyDrop
-    ? visibleDropProfiles.length
-    : filteredProfiles.length;
-  const outOfSwipes = dropCompleted;
-  const shouldShowEmptyState =
-    (outOfSwipes && !isSimulation) || filteredProfiles.length === 0;
+  const dropCountValue = dailyDrop ? dropRemaining : 0;
+  const dropCountLabel = dropCountValue === 1 ? "Drop Left" : "Drops Left";
+  const hasAnyRemaining = dropRemaining > 0 || compatibilityRemaining > 0;
+  const shouldShowEmptyState = filteredProfiles.length === 0;
   const emptyStateTitle =
-    filteredProfiles.length === 0
-      ? "No Profiles Match Filters"
-      : "No Matches Left Today";
+    shouldShowEmptyState && !hasAnyRemaining
+      ? "No Matches Left Today"
+      : "No Profiles Match Filters";
   const emptyStateBody =
-    filteredProfiles.length === 0
-      ? "Try adjusting your discovery settings to see more people from the tribe."
-      : "Check back later as your drop refreshes.";
+    shouldShowEmptyState && !hasAnyRemaining
+      ? "Check back later as your drop refreshes."
+      : "Try adjusting your discovery settings to see more people from the tribe.";
   const nextDropAt = dailyDrop
     ? dailyDrop.lastDropAt + DAILY_DROP_INTERVAL_MS
     : 0;
@@ -580,6 +629,44 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const timeRemainingHours = Math.floor(timeRemainingMs / (60 * 60 * 1000));
   const timeRemainingMinutes = Math.floor(
     (timeRemainingMs % (60 * 60 * 1000)) / (60 * 1000),
+  );
+
+  const buildCompatibilityMatches = useCallback(
+    async (
+      candidates: UserProfile[],
+      excludedIds: Set<string>,
+    ): Promise<string[]> => {
+      const myAnswers = await getGameAnswers(user.id);
+      if (!myAnswers) return [];
+
+      const pool = candidates.filter(
+        (profile) => profile.id !== user.id && !excludedIds.has(profile.id),
+      );
+      if (!pool.length) return [];
+
+      for (let i = pool.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+
+      const sampleIds = pool
+        .slice(0, COMPATIBILITY_SAMPLE_SIZE)
+        .map((profile) => profile.id);
+      if (!sampleIds.length) return [];
+
+      const answersList = await getGameAnswersByIds(sampleIds);
+      const scored = answersList
+        .map((answers) => ({
+          id: answers.userId,
+          score: computeCompatibilityScore(myAnswers, answers),
+        }))
+        .filter((item) => item.score >= COMPATIBILITY_MIN_SCORE)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, MAX_COMPATIBILITY_MATCHES);
+
+      return scored.map((item) => item.id);
+    },
+    [user.id],
   );
 
   useEffect(() => {
@@ -591,40 +678,55 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
     dropGenerationLockRef.current = true;
     setDropGenerating(true);
-    const dropSize = Math.max(1, DEFAULT_DAILY_DROP_SIZE);
-    const candidates = [...eligibleProfiles];
-    for (let i = candidates.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-    }
-    const selected = candidates.slice(0, dropSize);
-    const selectedIds = selected.map((profile) => profile.id);
+    const run = async () => {
+      const dropSize = Math.max(1, DEFAULT_DAILY_DROP_SIZE);
+      const candidates = [...eligibleProfiles];
+      for (let i = candidates.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+      const selected = candidates.slice(0, dropSize);
+      const selectedIds = selected.map((profile) => profile.id);
 
-    const dropFilters = filtersDirty
-      ? {
-          ...filters,
-          genders: preferredGenders,
-        }
-      : {
-          genders: preferredGenders,
-        };
+      const dropFilters = filtersDirty
+        ? {
+            ...filters,
+            genders: preferredGenders,
+          }
+        : {
+            genders: preferredGenders,
+          };
 
-    void createDailyDrop({
-      userId: user.id,
-      profileIds: selectedIds,
-      dropSize,
-      filters: dropFilters,
-    })
-      .then(() => {
-        if (!selectedIds.length) return;
-        return createNotification({
+      let compatibilityIds: string[] = [];
+      try {
+        compatibilityIds = await buildCompatibilityMatches(
+          candidates,
+          new Set(selectedIds),
+        );
+      } catch (error) {
+        console.error(error);
+      }
+
+      await createDailyDrop({
+        userId: user.id,
+        profileIds: selectedIds,
+        dropSize,
+        filters: dropFilters,
+        compatibilityIds,
+      });
+
+      if (selectedIds.length) {
+        await createNotification({
           toUserId: user.id,
           fromUserId: user.id,
           fromNickname: user.nickname,
           type: "system",
           body: "Your new matches are waiting.",
         });
-      })
+      }
+    };
+
+    void run()
       .catch((error) => {
         console.error(error);
       })
@@ -645,6 +747,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     user.id,
     user.nickname,
     preferredGenders,
+    buildCompatibilityMatches,
   ]);
 
   useEffect(() => {
@@ -850,7 +953,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       setCountdown("");
       return;
     }
-    if (!outOfSwipes || isSimulation) {
+    if (!dropCompleted) {
       setCountdown("");
       return;
     }
@@ -875,7 +978,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 1000);
     return () => window.clearInterval(timer);
-  }, [view, outOfSwipes, isSimulation, nextDropAt]);
+  }, [view, dropCompleted, nextDropAt]);
 
   useEffect(() => {
     if (view !== "discover" && isFilterModalOpen) {
@@ -1348,16 +1451,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   // --- ACTIONS ---
-  const advanceSimulationProfile = () => {
-    if (filteredProfiles.length === 0) return;
-    setCurrentIndex((prev) => (prev + 1) % filteredProfiles.length);
-  };
-
-  const handleNextProfile = (options?: { simulate?: boolean }) => {
-    if (options?.simulate) {
-      advanceSimulationProfile();
-      return;
-    }
+  const handleNextProfile = () => {
     if (filteredProfiles.length === 0) return;
     if (dailyDrop) {
       setCurrentIndex(0);
@@ -1488,9 +1582,10 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     handleLikeAction();
   };
 
-  const handleQuickChat = () => {
-    if (current) {
-      void handleStartChat(current);
+  const handleQuickChat = (target?: UserProfile) => {
+    const profile = target ?? current;
+    if (profile) {
+      void handleStartChat(profile);
     }
   };
 
@@ -1500,11 +1595,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handleAction = (dir: "left" | "right") => {
-    if (isSimulation) {
-      handleNextProfile({ simulate: true });
-      return;
-    }
-    if (outOfSwipes) return;
+    if (filteredProfiles.length === 0) return;
     if (dir === "left") {
       handleSkipAction();
     } else {
@@ -1513,18 +1604,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handleStarAction = () => {
-    if (outOfSwipes && !isSimulation) return;
+    if (filteredProfiles.length === 0) return;
+    const target = current;
     setBurstKey((prev) => prev + 1);
     setShowStarBurst(true);
     window.setTimeout(() => {
-      handleNextProfile({ simulate: true });
-    }, 400);
-    window.setTimeout(() => {
       setShowStarBurst(false);
     }, 2500);
-    if (!isSimulation) {
-      handleQuickChat();
-    }
+    handleLikeAction();
+    handleQuickChat(target ?? undefined);
   };
 
   // --- PORTAL VIEW ---
@@ -1775,12 +1863,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               >
                 Start Exploring
               </button>
-              <button
-                onClick={handleCloseDailyDropIntro}
-                className="w-full sm:w-auto px-6 py-3 rounded-full bg-white/5 text-gray-300 text-xs font-black uppercase tracking-widest border border-white/10 active:scale-95 transition-transform"
-              >
-                Later
-              </button>
             </div>
           </div>
         </div>
@@ -1931,7 +2013,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                     key={headerToggle ? "brand" : "tagline"}
                     className="text-2xl font-black text-white tracking-tighter leading-8 animate-text-swap uppercase"
                   >
-                    {headerToggle ? "HUSHLY" : "Tribe Vibes"}
+                    {headerToggle ? "Hushly" : "Proudly Kenyan"}
                   </h1>
                 </div>
               </div>
@@ -2398,7 +2480,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 {emptyStateBody}
               </p>
 
-              {outOfSwipes && !isSimulation && (
+              {dropCompleted && (
                 <div className="relative z-10 bg-slate-900/40 backdrop-blur-md px-8 py-6 rounded-3xl border border-white/5 shadow-2xl mb-10 w-full max-w-xs mx-auto">
                   <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">
                     Refueling Safari
@@ -2406,18 +2488,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                   <p className="text-4xl font-black text-rose-500 font-mono tracking-tighter">
                     {countdown || "24:00:00"}
                   </p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-3 leading-relaxed">
+                    Daily Drops keep your matches focused and real. Quality over
+                    endless swiping.
+                  </p>
                 </div>
               )}
-
-              <div className="relative z-10 w-full max-w-xs space-y-4">
-                <button
-                  onClick={() => setIsSimulation(true)}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl border border-white/5 transition-all active:scale-95 flex items-center justify-center gap-3 uppercase text-xs tracking-widest"
-                >
-                  <i className="fa-solid fa-wand-magic-sparkles text-indigo-400"></i>
-                  Ghost Mode
-                </button>
-              </div>
             </div>
           ) : (
             <div className="p-4 flex flex-col h-full animate-in fade-in zoom-in duration-300 relative">
@@ -2466,6 +2542,21 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               )}
 
+              {dropCompleted && (
+                <div className="relative z-20 bg-slate-900/40 backdrop-blur-md px-6 py-4 rounded-3xl border border-white/5 shadow-2xl mb-5">
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">
+                    Next Drop In
+                  </p>
+                  <p className="text-2xl font-black text-rose-500 font-mono tracking-tight">
+                    {countdown || "24:00:00"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-medium mt-2 leading-relaxed">
+                    Daily Drops keep matches intentional and cut endless
+                    swiping. Come back for a fresh, curated batch.
+                  </p>
+                </div>
+              )}
+
               {current && (
                 <div
                   className="relative h-[480px] md:h-[420px] group z-10"
@@ -2480,35 +2571,17 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
 
-                    {isSimulation && (
-                      <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-indigo-500/20 backdrop-blur-md px-6 py-2 rounded-full border border-indigo-500/50 flex items-center gap-2">
-                        <i className="fa-solid fa-wand-sparkles text-indigo-400 text-xs"></i>
-                        <span className="text-[10px] text-white font-black uppercase tracking-widest whitespace-nowrap">
-                          No one will know about your activity
-                        </span>
-                      </div>
-                    )}
-
-                    {isSimulation ? (
-                      <button
-                        onClick={() => setIsSimulation(false)}
-                        className="bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 text-[10px] font-black uppercase text-white tracking-widest active:scale-95 transition-all"
-                      >
-                        Return to Base
-                      </button>
-                    ) : (
-                      <div
-                        className="bg-slate-900 px-3 py-1 rounded-full z-10 absolute top-4 right-4 flex items-center gap-1 border border-rose-800 border-[5px]
+                    <div
+                      className="bg-slate-900 px-3 py-1 rounded-full z-10 absolute top-4 right-4 flex items-center gap-1 border border-rose-800 border-[5px]
 "
-                      >
-                        <span className="text-xs font-bold text-white">
-                          {dropCountValue}
-                        </span>
-                        <span className="text-[10px] text-slate-500 ml-1 uppercase">
-                          Drop Left
-                        </span>
-                      </div>
-                    )}
+                    >
+                      <span className="text-xs font-bold text-white">
+                        {dropCountValue}
+                      </span>
+                      <span className="text-[10px] text-slate-500 ml-1 uppercase">
+                        {dropCountLabel}
+                      </span>
+                    </div>
 
                     <div className="absolute bottom-6 left-6 right-6">
                       <div className="flex items-center gap-2 mb-1 cursor-pointer">

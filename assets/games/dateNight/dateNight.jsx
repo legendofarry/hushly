@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { recordDateNightTrait } from "../../../services/gameAnswerService";
 
-export default function DateNightStory({ defaultName = "" }) {
+export default function DateNightStory({ defaultName = "", userId = "" }) {
   const [currentScene, setCurrentScene] = useState("start");
   const [relationshipScore, setRelationshipScore] = useState(50);
   const [choices, setChoices] = useState([]);
@@ -465,6 +466,9 @@ export default function DateNightStory({ defaultName = "" }) {
     ]);
     setStoryPath([...storyPath, choice.trait]);
     setCurrentScene(choice.next);
+    if (userId && choice?.trait) {
+      void recordDateNightTrait(userId, choice.trait);
+    }
   };
 
   const resetGame = () => {
