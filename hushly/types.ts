@@ -4,8 +4,7 @@ export type AppView = 'splash' | 'landing' | 'login' | 'registration' | 'reset-p
 export interface Filters {
   gender: string;
   ageRange: [number, number];
-  location: string;
-  distance: number;
+  location: string[];
   hasBio: boolean;
   interests: string[];
   lookingFor: string;
@@ -20,7 +19,6 @@ export interface Filters {
   smoking: string;
   workout: string;
   socialMedia: string;
-  expandDistance: boolean;
   expandAge: boolean;
   mode: 'For You' | 'Double Date';
 }

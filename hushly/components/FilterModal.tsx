@@ -19,6 +19,18 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
   const [activeBottomSheet, setActiveBottomSheet] = useState<string | null>(
     null,
   );
+  const [showDoubleDateModal, setShowDoubleDateModal] = useState(false);
+  const [doubleDateError, setDoubleDateError] = useState<string | null>(null);
+  const locationLabel = (() => {
+    if (!localFilters.location.length) return "Any location";
+    if (localFilters.location.length === 1)
+      return `${localFilters.location[0]}, Kenya`;
+    if (localFilters.location.length === 2)
+      return `${localFilters.location[0]}, ${localFilters.location[1]}`;
+    return `${localFilters.location[0]}, ${localFilters.location[1]} +${
+      localFilters.location.length - 2
+    }`;
+  })();
 
   const handleToggle = (key: keyof Filters) => {
     setLocalFilters((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -137,6 +149,17 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
     </div>
   );
 
+  const handleSave = () => {
+    if (localFilters.mode === "Double Date") {
+      setDoubleDateError(
+        "Double Date is coming soon. Please select For You for now.",
+      );
+      setShowDoubleDateModal(true);
+      return;
+    }
+    onApply(localFilters);
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col font-['Outfit'] animate-in fade-in duration-300 overflow-hidden">
       <header className="px-6 py-6 flex items-center justify-between z-10">
@@ -150,7 +173,7 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
           Preferences
         </h2>
         <button
-          onClick={() => onApply(localFilters)}
+          onClick={handleSave}
           className="text-rose-500 font-black text-xs uppercase tracking-widest"
         >
           Save
@@ -173,9 +196,11 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
               For You
             </button>
             <button
-              onClick={() =>
-                setLocalFilters({ ...localFilters, mode: "Double Date" })
-              }
+              onClick={() => {
+                setLocalFilters({ ...localFilters, mode: "Double Date" });
+                setDoubleDateError(null);
+                setShowDoubleDateModal(true);
+              }}
               className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all ${localFilters.mode === "Double Date" ? "bg-slate-800 text-white shadow-xl" : "text-slate-500"}`}
             >
               Double Date
@@ -192,52 +217,18 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
             <div className="flex items-center gap-2 mb-2">
               <i className="fa-solid fa-location-dot text-rose-500"></i>
               <span className="text-[13px] font-bold text-white">
-                {localFilters.location}, Kenya
+                {locationLabel}
               </span>
             </div>
-            <button className="text-[10px] font-black text-rose-500 uppercase tracking-widest">
-              Add a new location
+            <button
+              onClick={() => setActiveBottomSheet("location")}
+              className="text-[10px] font-black text-rose-500 uppercase tracking-widest"
+            >
+              Choose locations
             </button>
             <p className="text-[11px] text-slate-500 mt-2 font-medium">
-              Change locations to find matches anywhere.
+              Select one or more locations, or keep Any location to see everyone.
             </p>
-          </div>
-
-          <div className="pt-4 border-t border-white/5">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest">
-                Maximum Distance
-              </span>
-              <span className="text-[13px] font-bold text-white">
-                {localFilters.distance}mi.
-              </span>
-            </div>
-            <input
-              type="range"
-              min="1"
-              max="100"
-              value={localFilters.distance}
-              onChange={(e) =>
-                setLocalFilters({
-                  ...localFilters,
-                  distance: parseInt(e.target.value),
-                })
-              }
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500 mb-6"
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium text-slate-300 leading-tight pr-4">
-                Show people further away if I run out of profiles to see
-              </span>
-              <button
-                onClick={() => handleToggle("expandDistance")}
-                className={`w-11 h-6 rounded-full relative transition-colors duration-200 ${localFilters.expandDistance ? "bg-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.4)]" : "bg-slate-800"}`}
-              >
-                <div
-                  className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200 ${localFilters.expandDistance ? "right-1" : "left-1"}`}
-                ></div>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -384,6 +375,68 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
           onClose={() => setActiveBottomSheet(null)}
         />
       )}
+      {activeBottomSheet === "location" && (
+        <div
+          className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end animate-in fade-in duration-300"
+          onClick={() => setActiveBottomSheet(null)}
+        >
+          <div
+            className="w-full bg-[#121212] rounded-t-[2.5rem] p-8 animate-in slide-in-from-bottom duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-8"></div>
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-xl font-black text-white">Location</h3>
+              <button
+                onClick={() => setActiveBottomSheet(null)}
+                className="bg-slate-800 px-4 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest"
+              >
+                Done
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 pb-10 max-h-[45vh] overflow-y-auto no-scrollbar">
+              <button
+                onClick={() =>
+                  setLocalFilters({ ...localFilters, location: [] })
+                }
+                className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
+                  localFilters.location.length === 0
+                    ? "bg-white text-black border-white"
+                    : "bg-transparent border-white/10 text-slate-500"
+                }`}
+              >
+                Any location
+              </button>
+              {KENYA_LOCATIONS.map((loc) => {
+                const selected = localFilters.location.includes(loc);
+                return (
+                  <button
+                    key={loc}
+                    onClick={() => {
+                      setLocalFilters((prev) => {
+                        const next = new Set(prev.location);
+                        if (next.has(loc)) {
+                          next.delete(loc);
+                        } else {
+                          next.add(loc);
+                        }
+                        return { ...prev, location: Array.from(next) };
+                      });
+                    }}
+                    className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
+                      selected
+                        ? "bg-white text-black border-white"
+                        : "bg-transparent border-white/10 text-slate-500"
+                    }`}
+                  >
+                    {loc}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {activeBottomSheet === "zodiac" && (
         <BottomSheet
           title="Zodiac"
@@ -475,6 +528,49 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
           onSelect={(v) => setLocalFilters({ ...localFilters, workout: v })}
           onClose={() => setActiveBottomSheet(null)}
         />
+      )}
+
+      {showDoubleDateModal && (
+        <div className="fixed inset-0 z-[130] bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center px-6 text-center animate-in fade-in duration-300">
+          <div className="max-w-md w-full bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 shadow-2xl">
+            <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-rose-500/10 flex items-center justify-center border border-rose-500/30">
+              <i className="fa-solid fa-user-group text-rose-500 text-2xl"></i>
+            </div>
+            <h3 className="text-2xl font-black text-white mb-3 tracking-tight">
+              Double Date
+            </h3>
+            <p className="text-sm text-slate-400 leading-relaxed mb-4">
+              Double Date lets you pair up with a friend and match with another
+              duo. You will get coordinated matches and shared plans that work
+              for both people.
+            </p>
+            <p className="text-xs text-rose-400 font-black uppercase tracking-widest mb-6">
+              Coming soon
+            </p>
+            {doubleDateError && (
+              <div className="text-[11px] text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-2 mb-5">
+                {doubleDateError}
+              </div>
+            )}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setLocalFilters({ ...localFilters, mode: "For You" });
+                  setShowDoubleDateModal(false);
+                }}
+                className="w-full bg-rose-500 text-white font-black py-3 rounded-2xl uppercase tracking-widest text-xs"
+              >
+                Stay on For You
+              </button>
+              <button
+                onClick={() => setShowDoubleDateModal(false)}
+                className="w-full bg-slate-800 text-slate-300 font-black py-3 rounded-2xl uppercase tracking-widest text-xs border border-white/5"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

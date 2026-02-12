@@ -192,8 +192,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [filters, setFilters] = useState<DiscoverFilters>(() => ({
     gender: "Everyone",
     ageRange: [18, 37],
-    location: user.area || "Nairobi",
-    distance: 50,
+    location: [],
     hasBio: false,
     interests: [],
     lookingFor: "",
@@ -208,7 +207,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     smoking: "",
     workout: "",
     socialMedia: "",
-    expandDistance: true,
     expandAge: true,
     mode: "For You",
   }));
@@ -293,6 +291,25 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const hubExitTimerRef = useRef<number | null>(null);
   const deferredSignals = useDeferredValue(aiSignals);
   const deferredQuery = useDeferredValue(aiQuery);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("hushly:nav-visibility", {
+        detail: { hidden: isFilterModalOpen },
+      }),
+    );
+    return () => {
+      if (isFilterModalOpen) {
+        window.dispatchEvent(
+          new CustomEvent("hushly:nav-visibility", {
+            detail: { hidden: false },
+          }),
+        );
+      }
+    };
+  }, [isFilterModalOpen]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(filtersDirtyKey);
@@ -504,12 +521,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       if (!filtersDirty) return true;
       if (!matchesGenderFilter(profile.gender, filters.gender)) return false;
       if (filters.hasBio && !profile.bio?.trim()) return false;
-      if (
-        filters.location &&
-        filters.location !== "All" &&
-        profile.area !== filters.location
-      ) {
-        return false;
+      if (filters.location.length > 0) {
+        if (!profile.area) return false;
+        if (!filters.location.includes(profile.area)) return false;
       }
       if (!matchesAgeRange(profile.ageRange, filters.ageRange)) return false;
       return true;

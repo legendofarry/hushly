@@ -30,7 +30,7 @@ const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick 
     return MOCK_PROFILES.filter(p => {
       if (p.isEscort) return false;
       if (filters.gender !== 'Everyone' && p.gender !== filters.gender) return false;
-      if (filters.location !== 'All' && p.location !== filters.location) return false;
+      if (filters.location.length > 0 && !filters.location.includes(p.location)) return false;
       if (p.age < filters.ageRange[0] || p.age > filters.ageRange[1]) return false;
       return true;
     });

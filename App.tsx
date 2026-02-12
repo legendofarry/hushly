@@ -284,9 +284,27 @@ const AppShell: React.FC<{
   setIsVerified,
 }) => {
   const location = useLocation();
+  const [navHiddenOverride, setNavHiddenOverride] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ hidden?: boolean }>;
+      setNavHiddenOverride(Boolean(custom.detail?.hidden));
+    };
+    window.addEventListener("hushly:nav-visibility", handler as EventListener);
+    return () => {
+      window.removeEventListener(
+        "hushly:nav-visibility",
+        handler as EventListener,
+      );
+    };
+  }, []);
+
   const showNav =
     Boolean(user && isVerified) &&
-    shouldShowNav(location.pathname, location.search);
+    shouldShowNav(location.pathname, location.search) &&
+    !navHiddenOverride;
 
   return (
     <HushlyShell showNav={showNav}>
