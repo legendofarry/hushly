@@ -15,6 +15,141 @@ interface Props {
   onClose: () => void;
 }
 
+const BottomSheet = ({
+  title,
+  options,
+  current,
+  onSelect,
+  onClose,
+}: {
+  title: string;
+  options: string[];
+  current: string;
+  onSelect: (val: string) => void;
+  onClose: () => void;
+}) => (
+  <div
+    className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end animate-in fade-in duration-300"
+    onMouseDown={(e) => {
+      if (e.target === e.currentTarget) onClose();
+    }}
+    onTouchStart={(e) => {
+      if (e.target === e.currentTarget) onClose();
+    }}
+  >
+    <div
+      className="w-full bg-[#121212] rounded-t-[2.5rem] p-8 animate-in slide-in-from-bottom duration-300"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-8"></div>
+      <div className="flex items-center justify-between mb-8">
+        <h3 className="text-xl font-black text-white">{title}</h3>
+        <button
+          onClick={onClose}
+          className="bg-slate-800 px-4 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest"
+        >
+          Done
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-2 pb-10 max-h-[40vh] overflow-y-auto no-scrollbar">
+        {options.map((opt) => (
+          <button
+            key={opt}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(opt);
+            }}
+            className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
+              current === opt
+                ? "bg-white text-black border-white"
+                : "bg-transparent border-white/10 text-slate-500"
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+const MultiSelectSheet = ({
+  title,
+  options,
+  selected,
+  onToggle,
+  onClear,
+  onClose,
+}: {
+  title: string;
+  options: string[];
+  selected: string[];
+  onToggle: (value: string) => void;
+  onClear?: () => void;
+  onClose: () => void;
+}) => (
+  <div
+    className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end animate-in fade-in duration-300"
+    onMouseDown={(e) => {
+      if (e.target === e.currentTarget) onClose();
+    }}
+    onTouchStart={(e) => {
+      if (e.target === e.currentTarget) onClose();
+    }}
+  >
+    <div
+      className="w-full bg-[#121212] rounded-t-[2.5rem] p-8 animate-in slide-in-from-bottom duration-300"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-8"></div>
+      <div className="flex items-center justify-between mb-8">
+        <h3 className="text-xl font-black text-white">{title}</h3>
+        <div className="flex items-center gap-2">
+          {onClear && (
+            <button
+              onClick={onClear}
+              className="bg-slate-900 px-3 py-1.5 rounded-full text-[10px] font-black text-slate-300 uppercase tracking-widest"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="bg-slate-800 px-4 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 pb-10 max-h-[40vh] overflow-y-auto no-scrollbar">
+        {options.map((opt) => {
+          const active = selected.includes(opt);
+          return (
+            <button
+              key={opt}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle(opt);
+              }}
+              className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
+                active
+                  ? "bg-white text-black border-white"
+                  : "bg-transparent border-white/10 text-slate-500"
+              }`}
+            >
+              {opt}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+);
+
 const FilterModal: React.FC<Props> = ({
   filters,
   defaultFilters,
@@ -138,121 +273,6 @@ const FilterModal: React.FC<Props> = ({
           className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-200 ${value ? "right-1" : "left-1"}`}
         ></div>
       </button>
-    </div>
-  );
-
-  const BottomSheet = ({
-    title,
-    options,
-    current,
-    onSelect,
-    onClose,
-  }: {
-    title: string;
-    options: string[];
-    current: string;
-    onSelect: (val: string) => void;
-    onClose: () => void;
-  }) => (
-    <div
-      className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end animate-in fade-in duration-300"
-      onClick={onClose}
-    >
-      <div
-        className="w-full bg-[#121212] rounded-t-[2.5rem] p-8 animate-in slide-in-from-bottom duration-300"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-8"></div>
-        <div className="flex items-center justify-between mb-8">
-          <h3 className="text-xl font-black text-white">{title}</h3>
-          <button
-            onClick={onClose}
-            className="bg-slate-800 px-4 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest"
-          >
-            Done
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-2 pb-10 max-h-[40vh] overflow-y-auto no-scrollbar">
-          {options.map((opt) => (
-            <button
-              key={opt}
-              onClick={() => onSelect(opt)}
-              className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
-                current === opt
-                  ? "bg-white text-black border-white"
-                  : "bg-transparent border-white/10 text-slate-500"
-              }`}
-            >
-              {opt}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
-  const MultiSelectSheet = ({
-    title,
-    options,
-    selected,
-    onToggle,
-    onClear,
-    onClose,
-  }: {
-    title: string;
-    options: string[];
-    selected: string[];
-    onToggle: (value: string) => void;
-    onClear?: () => void;
-    onClose: () => void;
-  }) => (
-    <div
-      className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end animate-in fade-in duration-300"
-      onClick={onClose}
-    >
-      <div
-        className="w-full bg-[#121212] rounded-t-[2.5rem] p-8 animate-in slide-in-from-bottom duration-300"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-8"></div>
-        <div className="flex items-center justify-between mb-8">
-          <h3 className="text-xl font-black text-white">{title}</h3>
-          <div className="flex items-center gap-2">
-            {onClear && (
-              <button
-                onClick={onClear}
-                className="bg-slate-900 px-3 py-1.5 rounded-full text-[10px] font-black text-slate-300 uppercase tracking-widest"
-              >
-                Clear
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="bg-slate-800 px-4 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 pb-10 max-h-[40vh] overflow-y-auto no-scrollbar">
-          {options.map((opt) => {
-            const active = selected.includes(opt);
-            return (
-              <button
-                key={opt}
-                onClick={() => onToggle(opt)}
-                className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
-                  active
-                    ? "bg-white text-black border-white"
-                    : "bg-transparent border-white/10 text-slate-500"
-                }`}
-              >
-                {opt}
-              </button>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 
@@ -506,17 +526,27 @@ const FilterModal: React.FC<Props> = ({
       {activeBottomSheet === "location" && (
         <div
           className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end animate-in fade-in duration-300"
-          onClick={() => setActiveBottomSheet(null)}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setActiveBottomSheet(null);
+          }}
+          onTouchStart={(e) => {
+            if (e.target === e.currentTarget) setActiveBottomSheet(null);
+          }}
         >
           <div
             className="w-full bg-[#121212] rounded-t-[2.5rem] p-8 animate-in slide-in-from-bottom duration-300"
             onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
           >
             <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-8"></div>
             <div className="flex items-center justify-between mb-8">
               <h3 className="text-xl font-black text-white">Location</h3>
               <button
-                onClick={() => setActiveBottomSheet(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveBottomSheet(null);
+                }}
                 className="bg-slate-800 px-4 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest"
               >
                 Done
@@ -524,9 +554,10 @@ const FilterModal: React.FC<Props> = ({
             </div>
             <div className="flex flex-wrap gap-2 pb-10 max-h-[45vh] overflow-y-auto no-scrollbar">
               <button
-                onClick={() =>
-                  setLocalFilters({ ...localFilters, location: [] })
-                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLocalFilters({ ...localFilters, location: [] });
+                }}
                 className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
                   localFilters.location.length === 0
                     ? "bg-white text-black border-white"
@@ -540,7 +571,8 @@ const FilterModal: React.FC<Props> = ({
                 return (
                   <button
                     key={loc}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setLocalFilters((prev) => {
                         const next = new Set(prev.location);
                         if (next.has(loc)) {
