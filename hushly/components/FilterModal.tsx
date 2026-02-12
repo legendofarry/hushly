@@ -10,11 +10,17 @@ import {
 
 interface Props {
   filters: Filters;
+  defaultFilters: Filters;
   onApply: (filters: Filters) => void;
   onClose: () => void;
 }
 
-const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
+const FilterModal: React.FC<Props> = ({
+  filters,
+  defaultFilters,
+  onApply,
+  onClose,
+}) => {
   const [localFilters, setLocalFilters] = useState<Filters>({ ...filters });
   const [activeBottomSheet, setActiveBottomSheet] = useState<string | null>(
     null,
@@ -39,6 +45,34 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
       localFilters.location.length - 2
     }`;
   })();
+  const formatMultiValue = (values: string[], fallback = "Any") => {
+    if (!values.length) return fallback;
+    if (values.length === 1) return values[0];
+    return `${values[0]} +${values.length - 1}`;
+  };
+
+  const toggleSelection = (current: string[], value: string) =>
+    current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value];
+
+  const toggleFamilyPlans = (current: string[], value: string) => {
+    const desireOptions = new Set([
+      "Want children",
+      "Don't want children",
+      "Open to children",
+      "Not sure yet",
+    ]);
+    if (value === "Have children") {
+      return toggleSelection(current, value);
+    }
+    const hasValue = current.includes(value);
+    const withoutDesires = current.filter((item) => !desireOptions.has(item));
+    if (hasValue) {
+      return withoutDesires;
+    }
+    return [...withoutDesires, value];
+  };
 
   const handleToggle = (key: keyof Filters) => {
     setLocalFilters((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -157,6 +191,71 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
     </div>
   );
 
+  const MultiSelectSheet = ({
+    title,
+    options,
+    selected,
+    onToggle,
+    onClear,
+    onClose,
+  }: {
+    title: string;
+    options: string[];
+    selected: string[];
+    onToggle: (value: string) => void;
+    onClear?: () => void;
+    onClose: () => void;
+  }) => (
+    <div
+      className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-end animate-in fade-in duration-300"
+      onClick={onClose}
+    >
+      <div
+        className="w-full bg-[#121212] rounded-t-[2.5rem] p-8 animate-in slide-in-from-bottom duration-300"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-12 h-1 bg-slate-800 rounded-full mx-auto mb-8"></div>
+        <div className="flex items-center justify-between mb-8">
+          <h3 className="text-xl font-black text-white">{title}</h3>
+          <div className="flex items-center gap-2">
+            {onClear && (
+              <button
+                onClick={onClear}
+                className="bg-slate-900 px-3 py-1.5 rounded-full text-[10px] font-black text-slate-300 uppercase tracking-widest"
+              >
+                Clear
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="bg-slate-800 px-4 py-1.5 rounded-full text-[10px] font-black text-white uppercase tracking-widest"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 pb-10 max-h-[40vh] overflow-y-auto no-scrollbar">
+          {options.map((opt) => {
+            const active = selected.includes(opt);
+            return (
+              <button
+                key={opt}
+                onClick={() => onToggle(opt)}
+                className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
+                  active
+                    ? "bg-white text-black border-white"
+                    : "bg-transparent border-white/10 text-slate-500"
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
   const handleSave = () => {
     if (localFilters.mode === "Double Date") {
       setDoubleDateError(
@@ -166,6 +265,12 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
       return;
     }
     onApply(localFilters);
+  };
+
+  const handleReset = () => {
+    setLocalFilters({ ...defaultFilters });
+    setDoubleDateError(null);
+    setShowDoubleDateModal(false);
   };
 
   return (
@@ -180,12 +285,20 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
         <h2 className="text-sm font-black text-white uppercase tracking-widest">
           Preferences
         </h2>
-        <button
-          onClick={handleSave}
-          className="text-rose-500 font-black text-xs uppercase tracking-widest"
-        >
-          Save
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleReset}
+            className="text-slate-400 font-black text-[10px] uppercase tracking-widest"
+          >
+            Reset
+          </button>
+          <button
+            onClick={handleSave}
+            className="text-rose-500 font-black text-xs uppercase tracking-widest"
+          >
+            Save
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto no-scrollbar px-6 space-y-6 pb-24">
@@ -321,57 +434,52 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
 
         {/* DETAILED PREFERENCES */}
         <div className="bg-[#121212] rounded-3xl p-6 border border-white/5">
-          <ToggleRow
-            label="Has a bio"
-            value={localFilters.hasBio}
-            onToggle={() => handleToggle("hasBio")}
-          />
           <SelectionRow
             label="Looking for"
             icon="fa-eye"
-            value={localFilters.lookingFor}
+            value={localFilters.lookingFor || "Any"}
             onClick={() => setActiveBottomSheet("lookingFor")}
           />
           <SelectionRow
             label="Family Plans"
             icon="fa-baby"
-            value={localFilters.familyPlans}
+            value={formatMultiValue(localFilters.familyPlans)}
             onClick={() => setActiveBottomSheet("familyPlans")}
           />
           <SelectionRow
             label="Communication Style"
             icon="fa-comment"
-            value={localFilters.communicationStyle}
+            value={formatMultiValue(localFilters.communicationStyle)}
             onClick={() => setActiveBottomSheet("communication")}
           />
           <SelectionRow
             label="Love Style"
             icon="fa-heart"
-            value={localFilters.loveStyle}
+            value={formatMultiValue(localFilters.loveStyle)}
             onClick={() => setActiveBottomSheet("loveStyle")}
           />
           <SelectionRow
             label="Pets"
             icon="fa-paw"
-            value={localFilters.pets}
+            value={formatMultiValue(localFilters.pets)}
             onClick={() => setActiveBottomSheet("pets")}
           />
           <SelectionRow
             label="Drinking"
             icon="fa-glass-water"
-            value={localFilters.drinking}
+            value={formatMultiValue(localFilters.drinking)}
             onClick={() => setActiveBottomSheet("drinking")}
           />
           <SelectionRow
             label="Smoking"
             icon="fa-smoking"
-            value={localFilters.smoking}
+            value={formatMultiValue(localFilters.smoking)}
             onClick={() => setActiveBottomSheet("smoking")}
           />
           <SelectionRow
             label="Workout"
             icon="fa-dumbbell"
-            value={localFilters.workout}
+            value={formatMultiValue(localFilters.workout)}
             onClick={() => setActiveBottomSheet("workout")}
           />
         </div>
@@ -467,67 +575,116 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
         />
       )}
       {activeBottomSheet === "drinking" && (
-        <BottomSheet
+        <MultiSelectSheet
           title="Drinking"
           options={LIFESTYLE_OPTIONS.drink}
-          current={localFilters.drinking}
-          onSelect={(v) => setLocalFilters({ ...localFilters, drinking: v })}
+          selected={localFilters.drinking}
+          onToggle={(value) =>
+            setLocalFilters((prev) => ({
+              ...prev,
+              drinking: toggleSelection(prev.drinking, value),
+            }))
+          }
+          onClear={() =>
+            setLocalFilters((prev) => ({ ...prev, drinking: [] }))
+          }
           onClose={() => setActiveBottomSheet(null)}
         />
       )}
       {activeBottomSheet === "familyPlans" && (
-        <BottomSheet
+        <MultiSelectSheet
           title="Family Plans"
           options={FAMILY_PLANS_OPTIONS}
-          current={localFilters.familyPlans}
-          onSelect={(v) => setLocalFilters({ ...localFilters, familyPlans: v })}
+          selected={localFilters.familyPlans}
+          onToggle={(value) =>
+            setLocalFilters((prev) => ({
+              ...prev,
+              familyPlans: toggleFamilyPlans(prev.familyPlans, value),
+            }))
+          }
+          onClear={() =>
+            setLocalFilters((prev) => ({ ...prev, familyPlans: [] }))
+          }
           onClose={() => setActiveBottomSheet(null)}
         />
       )}
       {activeBottomSheet === "communication" && (
-        <BottomSheet
+        <MultiSelectSheet
           title="Communication Style"
           options={PERSONALITY_OPTIONS.communication}
-          current={localFilters.communicationStyle}
-          onSelect={(v) =>
-            setLocalFilters({ ...localFilters, communicationStyle: v })
+          selected={localFilters.communicationStyle}
+          onToggle={(value) =>
+            setLocalFilters((prev) => ({
+              ...prev,
+              communicationStyle: toggleSelection(
+                prev.communicationStyle,
+                value,
+              ),
+            }))
+          }
+          onClear={() =>
+            setLocalFilters((prev) => ({ ...prev, communicationStyle: [] }))
           }
           onClose={() => setActiveBottomSheet(null)}
         />
       )}
       {activeBottomSheet === "loveStyle" && (
-        <BottomSheet
+        <MultiSelectSheet
           title="Love Style"
           options={PERSONALITY_OPTIONS.loveLanguage}
-          current={localFilters.loveStyle}
-          onSelect={(v) => setLocalFilters({ ...localFilters, loveStyle: v })}
+          selected={localFilters.loveStyle}
+          onToggle={(value) =>
+            setLocalFilters((prev) => ({
+              ...prev,
+              loveStyle: toggleSelection(prev.loveStyle, value),
+            }))
+          }
+          onClear={() => setLocalFilters((prev) => ({ ...prev, loveStyle: [] }))}
           onClose={() => setActiveBottomSheet(null)}
         />
       )}
       {activeBottomSheet === "pets" && (
-        <BottomSheet
+        <MultiSelectSheet
           title="Pets"
           options={LIFESTYLE_OPTIONS.pets}
-          current={localFilters.pets}
-          onSelect={(v) => setLocalFilters({ ...localFilters, pets: v })}
+          selected={localFilters.pets}
+          onToggle={(value) =>
+            setLocalFilters((prev) => ({
+              ...prev,
+              pets: toggleSelection(prev.pets, value),
+            }))
+          }
+          onClear={() => setLocalFilters((prev) => ({ ...prev, pets: [] }))}
           onClose={() => setActiveBottomSheet(null)}
         />
       )}
       {activeBottomSheet === "smoking" && (
-        <BottomSheet
+        <MultiSelectSheet
           title="Smoking"
           options={LIFESTYLE_OPTIONS.smoke}
-          current={localFilters.smoking}
-          onSelect={(v) => setLocalFilters({ ...localFilters, smoking: v })}
+          selected={localFilters.smoking}
+          onToggle={(value) =>
+            setLocalFilters((prev) => ({
+              ...prev,
+              smoking: toggleSelection(prev.smoking, value),
+            }))
+          }
+          onClear={() => setLocalFilters((prev) => ({ ...prev, smoking: [] }))}
           onClose={() => setActiveBottomSheet(null)}
         />
       )}
       {activeBottomSheet === "workout" && (
-        <BottomSheet
+        <MultiSelectSheet
           title="Workout"
           options={LIFESTYLE_OPTIONS.workout}
-          current={localFilters.workout}
-          onSelect={(v) => setLocalFilters({ ...localFilters, workout: v })}
+          selected={localFilters.workout}
+          onToggle={(value) =>
+            setLocalFilters((prev) => ({
+              ...prev,
+              workout: toggleSelection(prev.workout, value),
+            }))
+          }
+          onClear={() => setLocalFilters((prev) => ({ ...prev, workout: [] }))}
           onClose={() => setActiveBottomSheet(null)}
         />
       )}

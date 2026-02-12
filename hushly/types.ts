@@ -10,13 +10,13 @@ export interface Filters {
   hasBio: boolean;
   interests: string[];
   lookingFor: IntentType | "";
-  familyPlans: string;
-  communicationStyle: string;
-  loveStyle: string;
-  pets: string;
-  drinking: string;
-  smoking: string;
-  workout: string;
+  familyPlans: string[];
+  communicationStyle: string[];
+  loveStyle: string[];
+  pets: string[];
+  drinking: string[];
+  smoking: string[];
+  workout: string[];
   expandAge: boolean;
   mode: 'For You' | 'Double Date';
 }
@@ -52,14 +52,14 @@ export interface User {
   followingIds?: string[];
   followerCount?: number;
   lifestyle?: {
-    drink?: string;
-    smoke?: string;
-    workout?: string;
+    drink?: string[];
+    smoke?: string[];
+    workout?: string[];
     pets?: string[];
   };
   personality?: {
-    communicationStyle?: string;
-    loveLanguage?: string;
+    communicationStyle?: string[];
+    loveLanguage?: string[];
     education?: string;
     zodiac?: string;
   };

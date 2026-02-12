@@ -108,6 +108,23 @@ const HUB_SPLASH_DURATION_MS = 5000;
 const HUB_EXIT_SPLASH_DURATION_MS = 2000;
 const AGE_FILTER_MIN = 18;
 const AGE_FILTER_MAX = 60;
+const DEFAULT_FILTERS: DiscoverFilters = {
+  gender: "everyone",
+  ageRange: [AGE_FILTER_MIN, AGE_FILTER_MAX],
+  location: [],
+  hasBio: false,
+  interests: [],
+  lookingFor: "",
+  familyPlans: [],
+  communicationStyle: [],
+  loveStyle: [],
+  pets: [],
+  drinking: [],
+  smoking: [],
+  workout: [],
+  expandAge: true,
+  mode: "For You",
+};
 
 const resolveViewFromSearch = (
   search: string,
@@ -156,6 +173,21 @@ const matchesAgeRange = (
   return parsed.max >= min && parsed.min <= max;
 };
 
+const normalizeStringArray = (value?: string | string[]) => {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+};
+
+const matchesMultiFilter = (
+  selected: string[],
+  profileValue?: string | string[],
+) => {
+  if (selected.length === 0) return true;
+  const profileValues = normalizeStringArray(profileValue);
+  if (profileValues.length === 0) return false;
+  return selected.some((value) => profileValues.includes(value));
+};
+
 const computeCompatibilityScore = (me: GameAnswers, other: GameAnswers) => {
   const scores: number[] = [];
   const myQuiz = me.hushQuiz?.answers ?? {};
@@ -191,21 +223,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const filtersDirtyKey = `hushly_filters_dirty_${user.id}`;
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState<DiscoverFilters>(() => ({
-    gender: "everyone",
-    ageRange: [AGE_FILTER_MIN, AGE_FILTER_MAX],
-    location: [],
-    hasBio: false,
-    interests: [],
-    lookingFor: "",
-    familyPlans: "",
-    communicationStyle: "",
-    loveStyle: "",
-    pets: "",
-    drinking: "",
-    smoking: "",
-    workout: "",
-    expandAge: true,
-    mode: "For You",
+    ...DEFAULT_FILTERS,
   }));
   const [filtersDirty, setFiltersDirty] = useState(false);
   const [headerToggle, setHeaderToggle] = useState(true);
@@ -517,13 +535,52 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       }
       if (!filtersDirty) return true;
       if (!matchesGenderFilter(profile.gender, filters.gender)) return false;
-      if (filters.hasBio && !profile.bio?.trim()) return false;
       if (filters.lookingFor) {
         if (!profile.intents?.includes(filters.lookingFor)) return false;
       }
       if (filters.location.length > 0) {
         if (!profile.area) return false;
         if (!filters.location.includes(profile.area)) return false;
+      }
+      const legacyPersonality = profile.personality as
+        | { comms?: string | string[]; love?: string | string[] }
+        | undefined;
+      const communicationValue =
+        profile.personality?.communicationStyle ?? legacyPersonality?.comms;
+      const loveValue =
+        profile.personality?.loveLanguage ?? legacyPersonality?.love;
+      if (
+        !matchesMultiFilter(filters.familyPlans, profile.familyPlans)
+      ) {
+        return false;
+      }
+      if (
+        !matchesMultiFilter(
+          filters.communicationStyle,
+          communicationValue,
+        )
+      ) {
+        return false;
+      }
+      if (
+        !matchesMultiFilter(
+          filters.loveStyle,
+          loveValue,
+        )
+      ) {
+        return false;
+      }
+      if (!matchesMultiFilter(filters.pets, profile.lifestyle?.pets)) {
+        return false;
+      }
+      if (!matchesMultiFilter(filters.drinking, profile.lifestyle?.drink)) {
+        return false;
+      }
+      if (!matchesMultiFilter(filters.smoking, profile.lifestyle?.smoke)) {
+        return false;
+      }
+      if (!matchesMultiFilter(filters.workout, profile.lifestyle?.workout)) {
+        return false;
       }
       const ageFilterActive =
         filters.ageRange[0] > AGE_FILTER_MIN ||
@@ -2280,12 +2337,19 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       {isFilterModalOpen && (
         <FilterModal
           filters={filters}
+          defaultFilters={DEFAULT_FILTERS}
           onApply={(next) => {
+            const isDefault =
+              JSON.stringify(next) === JSON.stringify(DEFAULT_FILTERS);
             setFilters(next);
             setIsFilterModalOpen(false);
-            setFiltersDirty(true);
+            setFiltersDirty(!isDefault);
             if (typeof window !== "undefined") {
-              window.localStorage.setItem(filtersDirtyKey, "1");
+              if (isDefault) {
+                window.localStorage.removeItem(filtersDirtyKey);
+              } else {
+                window.localStorage.setItem(filtersDirtyKey, "1");
+              }
             }
           }}
           onClose={() => setIsFilterModalOpen(false)}

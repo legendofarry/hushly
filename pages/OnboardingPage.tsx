@@ -11,6 +11,11 @@ import {
   GENDER_PREFERENCE_OPTIONS,
 } from "../types";
 import {
+  FAMILY_PLANS_OPTIONS,
+  LIFESTYLE_OPTIONS,
+  PERSONALITY_OPTIONS,
+} from "../hushly/constants";
+import {
   analyzePhotoForAi,
   storePhotoAiHash,
   uploadToCloudinary,
@@ -63,6 +68,13 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [ageRange, setAgeRange] = useState(AGE_RANGES[1]);
   const [area, setArea] = useState(KENYAN_AREAS[0]);
   const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
+  const [familyPlans, setFamilyPlans] = useState<string[]>([]);
+  const [communicationStyle, setCommunicationStyle] = useState<string[]>([]);
+  const [loveStyle, setLoveStyle] = useState<string[]>([]);
+  const [pets, setPets] = useState<string[]>([]);
+  const [drinking, setDrinking] = useState<string[]>([]);
+  const [smoking, setSmoking] = useState<string[]>([]);
+  const [workout, setWorkout] = useState<string[]>([]);
   const [bio, setBio] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [photoAiReport, setPhotoAiReport] = useState<PhotoAiReport | null>(
@@ -188,6 +200,57 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         : [...prev, intent],
     );
   };
+
+  const toggleMultiValue = (current: string[], value: string) =>
+    current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value];
+
+  const toggleFamilyPlan = (value: string) => {
+    const desireOptions = new Set([
+      "Want children",
+      "Don't want children",
+      "Open to children",
+      "Not sure yet",
+    ]);
+    setFamilyPlans((prev) => {
+      if (value === "Have children") {
+        return toggleMultiValue(prev, value);
+      }
+      const hasValue = prev.includes(value);
+      const withoutDesires = prev.filter((item) => !desireOptions.has(item));
+      if (hasValue) {
+        return withoutDesires;
+      }
+      return [...withoutDesires, value];
+    });
+  };
+
+  const renderMultiChips = (
+    options: string[],
+    selected: string[],
+    onToggle: (value: string) => void,
+  ) => (
+    <div className="flex flex-wrap gap-2">
+      {options.map((option) => {
+        const active = selected.includes(option);
+        return (
+          <button
+            key={option}
+            type="button"
+            onClick={() => onToggle(option)}
+            className={`px-3 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border transition-all ${
+              active
+                ? "bg-kipepeo-pink/20 text-kipepeo-pink border-kipepeo-pink/40"
+                : "bg-white/5 text-gray-400 border-white/10"
+            }`}
+          >
+            {option}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   const toggleInterestedIn = (value: GenderPreference) => {
     setInterestedIn((prev) => {
@@ -520,28 +583,51 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const buildUserProfile = (
     userId: string,
     overrides: Partial<UserProfile> = {},
-  ): UserProfile => ({
-    id: userId,
-    realName,
-    nickname: nickname.trim(),
-    nicknameLower: nickname.trim().toLowerCase(),
-    email: normalizeEmail(email),
-    emailVerified: false,
-    isPremium: false,
-    premiumExpiresAt: null,
-    occupation: occupation.trim() ? occupation.trim() : undefined,
-    occupationVisibility,
-    gender: gender || undefined,
-    interestedIn: interestedIn.length > 0 ? interestedIn : undefined,
-    ageRange,
-    area,
-    intents: selectedIntents,
-    photoUrl: capturedPhoto ?? "",
-    bio: clampBio(bio || "Ready for the plot."),
-    isAnonymous: true,
-    isOnline: true,
-    ...overrides,
-  });
+  ): UserProfile => {
+    const lifestylePayload = {
+      drink: drinking.length > 0 ? drinking : undefined,
+      smoke: smoking.length > 0 ? smoking : undefined,
+      workout: workout.length > 0 ? workout : undefined,
+      pets: pets.length > 0 ? pets : undefined,
+    };
+    const personalityPayload = {
+      communicationStyle:
+        communicationStyle.length > 0 ? communicationStyle : undefined,
+      loveLanguage: loveStyle.length > 0 ? loveStyle : undefined,
+    };
+    const hasLifestyle = Object.values(lifestylePayload).some(
+      (value) => Array.isArray(value) && value.length > 0,
+    );
+    const hasPersonality = Object.values(personalityPayload).some(
+      (value) => Array.isArray(value) && value.length > 0,
+    );
+
+    return {
+      id: userId,
+      realName,
+      nickname: nickname.trim(),
+      nicknameLower: nickname.trim().toLowerCase(),
+      email: normalizeEmail(email),
+      emailVerified: false,
+      isPremium: false,
+      premiumExpiresAt: null,
+      occupation: occupation.trim() ? occupation.trim() : undefined,
+      occupationVisibility,
+      gender: gender || undefined,
+      interestedIn: interestedIn.length > 0 ? interestedIn : undefined,
+      ageRange,
+      area,
+      intents: selectedIntents,
+      familyPlans: familyPlans.length > 0 ? familyPlans : undefined,
+      lifestyle: hasLifestyle ? lifestylePayload : undefined,
+      personality: hasPersonality ? personalityPayload : undefined,
+      photoUrl: capturedPhoto ?? "",
+      bio: clampBio(bio || "Ready for the plot."),
+      isAnonymous: true,
+      isOnline: true,
+      ...overrides,
+    };
+  };
 
   const handleVerificationCheck = async () => {
     if (!verificationUser) return;
@@ -928,6 +1014,81 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                 </button>
               ))}
             </div>
+            <div className="mt-10 space-y-8">
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-3">
+                  Lifestyle
+                </p>
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">
+                      Drinking habits
+                    </p>
+                    {renderMultiChips(LIFESTYLE_OPTIONS.drink, drinking, (val) =>
+                      setDrinking((prev) => toggleMultiValue(prev, val)),
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">Smoking</p>
+                    {renderMultiChips(LIFESTYLE_OPTIONS.smoke, smoking, (val) =>
+                      setSmoking((prev) => toggleMultiValue(prev, val)),
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">Workout</p>
+                    {renderMultiChips(
+                      LIFESTYLE_OPTIONS.workout,
+                      workout,
+                      (val) => setWorkout((prev) => toggleMultiValue(prev, val)),
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">Pets</p>
+                    {renderMultiChips(LIFESTYLE_OPTIONS.pets, pets, (val) =>
+                      setPets((prev) => toggleMultiValue(prev, val)),
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-3">
+                  Vibe & Style
+                </p>
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">
+                      Communication style
+                    </p>
+                    {renderMultiChips(
+                      PERSONALITY_OPTIONS.communication,
+                      communicationStyle,
+                      (val) =>
+                        setCommunicationStyle((prev) =>
+                          toggleMultiValue(prev, val),
+                        ),
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">Love style</p>
+                    {renderMultiChips(
+                      PERSONALITY_OPTIONS.loveLanguage,
+                      loveStyle,
+                      (val) =>
+                        setLoveStyle((prev) => toggleMultiValue(prev, val)),
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">Family plans</p>
+                    {renderMultiChips(
+                      FAMILY_PLANS_OPTIONS,
+                      familyPlans,
+                      toggleFamilyPlan,
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1244,3 +1405,4 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
 };
 
 export default OnboardingPage;
+

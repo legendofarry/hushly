@@ -46,6 +46,17 @@ export interface UserProfile {
   locationLat?: number | null;
   locationLng?: number | null;
   intents: IntentType[];
+  familyPlans?: string[];
+  lifestyle?: {
+    drink?: string[];
+    smoke?: string[];
+    workout?: string[];
+    pets?: string[];
+  };
+  personality?: {
+    communicationStyle?: string[];
+    loveLanguage?: string[];
+  };
   photoUrl: string; // Live selfie
   isAnonymous: boolean;
   ratePerDay?: string;
