@@ -2027,7 +2027,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
                 <div className="space-y-3">
                   <a
-                    href="/assets/apk/apk.apk"
+                    href="/assets/apk/Hushly.apk"
                     className="block w-full py-3 rounded-full bg-kipepeo-pink text-white text-xs font-black uppercase tracking-widest active:scale-95 transition-transform"
                     download
                   >

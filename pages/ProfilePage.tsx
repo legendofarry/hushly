@@ -851,6 +851,26 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
       )}
 
       <div className="space-y-6 mb-24 px-4">
+        <a
+          href="/assets/apk/Hushly.apk"
+          download
+          className="w-full bg-slate-900/60 border border-white/10 p-5 rounded-3xl flex items-center justify-between text-left hover:bg-slate-900 transition-all active:scale-95"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-400">
+              <i className="fa-solid fa-download text-lg"></i>
+            </div>
+            <div>
+              <p className="text-sm font-black uppercase tracking-widest text-white">
+                Install App
+              </p>
+              <p className="text-xs text-slate-400">
+                Download the latest Android APK.
+              </p>
+            </div>
+          </div>
+          <i className="fa-solid fa-arrow-down text-slate-500"></i>
+        </a>
         {isOwnProfile && !isPaid && (
           <button
             onClick={() => navigate("/pricing")}
