@@ -7,11 +7,8 @@ const SplashScreen: React.FC = () => {
         <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center animate-bounce shadow-2xl">
           <i className="fa-solid fa-heart text-rose-500 text-6xl"></i>
         </div>
-        <div className="absolute -top-4 -right-4 w-12 h-12 bg-amber-400 rounded-full flex items-center justify-center animate-pulse">
-          <i className="fa-solid fa-lips text-white text-xl"></i>
-        </div>
       </div>
-      <h1 className="mt-8 text-5xl font-bold text-white tracking-tighter">
+      <h1 className="mt-4 text-5xl font-bold text-white tracking-tighter">
         Hushly
       </h1>
       <p className="mt-2 text-white/80 font-medium">Kenyan Love, Redefined.</p>

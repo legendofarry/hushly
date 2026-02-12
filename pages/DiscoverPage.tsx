@@ -549,25 +549,13 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
         profile.personality?.communicationStyle ?? legacyPersonality?.comms;
       const loveValue =
         profile.personality?.loveLanguage ?? legacyPersonality?.love;
-      if (
-        !matchesMultiFilter(filters.familyPlans, profile.familyPlans)
-      ) {
+      if (!matchesMultiFilter(filters.familyPlans, profile.familyPlans)) {
         return false;
       }
-      if (
-        !matchesMultiFilter(
-          filters.communicationStyle,
-          communicationValue,
-        )
-      ) {
+      if (!matchesMultiFilter(filters.communicationStyle, communicationValue)) {
         return false;
       }
-      if (
-        !matchesMultiFilter(
-          filters.loveStyle,
-          loveValue,
-        )
-      ) {
+      if (!matchesMultiFilter(filters.loveStyle, loveValue)) {
         return false;
       }
       if (!matchesMultiFilter(filters.pets, profile.lifestyle?.pets)) {
