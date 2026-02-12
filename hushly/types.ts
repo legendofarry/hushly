@@ -1,16 +1,15 @@
 
+import type { GenderPreference, IntentType } from "../types";
+
 export type AppView = 'splash' | 'landing' | 'login' | 'registration' | 'reset-password' | 'dating' | 'escorts' | 'live' | 'hub' | 'profile' | 'messages' | 'notifications' | 'view-profile' | 'payment';
 
 export interface Filters {
-  gender: string;
+  gender: GenderPreference;
   ageRange: [number, number];
   location: string[];
   hasBio: boolean;
   interests: string[];
-  lookingFor: string;
-  languages: string[];
-  zodiac: string;
-  education: string;
+  lookingFor: IntentType | "";
   familyPlans: string;
   communicationStyle: string;
   loveStyle: string;
@@ -18,7 +17,6 @@ export interface Filters {
   drinking: string;
   smoking: string;
   workout: string;
-  socialMedia: string;
   expandAge: boolean;
   mode: 'For You' | 'Double Date';
 }

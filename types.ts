@@ -11,6 +11,18 @@ export enum IntentType {
 export type Gender = "female" | "male" | "nonbinary" | "other";
 export type GenderPreference = Gender | "everyone";
 
+export const GENDER_PREFERENCE_OPTIONS: {
+  value: GenderPreference;
+  label: string;
+}[] = [
+  { value: "female", label: "Women" },
+  { value: "male", label: "Men" },
+  { value: "nonbinary", label: "Non-binary" },
+  { value: "other", label: "Other" },
+  { value: "everyone", label: "Everyone" },
+];
+
+
 export interface UserProfile {
   id: string;
   realName: string; // Private

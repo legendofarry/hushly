@@ -8,6 +8,7 @@ import {
   UserProfile,
   Gender,
   GenderPreference,
+  GENDER_PREFERENCE_OPTIONS,
 } from "../types";
 import {
   analyzePhotoForAi,
@@ -44,14 +45,6 @@ const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: "male", label: "Man" },
   { value: "nonbinary", label: "Non-binary" },
   { value: "other", label: "Other" },
-];
-
-const INTEREST_OPTIONS: { value: GenderPreference; label: string }[] = [
-  { value: "female", label: "Women" },
-  { value: "male", label: "Men" },
-  { value: "nonbinary", label: "Non-binary" },
-  { value: "other", label: "Other" },
-  { value: "everyone", label: "Everyone" },
 ];
 
 const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
@@ -863,7 +856,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                   Interested In
                 </label>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  {INTEREST_OPTIONS.map((option) => (
+                  {GENDER_PREFERENCE_OPTIONS.map((option) => (
                     <button
                       key={option.value}
                       type="button"

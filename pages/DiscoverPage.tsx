@@ -13,6 +13,7 @@ import {
   AppNotification,
   DailyDrop,
   GameAnswers,
+  GenderPreference,
   PaymentRequest,
   UserProfile,
   WeekendPlan,
@@ -105,6 +106,8 @@ const MAX_COMPATIBILITY_MATCHES = 6;
 const COMPATIBILITY_MIN_SCORE = 0.45;
 const HUB_SPLASH_DURATION_MS = 5000;
 const HUB_EXIT_SPLASH_DURATION_MS = 2000;
+const AGE_FILTER_MIN = 18;
+const AGE_FILTER_MAX = 60;
 
 const resolveViewFromSearch = (
   search: string,
@@ -136,13 +139,11 @@ const parseAgeRange = (value?: string) => {
 
 const matchesGenderFilter = (
   profileGender: UserProfile["gender"] | undefined,
-  filterGender: string,
+  filterGender: GenderPreference,
 ) => {
-  if (filterGender === "Everyone") return true;
+  if (filterGender === "everyone") return true;
   if (!profileGender) return false;
-  if (filterGender === "Women") return profileGender === "female";
-  if (filterGender === "Men") return profileGender === "male";
-  return true;
+  return profileGender === filterGender;
 };
 
 const matchesAgeRange = (
@@ -190,15 +191,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const filtersDirtyKey = `hushly_filters_dirty_${user.id}`;
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filters, setFilters] = useState<DiscoverFilters>(() => ({
-    gender: "Everyone",
-    ageRange: [18, 37],
+    gender: "everyone",
+    ageRange: [AGE_FILTER_MIN, AGE_FILTER_MAX],
     location: [],
     hasBio: false,
     interests: [],
     lookingFor: "",
-    languages: [],
-    zodiac: "",
-    education: "",
     familyPlans: "",
     communicationStyle: "",
     loveStyle: "",
@@ -206,7 +204,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     drinking: "",
     smoking: "",
     workout: "",
-    socialMedia: "",
     expandAge: true,
     mode: "For You",
   }));
@@ -521,11 +518,22 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       if (!filtersDirty) return true;
       if (!matchesGenderFilter(profile.gender, filters.gender)) return false;
       if (filters.hasBio && !profile.bio?.trim()) return false;
+      if (filters.lookingFor) {
+        if (!profile.intents?.includes(filters.lookingFor)) return false;
+      }
       if (filters.location.length > 0) {
         if (!profile.area) return false;
         if (!filters.location.includes(profile.area)) return false;
       }
-      if (!matchesAgeRange(profile.ageRange, filters.ageRange)) return false;
+      const ageFilterActive =
+        filters.ageRange[0] > AGE_FILTER_MIN ||
+        filters.ageRange[1] < AGE_FILTER_MAX;
+      if (
+        ageFilterActive &&
+        !matchesAgeRange(profile.ageRange, filters.ageRange)
+      ) {
+        return false;
+      }
       return true;
     };
   }, [filters, preferredGenders, filtersDirty]);

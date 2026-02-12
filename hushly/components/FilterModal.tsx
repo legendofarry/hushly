@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { Filters } from "../types";
+import { GENDER_PREFERENCE_OPTIONS, IntentType } from "../../types";
 import {
   KENYA_LOCATIONS,
   PERSONALITY_OPTIONS,
   LIFESTYLE_OPTIONS,
-  LOOKING_FOR_OPTIONS,
   FAMILY_PLANS_OPTIONS,
 } from "../constants";
 
@@ -21,6 +21,14 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
   );
   const [showDoubleDateModal, setShowDoubleDateModal] = useState(false);
   const [doubleDateError, setDoubleDateError] = useState<string | null>(null);
+  const showMeLabel =
+    GENDER_PREFERENCE_OPTIONS.find(
+      (option) => option.value === localFilters.gender,
+    )?.label ?? "Select";
+  const intentOptions = Object.values(IntentType);
+  const MIN_AGE = 18;
+  const MAX_AGE = 60;
+  const [minAge, maxAge] = localFilters.ageRange;
   const locationLabel = (() => {
     if (!localFilters.location.length) return "Any location";
     if (localFilters.location.length === 1)
@@ -236,7 +244,7 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
         <div className="bg-[#121212] rounded-3xl p-6 border border-white/5">
           <SelectionRow
             label="Show Me"
-            value={localFilters.gender}
+            value={showMeLabel}
             onClick={() => setActiveBottomSheet("gender")}
           />
         </div>
@@ -251,19 +259,50 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
               {localFilters.ageRange[0]} - {localFilters.ageRange[1]}
             </span>
           </div>
-          <input
-            type="range"
-            min="18"
-            max="60"
-            value={localFilters.ageRange[1]}
-            onChange={(e) =>
-              setLocalFilters({
-                ...localFilters,
-                ageRange: [localFilters.ageRange[0], parseInt(e.target.value)],
-              })
-            }
-            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500 mb-6"
-          />
+          <div className="relative w-full mb-6">
+            <div className="h-1.5 w-full rounded-lg bg-slate-800"></div>
+            <div
+              className="absolute top-0 h-1.5 rounded-lg bg-rose-500/70"
+              style={{
+                left: `${((minAge - MIN_AGE) / (MAX_AGE - MIN_AGE)) * 100}%`,
+                right: `${100 - ((maxAge - MIN_AGE) / (MAX_AGE - MIN_AGE)) * 100}%`,
+              }}
+            ></div>
+            <input
+              type="range"
+              min={MIN_AGE}
+              max={MAX_AGE}
+              value={minAge}
+              onChange={(e) => {
+                const nextMin = Math.min(
+                  parseInt(e.target.value),
+                  maxAge - 1,
+                );
+                setLocalFilters({
+                  ...localFilters,
+                  ageRange: [nextMin, maxAge],
+                });
+              }}
+              className="absolute top-0 left-0 w-full h-1.5 bg-transparent appearance-none cursor-pointer accent-rose-500 z-20 dual-range"
+            />
+            <input
+              type="range"
+              min={MIN_AGE}
+              max={MAX_AGE}
+              value={maxAge}
+              onChange={(e) => {
+                const nextMax = Math.max(
+                  parseInt(e.target.value),
+                  minAge + 1,
+                );
+                setLocalFilters({
+                  ...localFilters,
+                  ageRange: [minAge, nextMax],
+                });
+              }}
+              className="absolute top-0 left-0 w-full h-1.5 bg-transparent appearance-none cursor-pointer accent-rose-500 z-30 dual-range"
+            />
+          </div>
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-slate-300 leading-tight pr-4">
               Show people slightly out of my preferred range if I run out of
@@ -288,31 +327,10 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
             onToggle={() => handleToggle("hasBio")}
           />
           <SelectionRow
-            label="Interests"
-            onClick={() => setActiveBottomSheet("interests")}
-          />
-          <SelectionRow
             label="Looking for"
             icon="fa-eye"
             value={localFilters.lookingFor}
             onClick={() => setActiveBottomSheet("lookingFor")}
-          />
-          <SelectionRow
-            label="Add languages"
-            icon="fa-language"
-            onClick={() => setActiveBottomSheet("languages")}
-          />
-          <SelectionRow
-            label="Zodiac"
-            icon="fa-moon"
-            value={localFilters.zodiac}
-            onClick={() => setActiveBottomSheet("zodiac")}
-          />
-          <SelectionRow
-            label="Education"
-            icon="fa-graduation-cap"
-            value={localFilters.education}
-            onClick={() => setActiveBottomSheet("education")}
           />
           <SelectionRow
             label="Family Plans"
@@ -356,12 +374,6 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
             value={localFilters.workout}
             onClick={() => setActiveBottomSheet("workout")}
           />
-          <SelectionRow
-            label="Social Media"
-            icon="fa-at"
-            value={localFilters.socialMedia}
-            onClick={() => setActiveBottomSheet("socialMedia")}
-          />
         </div>
       </main>
 
@@ -369,9 +381,17 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
       {activeBottomSheet === "gender" && (
         <BottomSheet
           title="Show Me"
-          options={["Women", "Men", "Everyone"]}
-          current={localFilters.gender}
-          onSelect={(v) => setLocalFilters({ ...localFilters, gender: v })}
+          options={GENDER_PREFERENCE_OPTIONS.map((option) => option.label)}
+          current={showMeLabel}
+          onSelect={(label) => {
+            const match = GENDER_PREFERENCE_OPTIONS.find(
+              (option) => option.label === label,
+            );
+            setLocalFilters({
+              ...localFilters,
+              gender: match?.value ?? "everyone",
+            });
+          }}
           onClose={() => setActiveBottomSheet(null)}
         />
       )}
@@ -437,19 +457,10 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
           </div>
         </div>
       )}
-      {activeBottomSheet === "zodiac" && (
-        <BottomSheet
-          title="Zodiac"
-          options={PERSONALITY_OPTIONS.zodiac}
-          current={localFilters.zodiac}
-          onSelect={(v) => setLocalFilters({ ...localFilters, zodiac: v })}
-          onClose={() => setActiveBottomSheet(null)}
-        />
-      )}
       {activeBottomSheet === "lookingFor" && (
         <BottomSheet
           title="Looking for"
-          options={LOOKING_FOR_OPTIONS}
+          options={intentOptions}
           current={localFilters.lookingFor}
           onSelect={(v) => setLocalFilters({ ...localFilters, lookingFor: v })}
           onClose={() => setActiveBottomSheet(null)}
@@ -481,15 +492,6 @@ const FilterModal: React.FC<Props> = ({ filters, onApply, onClose }) => {
           onSelect={(v) =>
             setLocalFilters({ ...localFilters, communicationStyle: v })
           }
-          onClose={() => setActiveBottomSheet(null)}
-        />
-      )}
-      {activeBottomSheet === "education" && (
-        <BottomSheet
-          title="Education"
-          options={PERSONALITY_OPTIONS.education}
-          current={localFilters.education}
-          onSelect={(v) => setLocalFilters({ ...localFilters, education: v })}
           onClose={() => setActiveBottomSheet(null)}
         />
       )}

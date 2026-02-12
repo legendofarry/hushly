@@ -116,6 +116,20 @@
             padding-top: env(safe-area-inset-top);
         }
 
+        .dual-range {
+            pointer-events: none;
+        }
+
+        .dual-range::-webkit-slider-thumb {
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .dual-range::-moz-range-thumb {
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
         /* Animation helpers (tailwindcss-animate style) */
         .animate-in {
             --hushly-enter-opacity: 1;

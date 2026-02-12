@@ -25,13 +25,29 @@ const DatingSwiper: React.FC<Props> = ({ user, filters, onSwipe, onProfileClick 
   const [showStarBurst, setShowStarBurst] = useState(false);
   const [burstKey, setBurstKey] = useState(0); 
   const [countdown, setCountdown] = useState('');
+  const AGE_FILTER_MIN = 18;
+  const AGE_FILTER_MAX = 60;
 
   const filteredProfiles = useMemo(() => {
+    const normalizeGender = (value: string) =>
+      value.toLowerCase().replace(/[^a-z]/g, "");
     return MOCK_PROFILES.filter(p => {
       if (p.isEscort) return false;
-      if (filters.gender !== 'Everyone' && p.gender !== filters.gender) return false;
+      if (
+        normalizeGender(filters.gender) !== "everyone" &&
+        normalizeGender(p.gender) !== normalizeGender(filters.gender)
+      )
+        return false;
       if (filters.location.length > 0 && !filters.location.includes(p.location)) return false;
-      if (p.age < filters.ageRange[0] || p.age > filters.ageRange[1]) return false;
+      const ageFilterActive =
+        filters.ageRange[0] > AGE_FILTER_MIN ||
+        filters.ageRange[1] < AGE_FILTER_MAX;
+      if (
+        ageFilterActive &&
+        (p.age < filters.ageRange[0] || p.age > filters.ageRange[1])
+      ) {
+        return false;
+      }
       return true;
     });
   }, [filters]);
