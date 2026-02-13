@@ -1472,9 +1472,6 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           .brand-cycler__word--secondary { display: none; }
         }
       `}</style>
-      {/* Dynamic Background */}
-      <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] bg-purple-900/20 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-pink-900/20 rounded-full blur-[120px] pointer-events-none"></div>
 
       {showInstallPrompt && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/80 px-6">
