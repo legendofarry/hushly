@@ -61,6 +61,7 @@ const AppRoutes: React.FC<{
     setUser(u);
     setIsVerified(true);
     localStorage.setItem("kipepeo_user", JSON.stringify(u));
+    localStorage.setItem(`hushly_welcome_achievement_${u.id}`, "pending");
     navigate("/discover");
   };
 

@@ -58,10 +58,6 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
-  const [occupation, setOccupation] = useState("");
-  const [occupationVisibility, setOccupationVisibility] = useState<
-    "public" | "private"
-  >("private");
   const [gender, setGender] = useState<Gender | "">("");
   const [interestedIn, setInterestedIn] = useState<GenderPreference[]>([]);
   const [ageRange, setAgeRange] = useState(AGE_RANGES[1]);
@@ -639,8 +635,6 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       emailVerified: false,
       isPremium: false,
       premiumExpiresAt: null,
-      occupation: occupation.trim() ? occupation.trim() : undefined,
-      occupationVisibility,
       gender: gender || undefined,
       interestedIn: interestedIn.length > 0 ? interestedIn : undefined,
       ageRange,
@@ -883,52 +877,6 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                     {passwordError}
                   </p>
                 )}
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase">
-                  What You Do (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={occupation}
-                  onChange={(e) => setOccupation(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mt-1 focus:border-kipepeo-pink outline-none"
-                  placeholder="e.g. Designer, Student, Entrepreneur"
-                />
-                <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-                      Visibility
-                    </p>
-                    <p className="text-[10px] text-gray-500">
-                      Choose if this shows on your public profile.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setOccupationVisibility("public")}
-                      className={`px-3 py-2 rounded-full text-[10px] uppercase tracking-widest font-black ${
-                        occupationVisibility === "public"
-                          ? "bg-kipepeo-pink/20 text-kipepeo-pink border border-kipepeo-pink/40"
-                          : "bg-white/5 text-gray-400 border border-white/10"
-                      }`}
-                    >
-                      Public
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOccupationVisibility("private")}
-                      className={`px-3 py-2 rounded-full text-[10px] uppercase tracking-widest font-black ${
-                        occupationVisibility === "private"
-                          ? "bg-white/10 text-white border border-white/20"
-                          : "bg-white/5 text-gray-400 border border-white/10"
-                      }`}
-                    >
-                      Private
-                    </button>
-                  </div>
-                </div>
               </div>
               <p className="text-[10px] text-gray-600">
                 By continuing, you confirm you are 18+.

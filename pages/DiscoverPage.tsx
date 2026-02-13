@@ -247,6 +247,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const [matchSuggestions, setMatchSuggestions] = useState<
     KenyanMatchSuggestion[]
   >([]);
+  const [showWelcomeAchievement, setShowWelcomeAchievement] = useState(false);
   const lastProfileRef = useRef<UserProfile | null>(null);
   const lastViewStartRef = useRef<number>(Date.now());
   const hubSplashTimerRef = useRef<number | null>(null);
@@ -276,6 +277,16 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     const stored = window.localStorage.getItem(filtersDirtyKey);
     setFiltersDirty(stored === "1");
   }, [filtersDirtyKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = `hushly_welcome_achievement_${user.id}`;
+    const status = window.localStorage.getItem(key);
+    if (status === "pending") {
+      setShowWelcomeAchievement(true);
+      window.localStorage.setItem(key, "seen");
+    }
+  }, [user.id]);
 
   useEffect(() => {
     let active = true;
@@ -547,6 +558,19 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     });
     return map;
   }, [filteredProfiles, deferredSignals, user]);
+
+  const welcomeCheeky = useMemo(() => {
+    switch (user.gender) {
+      case "female":
+        return "Queen energy detected. Go set the vibe.";
+      case "male":
+        return "King energy detected. Keep it classy out here.";
+      case "nonbinary":
+        return "Main character energy unlocked. Be bold, be kind.";
+      default:
+        return "Main character energy unlocked. Go make it memorable.";
+    }
+  }, [user.gender]);
 
   const shouldShowEmptyState = filteredProfiles.length === 0;
   const emptyStateTitle = filtersDirty
@@ -1896,6 +1920,55 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           }}
           onClose={() => setIsFilterModalOpen(false)}
         />
+      )}
+
+      {showWelcomeAchievement && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm px-6">
+          <div className="w-full max-w-md rounded-[2.5rem] border border-white/10 bg-[#141414] p-7 text-center shadow-2xl">
+            <div className="mx-auto mb-4 h-16 w-16 rounded-2xl border border-amber-400/30 bg-amber-400/10 flex items-center justify-center shadow-[0_0_24px_rgba(251,191,36,0.25)]">
+              <i className="fa-solid fa-trophy text-amber-300 text-2xl"></i>
+            </div>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-amber-300 font-black">
+              Achievement Unlocked
+            </p>
+            <h3 className="mt-2 text-2xl font-black text-white">
+              Welcome on board
+            </h3>
+            <p className="mt-2 text-xs text-gray-400 leading-relaxed">
+              You just earned your first badge for joining the Hushly tribe.
+            </p>
+            <p className="mt-3 text-xs text-kipepeo-pink font-bold">
+              {welcomeCheeky}
+            </p>
+
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
+              <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-3">
+                Quick Tips
+              </p>
+              <ul className="space-y-2 text-xs text-gray-300">
+                <li className="flex items-start gap-2">
+                  <span className="text-kipepeo-pink mt-0.5">•</span>
+                  A great bio gets better replies.
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-kipepeo-pink mt-0.5">•</span>
+                  Use filters to find your people faster.
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-kipepeo-pink mt-0.5">•</span>
+                  Say hi first — the vibe starts with you.
+                </li>
+              </ul>
+            </div>
+
+            <button
+              onClick={() => setShowWelcomeAchievement(false)}
+              className="mt-6 w-full rounded-full bg-kipepeo-pink px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-[0_0_24px_rgba(236,72,153,0.4)] active:scale-95 transition-transform"
+            >
+              Let's go
+            </button>
+          </div>
+        </div>
       )}
 
       {showMatchModal && matchProfile && (
