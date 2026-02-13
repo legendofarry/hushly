@@ -167,6 +167,13 @@ export const updateUserProfile = async (
   if (typeof updates.nickname === "string") {
     sanitizedUpdates.nicknameLower = normalizeNickname(updates.nickname);
   }
+  if (typeof updates.school === "string") {
+    const trimmedSchool = updates.school.trim();
+    sanitizedUpdates.school = trimmedSchool;
+    sanitizedUpdates.schoolLower = trimmedSchool
+      ? trimmedSchool.toLowerCase()
+      : undefined;
+  }
 
   if (hasNicknameUpdate) {
     const nextNickname = updates.nickname?.trim() ?? "";

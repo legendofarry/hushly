@@ -96,6 +96,7 @@ const DEFAULT_FILTERS: DiscoverFilters = {
   gender: "everyone",
   ageRange: [AGE_FILTER_MIN, AGE_FILTER_MAX],
   location: [],
+  school: [],
   hasBio: false,
   interests: [],
   lookingFor: "",
@@ -459,6 +460,15 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
       if (filters.location.length > 0) {
         if (!profile.area) return false;
         if (!filters.location.includes(profile.area)) return false;
+      }
+      if (filters.school.length > 0) {
+        const normalizedFilters = filters.school.map((value) =>
+          value.trim().toLowerCase(),
+        );
+        const profileSchool =
+          profile.schoolLower ?? profile.school?.trim().toLowerCase();
+        if (!profileSchool) return false;
+        if (!normalizedFilters.includes(profileSchool)) return false;
       }
       const legacyPersonality = profile.personality as
         | { comms?: string | string[]; love?: string | string[] }

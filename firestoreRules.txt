@@ -260,6 +260,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /school_suggestions/{suggestionId} {
+      allow read: if false;
+      allow create: if signedIn()
+        && request.resource.data.name is string
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     match /blocks/{blockId} {
       allow read: if signedIn()
         && (resource.data.fromUserId == request.auth.uid

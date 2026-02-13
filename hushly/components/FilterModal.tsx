@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Filters } from "../types";
 import { GENDER_PREFERENCE_OPTIONS, IntentType } from "../../types";
 import {
@@ -7,6 +7,7 @@ import {
   LIFESTYLE_OPTIONS,
   FAMILY_PLANS_OPTIONS,
 } from "../constants";
+import { KENYA_SCHOOLS } from "../../data/kenyaSchools";
 
 interface Props {
   filters: Filters;
@@ -81,6 +82,9 @@ const MultiSelectSheet = ({
   selected,
   onToggle,
   onClear,
+  searchValue,
+  onSearchChange,
+  searchPlaceholder,
   onClose,
 }: {
   title: string;
@@ -88,6 +92,9 @@ const MultiSelectSheet = ({
   selected: string[];
   onToggle: (value: string) => void;
   onClear?: () => void;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  searchPlaceholder?: string;
   onClose: () => void;
 }) => (
   <div
@@ -125,26 +132,42 @@ const MultiSelectSheet = ({
           </button>
         </div>
       </div>
+      {onSearchChange && (
+        <div className="mb-4">
+          <input
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={searchPlaceholder ?? "Search"}
+            className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-rose-500/60"
+          />
+        </div>
+      )}
       <div className="flex flex-wrap gap-2 pb-10 max-h-[40vh] overflow-y-auto no-scrollbar">
-        {options.map((opt) => {
-          const active = selected.includes(opt);
-          return (
-            <button
-              key={opt}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggle(opt);
-              }}
-              className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
-                active
-                  ? "bg-white text-black border-white"
-                  : "bg-transparent border-white/10 text-slate-500"
-              }`}
-            >
-              {opt}
-            </button>
-          );
-        })}
+        {options.length === 0 ? (
+          <p className="text-xs text-slate-500">
+            No options found. Try another search.
+          </p>
+        ) : (
+          options.map((opt) => {
+            const active = selected.includes(opt);
+            return (
+              <button
+                key={opt}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle(opt);
+                }}
+                className={`px-4 py-2 rounded-full border text-xs font-bold transition-all ${
+                  active
+                    ? "bg-white text-black border-white"
+                    : "bg-transparent border-white/10 text-slate-500"
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })
+        )}
       </div>
     </div>
   </div>
@@ -162,6 +185,7 @@ const FilterModal: React.FC<Props> = ({
   );
   const [showDoubleDateModal, setShowDoubleDateModal] = useState(false);
   const [doubleDateError, setDoubleDateError] = useState<string | null>(null);
+  const [schoolQuery, setSchoolQuery] = useState("");
   const showMeLabel =
     GENDER_PREFERENCE_OPTIONS.find(
       (option) => option.value === localFilters.gender,
@@ -185,6 +209,15 @@ const FilterModal: React.FC<Props> = ({
     if (values.length === 1) return values[0];
     return `${values[0]} +${values.length - 1}`;
   };
+  const schoolLabel = formatMultiValue(localFilters.school, "Any school");
+
+  const filteredSchoolOptions = useMemo(() => {
+    const query = schoolQuery.trim().toLowerCase();
+    if (!query) return [...KENYA_SCHOOLS];
+    return KENYA_SCHOOLS.filter((school) =>
+      school.toLowerCase().includes(query),
+    );
+  }, [schoolQuery]);
 
   const toggleSelection = (current: string[], value: string) =>
     current.includes(value)
@@ -373,6 +406,33 @@ const FilterModal: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* SCHOOL SECTION */}
+        <div className="bg-[#121212] rounded-3xl p-6 border border-white/5 space-y-4">
+          <div>
+            <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3">
+              School
+            </p>
+            <div className="flex items-center gap-2 mb-2">
+              <i className="fa-solid fa-school text-rose-500"></i>
+              <span className="text-[13px] font-bold text-white">
+                {schoolLabel}
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                setSchoolQuery("");
+                setActiveBottomSheet("school");
+              }}
+              className="text-[10px] font-black text-rose-500 uppercase tracking-widest"
+            >
+              Choose schools
+            </button>
+            <p className="text-[11px] text-slate-500 mt-2 font-medium">
+              Filter discovery to students from the same institution.
+            </p>
+          </div>
+        </div>
+
         {/* BASIC DISCOVERY */}
         <div className="bg-[#121212] rounded-3xl p-6 border border-white/5">
           <SelectionRow
@@ -520,6 +580,26 @@ const FilterModal: React.FC<Props> = ({
               gender: match?.value ?? "everyone",
             });
           }}
+          onClose={() => setActiveBottomSheet(null)}
+        />
+      )}
+      {activeBottomSheet === "school" && (
+        <MultiSelectSheet
+          title="School"
+          options={filteredSchoolOptions}
+          selected={localFilters.school}
+          onToggle={(value) =>
+            setLocalFilters((prev) => ({
+              ...prev,
+              school: toggleSelection(prev.school, value),
+            }))
+          }
+          onClear={() =>
+            setLocalFilters((prev) => ({ ...prev, school: [] }))
+          }
+          searchValue={schoolQuery}
+          onSearchChange={setSchoolQuery}
+          searchPlaceholder="Search schools"
           onClose={() => setActiveBottomSheet(null)}
         />
       )}

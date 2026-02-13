@@ -172,9 +172,9 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
   const facesRef = useRef<any[]>([]);
   const maskMissCountRef = useRef(0);
   const faceLandmarkerRef = useRef<FaceLandmarkerType | null>(null);
-  const faceLandmarkerPromiseRef = useRef<
-    Promise<FaceLandmarkerType> | null
-  >(null);
+  const faceLandmarkerPromiseRef = useRef<Promise<FaceLandmarkerType> | null>(
+    null,
+  );
   const maskImagesRef = useRef<Record<MaskStyle, HTMLImageElement | null>>({
     visor: null,
     pixel: null,
@@ -357,9 +357,8 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
     }
 
     faceLandmarkerPromiseRef.current = (async () => {
-      const { FaceLandmarker, FilesetResolver } = await import(
-        "@mediapipe/tasks-vision"
-      );
+      const { FaceLandmarker, FilesetResolver } =
+        await import("@mediapipe/tasks-vision");
       const vision = await FilesetResolver.forVisionTasks(FACE_LANDMARKER_WASM);
       const create = async (delegate: "GPU" | "CPU") =>
         FaceLandmarker.createFromOptions(vision, {
@@ -1929,20 +1928,7 @@ const ChatDetailPage: React.FC<Props> = ({ user }) => {
             }`}
             aria-label="Start video call"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="2" y="7" width="14" height="10" rx="2" ry="2" />
-              <polygon points="16 7 22 12 16 17 16 7" />
-            </svg>
+            <i class="fa-solid fa-video"></i>
           </button>
 
           <div ref={optionsRef} className="relative">

@@ -7,6 +7,7 @@ export interface Filters {
   gender: GenderPreference;
   ageRange: [number, number];
   location: string[];
+  school: string[];
   hasBio: boolean;
   interests: string[];
   lookingFor: IntentType | "";
@@ -51,6 +52,8 @@ export interface User {
   voiceIntro?: string;
   followingIds?: string[];
   followerCount?: number;
+  isStudent?: boolean;
+  school?: string;
   lifestyle?: {
     drink?: string[];
     smoke?: string[];

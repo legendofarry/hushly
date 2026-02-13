@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { deleteUser } from "firebase/auth";
 import type { User } from "firebase/auth";
 import {
@@ -33,11 +33,13 @@ import {
   updateUserEmailVerification,
   nicknameExists,
 } from "../services/userService";
+import { submitSchoolSuggestion } from "../services/schoolSuggestionService";
 import { getFriendlyAuthError } from "../firebaseErrors";
 import AppImage from "../components/AppImage";
 import AudioWaveform from "../components/AudioWaveform";
 import { generateBio, rewriteBio, suggestIntents } from "../services/aiService";
 import { BIO_MAX_WORDS, clampBio } from "../services/bioUtils";
+import { KENYA_SCHOOLS } from "../data/kenyaSchools";
 
 interface Props {
   onComplete: (user: UserProfile) => void;
@@ -65,6 +67,10 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const [ageRange, setAgeRange] = useState(AGE_RANGES[1]);
   const [area, setArea] = useState(KENYAN_AREAS[0]);
   const [selectedIntents, setSelectedIntents] = useState<IntentType[]>([]);
+  const [studentStatus, setStudentStatus] = useState<"" | "yes" | "no">("");
+  const [schoolSelection, setSchoolSelection] = useState("");
+  const [customSchoolName, setCustomSchoolName] = useState("");
+  const [schoolQuery, setSchoolQuery] = useState("");
   const [familyPlans, setFamilyPlans] = useState<string[]>([]);
   const [communicationStyle, setCommunicationStyle] = useState<string[]>([]);
   const [loveStyle, setLoveStyle] = useState<string[]>([]);
@@ -118,6 +124,13 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   const MAX_VOICE_SECONDS = 20;
 
   const normalizeEmail = (value: string) => value.trim().toLowerCase();
+  const filteredSchools = useMemo(() => {
+    const query = schoolQuery.trim().toLowerCase();
+    if (!query) return [...KENYA_SCHOOLS];
+    return KENYA_SCHOOLS.filter((school) =>
+      school.toLowerCase().includes(query),
+    );
+  }, [schoolQuery]);
 
   useEffect(() => {
     return () => {
@@ -451,6 +464,14 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     voiceSecondsRef.current = 0;
   };
 
+  const resolveSelectedSchool = () => {
+    if (studentStatus !== "yes") return "";
+    if (schoolSelection === "__custom__") {
+      return customSchoolName.trim();
+    }
+    return schoolSelection.trim();
+  };
+
   const finish = async () => {
     const trimmedEmail = normalizeEmail(email);
     if (!trimmedEmail || !password) {
@@ -536,6 +557,22 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         }
         throw profileError;
       }
+      const suggestionName =
+        studentStatus === "yes" && schoolSelection === "__custom__"
+          ? customSchoolName.trim()
+          : "";
+      if (suggestionName) {
+        try {
+          await submitSchoolSuggestion({
+            schoolName: suggestionName,
+            userId: authUser.uid,
+            email: trimmedEmail,
+            source: "onboarding",
+          });
+        } catch (suggestionError) {
+          console.error(suggestionError);
+        }
+      }
       // Daily drops removed; no onboarding drop creation.
       await sendVerificationEmail(authUser);
       setPendingProfile(newUser);
@@ -573,6 +610,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     userId: string,
     overrides: Partial<UserProfile> = {},
   ): UserProfile => {
+    const selectedSchool = resolveSelectedSchool();
+    const normalizedSchool = selectedSchool ? selectedSchool.trim() : "";
     const lifestylePayload = {
       drink: drinking.length > 0 ? drinking : undefined,
       smoke: smoking.length > 0 ? smoking : undefined,
@@ -614,6 +653,9 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       bio: clampBio(bio || "Ready for the plot."),
       isAnonymous: true,
       isOnline: true,
+      isStudent: studentStatus === "yes",
+      school: normalizedSchool || undefined,
+      schoolLower: normalizedSchool ? normalizedSchool.toLowerCase() : undefined,
       ...overrides,
     };
   };
@@ -725,11 +767,11 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         <div className="h-1 flex-1 bg-white/5 rounded-full mr-4 overflow-hidden">
           <div
             className="h-full bg-kipepeo-pink transition-all duration-500"
-            style={{ width: `${(step / 5) * 100}%` }}
+            style={{ width: `${(step / 6) * 100}%` }}
           ></div>
         </div>
         <span className="text-[10px] font-black text-kipepeo-pink tracking-widest">
-          {step}/5
+          {step}/6
         </span>
       </div>
 
@@ -971,6 +1013,103 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         )}
 
         {step === 3 && (
+          <div className="animate-in fade-in slide-in-from-right-4 text-center">
+            <h2 className="text-4xl font-black mb-2">Student Check.</h2>
+            <p className="text-gray-500 mb-8 italic">
+              See more students at your school and nearby.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setStudentStatus("yes")}
+                className={`w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border ${
+                  studentStatus === "yes"
+                    ? "bg-kipepeo-pink/20 text-kipepeo-pink border-kipepeo-pink/40"
+                    : "bg-white/5 text-gray-400 border-white/10"
+                }`}
+              >
+                I'm a student
+              </button>
+              <button
+                onClick={() => {
+                  setStudentStatus("no");
+                  setSchoolSelection("");
+                  setCustomSchoolName("");
+                }}
+                className={`w-full py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border ${
+                  studentStatus === "no"
+                    ? "bg-kipepeo-pink/20 text-kipepeo-pink border-kipepeo-pink/40"
+                    : "bg-white/5 text-gray-400 border-white/10"
+                }`}
+              >
+                Not a student
+              </button>
+            </div>
+
+            {studentStatus === "yes" && (
+              <div className="mt-8 text-left">
+                <label className="text-[10px] font-bold text-gray-400 uppercase">
+                  School
+                </label>
+                <input
+                  value={schoolQuery}
+                  onChange={(e) => setSchoolQuery(e.target.value)}
+                  placeholder="Search your school"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mt-2 focus:border-kipepeo-pink outline-none"
+                />
+                <div className="mt-4 max-h-[35vh] overflow-y-auto no-scrollbar flex flex-wrap gap-2">
+                  {filteredSchools.map((school) => (
+                    <button
+                      key={school}
+                      type="button"
+                      onClick={() => {
+                        setSchoolSelection(school);
+                        setCustomSchoolName("");
+                      }}
+                      className={`px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-black transition-all border ${
+                        schoolSelection === school
+                          ? "bg-kipepeo-pink/20 text-kipepeo-pink border-kipepeo-pink/40"
+                          : "bg-white/5 text-gray-400 border-white/10"
+                      }`}
+                    >
+                      {school}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSchoolSelection("__custom__");
+                      setCustomSchoolName("");
+                    }}
+                    className={`px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-black transition-all border ${
+                      schoolSelection === "__custom__"
+                        ? "bg-kipepeo-pink/20 text-kipepeo-pink border-kipepeo-pink/40"
+                        : "bg-white/5 text-gray-400 border-white/10"
+                    }`}
+                  >
+                    Not listed
+                  </button>
+                </div>
+
+                {schoolSelection === "__custom__" && (
+                  <div className="mt-4">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">
+                      Add your school
+                    </label>
+                    <input
+                      value={customSchoolName}
+                      onChange={(e) => setCustomSchoolName(e.target.value)}
+                      placeholder="Enter school name"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-4 mt-2 focus:border-kipepeo-pink outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {step === 4 && (
           <div className="animate-in fade-in slide-in-from-right-4">
             <h2 className="text-4xl font-black mb-2">Your Intents.</h2>
             <p className="text-gray-500 mb-8 italic">
@@ -1081,7 +1220,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
           </div>
         )}
 
-        {step === 4 && (
+        {step === 5 && (
           <div className="animate-in fade-in slide-in-from-right-4 text-center">
             <h2 className="text-4xl font-black mb-2">Live Photo.</h2>
             <p className="text-gray-500 mb-10 italic">
@@ -1175,7 +1314,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
           </div>
         )}
 
-        {step === 5 && (
+        {step === 6 && (
           <div className="animate-in fade-in slide-in-from-right-4">
             <h2 className="text-4xl font-black mb-2">Final Vibe.</h2>
             <p className="text-gray-500 mb-8 italic">Write your bio.</p>
@@ -1341,7 +1480,20 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                 return;
               }
             }
-            if (step === 4) {
+            if (step === 3) {
+              if (!studentStatus) {
+                setErrorMessage("Please let us know if you're a student.");
+                return;
+              }
+              if (studentStatus === "yes") {
+                const selectedSchool = resolveSelectedSchool();
+                if (!selectedSchool) {
+                  setErrorMessage("Please select or enter your school.");
+                  return;
+                }
+              }
+            }
+            if (step === 5) {
               if (isUploading) {
                 return alert("Uploading selfie. Please wait a moment.");
               }
@@ -1350,12 +1502,12 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
               }
             }
             setErrorMessage(null);
-            step < 5 ? setStep(step + 1) : void finish();
+            step < 6 ? setStep(step + 1) : void finish();
           }}
           disabled={isUploading || isSaving || isCheckingNickname}
           className="w-full py-5 bg-white text-black font-black rounded-[2rem] text-sm uppercase tracking-widest animate-pulse-glow disabled:opacity-60"
         >
-          {step === 5
+          {step === 6
             ? isSaving
               ? "Saving..."
               : "Vibe Check (Finish)"

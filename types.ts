@@ -35,6 +35,9 @@ export interface UserProfile {
   followerCount?: number;
   occupation?: string;
   occupationVisibility?: "public" | "private";
+  isStudent?: boolean;
+  school?: string;
+  schoolLower?: string;
   gender?: Gender;
   interestedIn?: GenderPreference[];
   voiceIntroUrl?: string;
