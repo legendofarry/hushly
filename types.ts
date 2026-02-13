@@ -228,17 +228,6 @@ export interface LiveAchievement {
   createdAt: number;
 }
 
-export interface DailyDrop {
-  userId: string;
-  lastDropAt: number;
-  profileIds: string[];
-  actionedIds: string[];
-  compatibilityIds?: string[];
-  dropSize: number;
-  createdAt?: number;
-  updatedAt?: number;
-}
-
 export interface GameAnswers {
   userId: string;
   hushQuiz?: {

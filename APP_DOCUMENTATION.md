@@ -1,7 +1,7 @@
 # Hushly App Documentation
 
 **Purpose**
-Hushly is an AI-assisted, privacy-forward dating and social connection app built for Kenyan nightlife and weekend culture. It blends daily curated matches, real-time chat, voice intros, and optional premium experiences such as weekend plans and an escort marketplace.
+Hushly is an AI-assisted, privacy-forward dating and social connection app built for Kenyan nightlife and weekend culture. It blends curated matches, real-time chat, voice intros, and optional premium experiences such as weekend plans and an escort marketplace.
 
 **Tech Stack & Integrations**
 - React (Vite) single-page app with hash-based routing.
@@ -19,7 +19,6 @@ Hushly is an AI-assisted, privacy-forward dating and social connection app built
 - `Conversation`: member IDs, memberProfiles snapshot, lastMessage + timestamp, lastReadAt per user, pinned/archived/muted/deleted states per user.
 - `ChatMessage`: senderId, text/image/audio, reactions, createdAt.
 - `AppNotification`: toUserId, fromUserId, type (message/like/system), body, read, conversationId.
-- `DailyDrop`: userId, lastDropAt, profileIds, actionedIds, dropSize, filters.
 - `WeekendPlan`: creatorId, title, description, location, time, category, rsvpCount.
 - `RSVP`: subdoc with attendee answers (name, contact, availability, group size, note).
 - `PaymentRequest`: userId, email, mpesa proof, status, decision metadata.
@@ -33,7 +32,6 @@ Hushly is an AI-assisted, privacy-forward dating and social connection app built
 - `conversations/{id}/messages`
 - `notifications`
 - `likes`, `dislikes`, `follows`, `blocks`
-- `daily_drops`
 - `weekend_plans/{id}/rsvps`
 - `payment_requests`
 - `video_calls/{id}/callerCandidates` and `calleeCandidates`
@@ -53,7 +51,7 @@ Hushly is an AI-assisted, privacy-forward dating and social connection app built
 2. Create public persona: nickname (unique), gender, interests, age range, and area.
 3. Pick intents with optional AI suggestions.
 4. Capture a live selfie, run AI quality + duplicate checks, upload to Cloudinary.
-5. Write a bio with AI draft/rewrite and record a 10–20s voice intro.
+5. Write a bio with AI draft/rewrite and record a 10-20s voice intro.
 6. Create Firebase Auth user and Firestore profile, then send verification email.
 7. After verification, enforce an 18+ age gate before granting access.
 
@@ -66,10 +64,9 @@ Hushly is an AI-assisted, privacy-forward dating and social connection app built
 **Discovery & Matching Flow**
 1. Load all profiles + settings, filter by discoverable and email-verified, exclude self.
 2. Apply filters: intent, age range, area, and gender preferences.
-3. Generate a Daily Drop (default 12 profiles) every 24 hours and store it.
-4. Rank the remaining profiles using AI signals (likes, skips, dwell time, chat) and semantic search.
-5. Likes and dislikes are stored; mutual likes trigger a match modal with local suggestions.
-6. Starting a chat ensures a deterministic conversation ID and opens the chat view.
+3. Rank profiles using AI signals (likes, skips, dwell time, chat) and semantic search.
+4. Likes and dislikes are stored; mutual likes trigger a match modal with local suggestions.
+5. Starting a chat ensures a deterministic conversation ID and opens the chat view.
 
 **Notifications**
 - Message, like, and system notifications are stored and shown in real time.
@@ -90,7 +87,7 @@ Hushly is an AI-assisted, privacy-forward dating and social connection app built
 - WebRTC multi-peer connections power the stage.
 - Like milestones trigger achievements and celebration overlays.
 - Follow/unfollow status is tracked for hosts.
-- Note: the Discover “Live” tab currently displays a rebuild notice, but the live room infrastructure exists.
+- Note: the Discover 'Live' tab currently displays a rebuild notice, but the live room infrastructure exists.
 
 **Weekend Plans (Premium)**
 - Premium users can create weekend plans, optionally using AI templates.
@@ -132,5 +129,5 @@ Hushly is an AI-assisted, privacy-forward dating and social connection app built
 
 **Current Roadmap Notes**
 - Some privacy settings are stored but not yet enforced beyond discoverability and online status.
-- The “Hub” experience is UI-first and can be expanded with real-time activities.
-- The Discover “Live” tab shows a rebuild notice even though LiveRoom functionality is implemented.
+- The 'Hub' experience is UI-first and can be expanded with real-time activities.
+- The Discover 'Live' tab shows a rebuild notice even though LiveRoom functionality is implemented.

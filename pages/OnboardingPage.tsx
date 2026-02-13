@@ -32,9 +32,7 @@ import {
   createUserProfile,
   updateUserEmailVerification,
   nicknameExists,
-  getAllUsers,
 } from "../services/userService";
-import { createDailyDrop } from "../services/dailyDropService";
 import { getFriendlyAuthError } from "../firebaseErrors";
 import AppImage from "../components/AppImage";
 import AudioWaveform from "../components/AudioWaveform";
@@ -53,7 +51,6 @@ const GENDER_OPTIONS: { value: Gender; label: string }[] = [
 ];
 
 const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
-  const INITIAL_DAILY_DROP_SIZE = 30;
   const [step, setStep] = useState(1);
   const [realName, setRealName] = useState("");
   const [email, setEmail] = useState("");
@@ -532,22 +529,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
         }
         throw profileError;
       }
-      try {
-        const users = await getAllUsers();
-        const candidates = users.filter((profile) => profile.id !== newUser.id);
-        for (let i = candidates.length - 1; i > 0; i -= 1) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
-        }
-        const selected = candidates.slice(0, INITIAL_DAILY_DROP_SIZE);
-        await createDailyDrop({
-          userId: newUser.id,
-          profileIds: selected.map((profile) => profile.id),
-          dropSize: selected.length,
-        });
-      } catch (dropError) {
-        console.error(dropError);
-      }
+      // Daily drops removed; no onboarding drop creation.
       await sendVerificationEmail(authUser);
       setPendingProfile(newUser);
       setVerificationUser(authUser);
@@ -958,7 +940,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                   ))}
                 </div>
                 <p className="text-[10px] text-gray-500 mt-2">
-                  Used to curate your daily match drop.
+                  Used to shape who you see in discovery.
                 </p>
               </div>
               <div>
