@@ -43,7 +43,12 @@ const HushlyNavbar: React.FC<{ unreadNotifications?: number }> = ({
       path: "/discover?view=hub",
     },
     { id: "messages", icon: "fa-message", label: "Chat", path: "/chats" },
-    { id: "profile", icon: "fa-user-circle", label: "Profile", path: "/profile" },
+    {
+      id: "profile",
+      icon: "fa-user-circle",
+      label: "Profile",
+      path: "/profile",
+    },
   ];
 
   return (
@@ -52,7 +57,7 @@ const HushlyNavbar: React.FC<{ unreadNotifications?: number }> = ({
         <button
           key={tab.id}
           onClick={() => navigate(tab.path)}
-          className={`relative flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-300 ${
+          className={`relative flex flex-col items-center justify-center w-16 h-fit rounded-2xl transition-all duration-300 ${
             activeTab === tab.id
               ? "text-rose-500 scale-110"
               : "text-slate-500 hover:text-slate-300"
