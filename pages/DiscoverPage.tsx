@@ -2147,7 +2147,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
               {current && (
                 <div
-                  className="relative h-[calc(100%-5.5rem)] min-h-[280px] group z-10"
+                  className="relative h-[calc(100%-6rem)] min-h-[280px] group z-10"
                   onClick={() => navigate(`/users/${current.id}`)}
                 >
                   <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl bg-slate-900 border border-white/5">
