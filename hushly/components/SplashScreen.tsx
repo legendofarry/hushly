@@ -8,7 +8,7 @@ const SplashScreen: React.FC = () => {
           <i className="fa-solid fa-heart text-rose-500 text-6xl"></i>
         </div>
       </div>
-      <h1 className="mt-4 text-5xl font-bold text-white tracking-tighter">
+      <h1 className="mt-2 itext-5xl font-bold text-white tracking-tighter">
         Hushly
       </h1>
       <p className="mt-2 text-white/80 font-medium">Kenyan Love, Redefined.</p>
