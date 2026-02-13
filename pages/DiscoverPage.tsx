@@ -1184,6 +1184,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handleSkipAction = () => {
+    if (showMatchModal) return;
     if (!current) return;
     if (likedIds.has(current.id)) {
       clearLike(current.id);
@@ -1209,11 +1210,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     handleSkipAction();
   };
 
-  const handleLikeAction = () => {
-    if (!current) return;
+  const handleLikeAction = (): boolean => {
+    if (showMatchModal) return true;
+    if (!current) return false;
     if (likedIds.has(current.id)) {
       handleNextProfile();
-      return;
+      return false;
     }
     const isMatch = likedMeIds.has(current.id);
     if (dislikedIds.has(current.id)) {
@@ -1272,10 +1274,11 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
           ticks: 280,
         });
       });
-      return;
+      return true;
     }
 
     handleNextProfile();
+    return false;
   };
 
   const handleLike = (e: React.MouseEvent) => {
@@ -1296,6 +1299,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handleAction = (dir: "left" | "right") => {
+    if (showMatchModal) return;
     if (filteredProfiles.length === 0) return;
     if (dir === "left") {
       handleSkipAction();
@@ -1305,6 +1309,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   };
 
   const handleStarAction = () => {
+    if (showMatchModal) return;
     if (filteredProfiles.length === 0) return;
     const target = current;
     setBurstKey((prev) => prev + 1);
@@ -1312,7 +1317,8 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
     window.setTimeout(() => {
       setShowStarBurst(false);
     }, 2500);
-    handleLikeAction();
+    const matched = handleLikeAction();
+    if (matched) return;
     handleQuickChat(target ?? undefined);
   };
 
