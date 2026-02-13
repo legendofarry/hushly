@@ -52,7 +52,7 @@ const HushlyNavbar: React.FC<{ unreadNotifications?: number }> = ({
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 h-[6rem] bg-slate-950/90 backdrop-blur-2xl border-t border-white/5 flex items-center justify-around px-2 z-50 pb-safe">
+    <div className="fixed bottom-0 left-0 right-0 h-[5rem] bg-slate-950/90 backdrop-blur-2xl border-t border-white/5 flex items-center justify-around px-2 z-50 pb-safe">
       {tabs.map((tab) => (
         <button
           key={tab.id}
