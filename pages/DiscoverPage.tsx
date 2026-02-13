@@ -2176,7 +2176,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               )}
 
-              <div className="flex items-center justify-center gap-6 pt-8 pb-2 relative z-20">
+              <div className="flex items-center justify-center gap-6 pt-8 relative z-20">
                 <button
                   onClick={() => handleAction("left")}
                   className="w-16 h-16 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center text-rose-500 text-2xl shadow-xl transition-all active:scale-75 hover:bg-slate-800"
