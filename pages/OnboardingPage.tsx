@@ -655,7 +655,9 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
       isOnline: true,
       isStudent: studentStatus === "yes",
       school: normalizedSchool || undefined,
-      schoolLower: normalizedSchool ? normalizedSchool.toLowerCase() : undefined,
+      schoolLower: normalizedSchool
+        ? normalizedSchool.toLowerCase()
+        : undefined,
       ...overrides,
     };
   };
@@ -718,30 +720,62 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
   if (verificationUser && !verificationUser.emailVerified) {
     return (
       <div className="min-h-screen bg-kipepeo-dark text-white p-6 flex flex-col items-center justify-center font-sans">
-        <div className="max-w-md w-full text-center space-y-6 glass rounded-3xl p-8">
-          <h2 className="text-3xl font-black">Verify Your Email</h2>
-          <p className="text-gray-400 text-sm">
+        <div className="max-w-lg w-full text-center space-y-6 rounded-[2.5rem] border border-white/10 bg-gradient-to-b from-white/5 to-transparent p-8 shadow-2xl">
+          <div className="mx-auto h-14 w-14 rounded-2xl border border-rose-500/40 bg-rose-500/10 flex items-center justify-center shadow-[0_0_30px_rgba(244,63,94,0.25)]">
+            <i className="fa-solid fa-shield-heart text-rose-400 text-2xl"></i>
+          </div>
+          <h2 className="text-3xl font-black tracking-tight">
+            Keep Hushly Real
+          </h2>
+          <p className="text-gray-400 text-sm leading-relaxed">
             We sent a verification link to{" "}
             <span className="text-white font-bold">
               {verificationUser.email ?? "your email"}
             </span>
-            . Please verify to continue.{" "}
-            <span className="text-rose-800 font-bold">
-              Be sure to check your spam folder as well!
-            </span>
+            . Verifying helps us filter out fake users and protect real
+            connections.
           </p>
+          <div className="inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-amber-200 shadow-[0_0_18px_rgba(251,191,36,0.25)]">
+            <i className="fa-solid fa-triangle-exclamation"></i>
+            Be sure to check your spam folder if you don't see the email in your
+            inbox.
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-left space-y-3">
+            <p className="text-[10px] uppercase tracking-widest text-gray-400 font-bold">
+              Why verify?
+            </p>
+            <ul className="space-y-2 text-xs text-gray-300">
+              <li className="flex items-start gap-2">
+                <span className="text-rose-400 mt-0.5">•</span>
+                Keeps fake and spam profiles out
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-rose-400 mt-0.5">•</span>
+                Protects real people in the community
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-rose-400 mt-0.5">•</span>
+                Helps you connect with verified matches
+              </li>
+            </ul>
+            <p className="text-[10px] text-rose-300 font-bold uppercase tracking-widest">
+              Verified users get prioritized in discovery
+            </p>
+          </div>
+
           <div className="space-y-3">
             <button
               onClick={handleVerificationCheck}
               disabled={isSaving}
-              className="w-full py-3 bg-white text-black font-black rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+              className="w-full py-3 bg-white text-black font-black rounded-2xl text-xs uppercase tracking-widest disabled:opacity-60"
             >
               {isSaving ? "Checking..." : "I Have Verified"}
             </button>
             <button
               onClick={handleResendVerification}
               disabled={isResending || resendCooldown > 0}
-              className="w-full py-3 glass text-white font-bold rounded-xl text-xs uppercase tracking-widest disabled:opacity-60"
+              className="w-full py-3 bg-white/10 text-white font-black rounded-2xl text-xs uppercase tracking-widest border border-white/10 disabled:opacity-60"
             >
               {isResending
                 ? "Resending..."
@@ -751,10 +785,16 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
             </button>
           </div>
           {toastMessage && (
-            <p className="text-[10px] text-kipepeo-pink">{toastMessage}</p>
+            <div className="inline-flex items-center gap-2 rounded-full border border-rose-500/30 bg-rose-500/10 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-rose-300">
+              <i className="fa-solid fa-circle-check"></i>
+              {toastMessage}
+            </div>
           )}
           {errorMessage && (
-            <p className="text-[10px] text-red-400">{errorMessage}</p>
+            <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-red-300">
+              <i className="fa-solid fa-circle-exclamation"></i>
+              {errorMessage}
+            </div>
           )}
         </div>
       </div>
@@ -1152,8 +1192,11 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                     <p className="text-xs text-gray-400 mb-2">
                       Drinking habits
                     </p>
-                    {renderMultiChips(LIFESTYLE_OPTIONS.drink, drinking, (val) =>
-                      setDrinking((prev) => toggleMultiValue(prev, val)),
+                    {renderMultiChips(
+                      LIFESTYLE_OPTIONS.drink,
+                      drinking,
+                      (val) =>
+                        setDrinking((prev) => toggleMultiValue(prev, val)),
                     )}
                   </div>
                   <div>
@@ -1167,7 +1210,8 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                     {renderMultiChips(
                       LIFESTYLE_OPTIONS.workout,
                       workout,
-                      (val) => setWorkout((prev) => toggleMultiValue(prev, val)),
+                      (val) =>
+                        setWorkout((prev) => toggleMultiValue(prev, val)),
                     )}
                   </div>
                   <div>
@@ -1562,4 +1606,3 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
 };
 
 export default OnboardingPage;
-
