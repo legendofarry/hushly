@@ -172,7 +172,6 @@ const matchesMultiFilter = (
   return selected.some((value) => profileValues.includes(value));
 };
 
-
 const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -1388,7 +1387,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   // --- MAIN APP VIEW ---
   return (
-    <div className="h-screen w-full bg-slate-950 text-white font-sans flex flex-col overflow-hidden relative selection:bg-pink-500 selection:text-white">
+    <div className="h-[calc(100vh-6rem)] w-full bg-slate-950 text-white font-sans flex flex-col overflow-hidden relative selection:bg-pink-500 selection:text-white">
       <style>{`
         @keyframes floatUp {
           0% { transform: translateY(100vh) scale(0.6); opacity: 0; }
@@ -1968,10 +1967,12 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 relative flex flex-col z-10 w-full ${
-          view === "discover" || view === "live" || view === "hub"
-            ? "overflow-y-auto no-scrollbar"
-            : "px-2 pb-4 overflow-hidden max-w-[48rem] mx-auto"
+        className={`flex-1 min-h-0 relative flex flex-col z-10 w-full ${
+          view === "discover"
+            ? "overflow-hidden"
+            : view === "live" || view === "hub"
+              ? "overflow-y-auto no-scrollbar"
+              : "px-2 pb-4 overflow-hidden max-w-[48rem] mx-auto"
         }`}
       >
         {showNotifications && (
@@ -2096,10 +2097,9 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
               <p className="relative z-10 text-slate-500 mb-8 max-w-xs mx-auto leading-relaxed font-medium">
                 {emptyStateBody}
               </p>
-
             </div>
           ) : (
-            <div className="p-4 flex flex-col h-full animate-in fade-in zoom-in duration-300 relative">
+            <div className="p-4 flex flex-col h-full min-h-0 animate-in fade-in zoom-in duration-300 relative">
               {showStarBurst && (
                 <div
                   key={burstKey}
@@ -2147,7 +2147,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
               {current && (
                 <div
-                  className="relative h-[480px] md:h-[420px] group z-10"
+                  className="relative flex-1 min-h-0 group z-10"
                   onClick={() => navigate(`/users/${current.id}`)}
                 >
                   <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl bg-slate-900 border border-white/5">
@@ -2180,7 +2180,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
                 </div>
               )}
 
-              <div className="flex items-center justify-center gap-6 mt-6 mb-8 relative z-20">
+              <div className="flex items-center justify-center gap-6 pt-4 pb-2 relative z-20">
                 <button
                   onClick={() => handleAction("left")}
                   className="w-16 h-16 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center text-rose-500 text-2xl shadow-xl transition-all active:scale-75 hover:bg-slate-800"

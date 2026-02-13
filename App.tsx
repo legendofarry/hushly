@@ -21,9 +21,7 @@ const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
 const SecurityPrivacyPage = React.lazy(
   () => import("./pages/SecurityPrivacyPage"),
 );
-const PersonalInfoPage = React.lazy(
-  () => import("./pages/PersonalInfoPage"),
-);
+const PersonalInfoPage = React.lazy(() => import("./pages/PersonalInfoPage"));
 const LikesAnalyticsPage = React.lazy(
   () => import("./pages/LikesAnalyticsPage"),
 );
@@ -87,8 +85,7 @@ const AppRoutes: React.FC<{
 
   const isPremiumUser = (u: UserProfile | null) => {
     if (!u) return false;
-    const isOwner =
-      normalizeEmail(u.email) === normalizeEmail(OWNER_EMAIL);
+    const isOwner = normalizeEmail(u.email) === normalizeEmail(OWNER_EMAIL);
     const activePremium =
       Boolean(u.isPremium) &&
       (!u.premiumExpiresAt || u.premiumExpiresAt > Date.now());
@@ -277,12 +274,7 @@ const AppShell: React.FC<{
   isVerified: boolean;
   setUser: (u: UserProfile | null) => void;
   setIsVerified: (v: boolean) => void;
-}> = ({
-  user,
-  isVerified,
-  setUser,
-  setIsVerified,
-}) => {
+}> = ({ user, isVerified, setUser, setIsVerified }) => {
   const location = useLocation();
   const [navHiddenOverride, setNavHiddenOverride] = useState(false);
 
@@ -308,7 +300,7 @@ const AppShell: React.FC<{
 
   return (
     <HushlyShell showNav={showNav}>
-      <div className="min-h-screen transition-all">
+      <div className="h-[calc(100vh-6rem)] transition-all">
         <AppRoutes
           user={user}
           isVerified={isVerified}
@@ -379,10 +371,7 @@ const App: React.FC = () => {
               profile.email = normalized;
             }
           }
-          if (
-            normalizeEmail(authUser.email) ===
-            normalizeEmail(OWNER_EMAIL)
-          ) {
+          if (normalizeEmail(authUser.email) === normalizeEmail(OWNER_EMAIL)) {
             if (!profile.isPremium || profile.premiumExpiresAt) {
               await updateUserProfile(authUser.uid, {
                 isPremium: true,
