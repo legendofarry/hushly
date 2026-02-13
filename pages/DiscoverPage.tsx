@@ -1967,7 +1967,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 min-h-0 relative flex flex-col z-10 w-full ${
+        className={`min-h-0 relative flex flex-col z-10 w-full ${
           view === "discover"
             ? "overflow-hidden"
             : view === "live" || view === "hub"
@@ -2147,7 +2147,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
               {current && (
                 <div
-                  className="relative h-[calc(80%-6rem)] min-h-[250px] group z-10"
+                  className="relative h-[calc(100vh-6rem)] min-h-[250px] group z-10"
                   onClick={() => navigate(`/users/${current.id}`)}
                 >
                   <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl bg-slate-900 border border-white/5">
