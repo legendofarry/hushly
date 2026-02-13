@@ -260,6 +260,7 @@ const shouldShowNav = (pathname: string, search: string) => {
   if (path.startsWith("/chats")) return false;
   if (path.startsWith("/profile")) return false;
   if (path.startsWith("/pricing")) return false;
+  if (path.startsWith("/escort")) return false;
   if (path.startsWith("/discover")) {
     const params = new URLSearchParams(search);
     const view = params.get("view");

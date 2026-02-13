@@ -255,21 +255,20 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const shouldHideNav = isFilterModalOpen || view === "portal";
     window.dispatchEvent(
       new CustomEvent("hushly:nav-visibility", {
-        detail: { hidden: isFilterModalOpen },
+        detail: { hidden: shouldHideNav },
       }),
     );
     return () => {
-      if (isFilterModalOpen) {
-        window.dispatchEvent(
-          new CustomEvent("hushly:nav-visibility", {
-            detail: { hidden: false },
-          }),
-        );
-      }
+      window.dispatchEvent(
+        new CustomEvent("hushly:nav-visibility", {
+          detail: { hidden: false },
+        }),
+      );
     };
-  }, [isFilterModalOpen]);
+  }, [isFilterModalOpen, view]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2147,7 +2146,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
               {current && (
                 <div
-                  className="relative h-[calc(100vh-6rem)] min-h-[250px] group z-10"
+                  className="relative h-[60vh] group z-10"
                   onClick={() => navigate(`/users/${current.id}`)}
                 >
                   <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl bg-slate-900 border border-white/5">
