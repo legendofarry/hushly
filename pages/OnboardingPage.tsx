@@ -99,6 +99,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     null,
   );
   const selfieInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [voiceIntroBlob, setVoiceIntroBlob] = useState<Blob | null>(null);
   const [voiceIntroUrl, setVoiceIntroUrl] = useState<string | null>(null);
   const [voiceIntroDuration, setVoiceIntroDuration] = useState<number | null>(
@@ -299,6 +300,12 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
     if (!selfieInputRef.current) return;
     selfieInputRef.current.value = "";
     selfieInputRef.current.click();
+  };
+
+  const openDeviceUpload = () => {
+    if (!uploadInputRef.current) return;
+    uploadInputRef.current.value = "";
+    uploadInputRef.current.click();
   };
 
   const handleSelfieSelected = async (
@@ -1078,7 +1085,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
           <div className="animate-in fade-in slide-in-from-right-4 text-center">
             <h2 className="text-4xl font-black mb-2">Live Photo.</h2>
             <p className="text-gray-500 mb-10 italic">
-              Strictly live selfie. No avatars allowed for safety.
+              Live selfie or direct upload. No avatars allowed for safety.
             </p>
 
             <div className="w-64 h-64 mx-auto bg-white/5 border-2 border-dashed border-white/20 rounded-full flex items-center justify-center overflow-hidden relative group">
@@ -1094,7 +1101,7 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
                 <div className="flex flex-col items-center">
                   <span className="text-4xl mb-2">📸</span>
                   <span className="text-[10px] font-bold text-gray-500">
-                    CAMERA ONLY
+                    CAMERA OR UPLOAD
                   </span>
                 </div>
               )}
@@ -1137,18 +1144,34 @@ const OnboardingPage: React.FC<Props> = ({ onComplete }) => {
               onChange={handleSelfieSelected}
               className="hidden"
             />
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleSelfieSelected}
+              className="hidden"
+            />
 
-            <button
-              onClick={openSelfieCamera}
-              disabled={isUploading || isSaving}
-              className="mt-10 px-8 py-3 bg-white text-black font-black rounded-full text-xs uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
-            >
-              {isUploading
-                ? "Uploading..."
-                : capturedPhoto
-                  ? "Retake Selfie"
-                  : "Take Live Selfie"}
-            </button>
+            <div className="mt-10 flex flex-col items-center gap-3">
+              <button
+                onClick={openSelfieCamera}
+                disabled={isUploading || isSaving}
+                className="px-8 py-3 bg-white text-black font-black rounded-full text-xs uppercase tracking-widest active:scale-95 transition-transform disabled:opacity-60"
+              >
+                {isUploading
+                  ? "Uploading..."
+                  : capturedPhoto
+                    ? "Retake Selfie"
+                    : "Take Live Selfie"}
+              </button>
+              <button
+                onClick={openDeviceUpload}
+                disabled={isUploading || isSaving}
+                className="px-8 py-3 bg-white/10 text-white font-black rounded-full text-xs uppercase tracking-widest border border-white/10 active:scale-95 transition-transform disabled:opacity-60"
+              >
+                Upload From Device
+              </button>
+            </div>
           </div>
         )}
 
