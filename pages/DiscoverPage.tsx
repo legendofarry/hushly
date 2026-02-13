@@ -1386,7 +1386,7 @@ const DiscoverPage: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   // --- MAIN APP VIEW ---
   return (
-    <div className="h-[calc(100vh-6rem)] w-full bg-slate-950 text-white font-sans flex flex-col overflow-hidden relative selection:bg-pink-500 selection:text-white">
+    <div className="w-full bg-slate-950 text-white font-sans flex flex-col overflow-hidden relative selection:bg-pink-500 selection:text-white">
       <style>{`
         @keyframes floatUp {
           0% { transform: translateY(100vh) scale(0.6); opacity: 0; }

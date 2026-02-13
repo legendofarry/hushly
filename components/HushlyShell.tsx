@@ -18,13 +18,9 @@ const HushlyShell: React.FC<Props> = ({
   const hideHearts = location.pathname.startsWith("/discover");
 
   return (
-    <div className="relative min-h-screen font-sans selection:bg-rose-500/30 selection:text-white  privacy-lock">
+    <div className="relative font-sans selection:bg-rose-500/30 selection:text-white  privacy-lock">
       {!hideHearts && <BackgroundHearts />}
-      <div
-        className={`relative z-10 min-h-screen transition-all ${
-          showNav ? "pb-24" : ""
-        }`}
-      >
+      <div className={`relative z-10 transition-all ${showNav ? "h-fit" : ""}`}>
         {children}
       </div>
       {showNav && <HushlyNavbar unreadNotifications={unreadNotifications} />}
