@@ -696,7 +696,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
         </h1>
         <button
           onClick={() => setShowAppSettings(true)}
-          className="appSettings group flex h-10 w-10 items-center justify-center transition-all hover:bg-white/10 active:scale-90"
+          className="appSettings group flex h-10 w-10 items-center justify-center transition-all hover:bg-white/10 rounded-full active:scale-90"
           aria-label="App settings"
         >
           <i className="fa-solid fa-bars-staggered"></i>
