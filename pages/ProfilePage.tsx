@@ -64,6 +64,10 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [showAgeLockConfirm, setShowAgeLockConfirm] = useState(false);
+  const [pendingProfilePayload, setPendingProfilePayload] =
+    useState<Partial<UserProfile> | null>(null);
+  const [pendingAgeRange, setPendingAgeRange] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locError, setLocError] = useState<{
     title: string;
@@ -115,6 +119,7 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     () => parseAgeRange(user.ageRange),
     [user.ageRange],
   );
+  const isAgeLocked = Boolean(user.ageLocked);
   const userCity = useMemo(() => {
     const area = (user.area || "Nairobi").trim();
     return area.split(" - ")[0] || "Nairobi";
@@ -568,6 +573,20 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
     stopCamera();
   };
 
+  const applyProfileUpdates = async (updates: Partial<UserProfile>) => {
+    try {
+      setProfileSaveError(null);
+      setProfileSaving(true);
+      await updateUserProfile(user.id, updates);
+      setIsEditing(false);
+    } catch (error) {
+      console.error(error);
+      setProfileSaveError("Unable to save profile right now.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (profileSaving) return;
     if (!editName.trim()) {
@@ -594,24 +613,46 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
         ? editLocationLng
         : null;
 
-    try {
-      setProfileSaveError(null);
-      setProfileSaving(true);
-      await updateUserProfile(user.id, {
-        nickname: editName.trim(),
-        ageRange: nextAgeRange,
-        area: editLocation,
-        locationLat: nextLocationLat,
-        locationLng: nextLocationLng,
-        bio: clampBio(editBio),
-      });
-      setIsEditing(false);
-    } catch (error) {
-      console.error(error);
-      setProfileSaveError("Unable to save profile right now.");
-    } finally {
-      setProfileSaving(false);
+    const profilePayload: Partial<UserProfile> = {
+      nickname: editName.trim(),
+      ageRange: nextAgeRange,
+      area: editLocation,
+      locationLat: nextLocationLat,
+      locationLng: nextLocationLng,
+      bio: clampBio(editBio),
+    };
+
+    const ageChanged = nextAgeRange !== user.ageRange;
+    if (ageChanged && isAgeLocked) {
+      setProfileSaveError("Age is locked and can no longer be changed.");
+      return;
     }
+    if (ageChanged && !isAgeLocked) {
+      setProfileSaveError(null);
+      setPendingProfilePayload(profilePayload);
+      setPendingAgeRange(nextAgeRange);
+      setShowAgeLockConfirm(true);
+      return;
+    }
+
+    await applyProfileUpdates(profilePayload);
+  };
+
+  const handleConfirmAgeLock = async () => {
+    if (profileSaving) return;
+    if (!pendingProfilePayload) {
+      setShowAgeLockConfirm(false);
+      return;
+    }
+    const updates: Partial<UserProfile> = {
+      ...pendingProfilePayload,
+      ageLocked: true,
+      ageLockedAt: Date.now(),
+    };
+    setShowAgeLockConfirm(false);
+    setPendingProfilePayload(null);
+    setPendingAgeRange(null);
+    await applyProfileUpdates(updates);
   };
 
   const performLogout = () => {
@@ -1445,8 +1486,18 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                   onChange={(event) =>
                     setEditAge(Number(event.target.value) || 18)
                   }
-                  className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+                  disabled={isAgeLocked}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-rose-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 />
+                <p
+                  className={`text-[8px] uppercase font-black tracking-widest ${
+                    isAgeLocked ? "text-rose-300" : "text-slate-500"
+                  }`}
+                >
+                  {isAgeLocked
+                    ? "Age locked for trust & safety."
+                    : "You can update age once. It locks after save."}
+                </p>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
@@ -1497,6 +1548,71 @@ const ProfilePage: React.FC<Props> = ({ user, onLogout }) => {
                 className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-rose-500 resize-none transition-all"
                 placeholder={`Tell the tribe about yourself... (max ${BIO_MAX_WORDS} words)`}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAgeLockConfirm && isOwnProfile && (
+        <div className="fixed inset-0 z-[160] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-slate-900 border border-white/10 rounded-[2.5rem] p-7 text-center shadow-2xl relative overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-rose-500 via-amber-400 to-rose-500"></div>
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-rose-400 text-2xl">
+              <i className="fa-solid fa-shield-heart"></i>
+            </div>
+            <p className="text-[10px] uppercase tracking-widest text-rose-300 font-black mb-2">
+              Age Lock
+            </p>
+            <h3 className="text-2xl font-black text-white mb-3">
+              One-time age update
+            </h3>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              You're about to set your age to{" "}
+              <span className="text-white font-semibold">
+                {pendingAgeRange
+                  ? parseAgeRange(pendingAgeRange)?.min ?? editAge
+                  : editAge}
+              </span>
+              . After this save, your age can&apos;t be edited again.
+            </p>
+
+            <div className="mt-5 text-left space-y-3">
+              {[
+                "Keeps profiles honest and reduces catfishing.",
+                "Builds trust so matches feel safer.",
+                "Prevents accidental changes after verification.",
+              ].map((tip) => (
+                <div
+                  key={tip}
+                  className="flex items-start gap-3 rounded-2xl border border-white/5 bg-white/5 px-4 py-3 text-xs text-slate-200"
+                >
+                  <span className="mt-0.5 text-rose-400">
+                    <i className="fa-solid fa-circle-check"></i>
+                  </span>
+                  <span>{tip}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <button
+                onClick={handleConfirmAgeLock}
+                disabled={profileSaving}
+                className="w-full rounded-full bg-rose-500 text-white text-xs font-black uppercase tracking-widest py-4 shadow-xl shadow-rose-500/20 active:scale-95 transition-transform disabled:opacity-60"
+              >
+                Confirm & Lock Age
+              </button>
+              <button
+                onClick={() => {
+                  setShowAgeLockConfirm(false);
+                  setPendingProfilePayload(null);
+                  setPendingAgeRange(null);
+                }}
+                disabled={profileSaving}
+                className="w-full text-slate-400 text-xs uppercase tracking-widest font-black"
+              >
+                Go Back
+              </button>
             </div>
           </div>
         </div>

@@ -44,6 +44,8 @@ export interface UserProfile {
   voiceIntroDuration?: number;
   voiceIntroUpdatedAt?: number;
   ageRange: string; // e.g. "20-25"
+  ageLocked?: boolean;
+  ageLockedAt?: number;
   bio: string;
   area: string; // Area/City only
   locationLat?: number | null;
